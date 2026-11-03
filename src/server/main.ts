@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import { readServerConfig } from "./config.ts";
 import { openDatabase } from "./db/database.ts";
 import { createApp } from "./http/app.ts";
+import { createMediaTools } from "./media-tools/tools.ts";
 
 const program = Effect.gen(function* () {
   const config = yield* Effect.try(() => readServerConfig(process.env));
@@ -17,7 +18,11 @@ const program = Effect.gen(function* () {
       new Error("Build the application before starting the production server"),
     );
   }
-  const app = createApp(database, config, staticDirectory);
+  const tools = yield* Effect.acquireRelease(
+    Effect.sync(() => createMediaTools(config)),
+    (managedTools) => managedTools.close(),
+  );
+  const app = createApp(database, config, staticDirectory, tools);
   yield* Effect.acquireRelease(
     Effect.sync(() => serve({ fetch: app.fetch, hostname: "127.0.0.1", port: config.port })),
     (server) =>

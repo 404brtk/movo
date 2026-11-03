@@ -1,0 +1,125 @@
+import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { expect, test } from "@playwright/test";
+import type { MediaToolsStatus } from "../../src/shared/contracts/media-tools.ts";
+
+const initial: MediaToolsStatus = {
+  ffprobe: { state: "missing" },
+  ffmpeg: { state: "missing" },
+  download: {
+    provider: "Gyan",
+    sourceUrl: "https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2",
+    version: "9.0.2",
+    bytes: 114768076,
+  },
+  installation: { phase: "idle", downloadedBytes: 0, error: null },
+};
+
+test("offers explicit setup, retries a failed request and keeps progress after reload before importing", async ({
+  page,
+}) => {
+  let status = initial;
+  let downloads = 0;
+  let imports = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/media" && request.method() === "POST") imports++;
+  });
+  await page.route("**/api/media-tools", (route) => route.fulfill({ json: status }));
+  await page.route("**/api/media-tools/install", async (route) => {
+    downloads++;
+    if (downloads === 1)
+      await route.fulfill({
+        status: 503,
+        json: { error: "Could not start the download. Try again." },
+      });
+    else {
+      status = {
+        ...initial,
+        installation: { phase: "downloading", downloadedBytes: 1024, error: null },
+      };
+      await route.fulfill({ status: 202, json: status });
+    }
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Import a file", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Media tools", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download media tools", exact: true }),
+  ).toBeVisible();
+  expect(downloads).toBe(0);
+  expect(imports).toBe(0);
+  await page.getByRole("button", { name: "Download media tools", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Could not start the download");
+  await page.getByRole("button", { name: "Retry download", exact: true }).click();
+  await expect(page.getByRole("progressbar", { name: "Media tools download" })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Media tools", exact: true }).click();
+  await expect(page.getByRole("progressbar", { name: "Media tools download" })).toBeVisible();
+  expect(downloads).toBe(2);
+  status = {
+    ...initial,
+    ffprobe: { state: "ready", source: "managed", version: "9.0.2" },
+    ffmpeg: { state: "ready", source: "managed", version: "9.0.2" },
+    installation: { phase: "complete", downloadedBytes: initial.download?.bytes ?? 0, error: null },
+  };
+  await expect(page.getByText("Media tools are ready. You can import a file.")).toBeVisible();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import a file", exact: true }).click();
+  const chooser = await chooserPromise;
+  const title = `Tools ready ${randomUUID()}`;
+  await chooser.setFiles({
+    name: `${title}.wav`,
+    mimeType: "audio/wav",
+    buffer: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+  });
+  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible();
+  expect(imports).toBe(1);
+});
+
+test("checks tools again before uploading when an executable disappears", async ({ page }) => {
+  let status: MediaToolsStatus = {
+    ...initial,
+    ffprobe: { state: "ready", source: "system", version: "9.0.2" },
+  };
+  let imports = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/media" && request.method() === "POST") imports++;
+  });
+  await page.route("**/api/media-tools", (route) => route.fulfill({ json: status }));
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Import a file", exact: true })).toBeEnabled();
+  status = initial;
+  await page.getByLabel("Choose media file").setInputFiles({
+    name: "not-uploaded.wav",
+    mimeType: "audio/wav",
+    buffer: Buffer.from("file bytes"),
+  });
+  await expect(page.getByRole("alert")).toContainText("Download media tools before importing");
+  await expect(page.getByRole("heading", { name: "Media tools", exact: true })).toBeVisible();
+  expect(imports).toBe(0);
+});
+
+test("shows actionable configuration errors and supports keyboard access", async ({ page }) => {
+  const status: MediaToolsStatus = {
+    ...initial,
+    ffprobe: {
+      state: "broken",
+      source: "configured",
+      message: "ffprobe could not run. Correct or remove FFPROBE_PATH and restart Movo.",
+    },
+  };
+  await page.route("**/api/media-tools", (route) => route.fulfill({ json: status }));
+  await page.goto("/");
+  const trigger = page.getByRole("button", { name: "Media tools", exact: true });
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/Correct or remove FFPROBE_PATH/u)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Download media tools", exact: true })).toHaveCount(
+    0,
+  );
+  await page.getByRole("button", { name: "Close", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Media tools", exact: true })).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});

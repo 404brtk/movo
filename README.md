@@ -6,7 +6,8 @@ A local media workspace. Import audio and video into a persistent library, play 
 
 - Node **26.13.0**, pinned in `.node-version` and `.nvmrc`.
 - Bun **1.4.4**, pinned in `package.json`.
-- FFprobe, included with FFmpeg, for inspecting imported files. Make it available on `PATH` or set `FFPROBE_PATH` to its executable. The app starts without it, but imports require it.
+- FFprobe for imports. Movo detects existing tools and offers an explicit download of FFmpeg and FFprobe when needed. The app starts without either tool or any model weights.
+- Windows' system `tar`, or `tar` and `xz` on Linux, for downloading/unpacking tools and running integration tests. Movo selects `%SystemRoot%/System32/tar.exe` on Windows so Git's bundled GNU tar cannot override it. Existing FFmpeg/FFprobe installations can be used without unpacking anything.
 
 Bun manages dependencies and invokes scripts. Node runs the backend and JavaScript tooling. Use the pinned Node version when installing dependencies because SQLite uses a native addon.
 
@@ -28,7 +29,15 @@ bun run start
 
 Open `http://127.0.0.1:4310`. The Node server serves both the browser application and API.
 
-An optional `.env` file can override `PORT`, `MOVO_DATA_DIR` and `FFPROBE_PATH`. The data directory must be absolute and defaults to `~/.movo`. Local databases and media/model files are outside the source tree. Copy `.env.example` only if overrides are needed.
+An optional `.env` file can override `PORT`, `MOVO_DATA_DIR`, `FFPROBE_PATH` and `FFMPEG_PATH`. The data directory must be absolute and defaults to `~/.movo`. Local databases and media/model files are outside the source tree. Copy `.env.example` only if overrides are needed. Leave executable overrides unset to use automatic discovery.
+
+## Media tools
+
+Open **Media tools** in the library to check FFprobe and FFmpeg. Discovery tries an explicit executable override, then Movo's managed installation, then absolute directories on `PATH`. Broken explicit overrides are reported instead of silently replaced. Imports require only FFprobe and check it before uploading or storing the file.
+
+Choose **Download media tools** to download a private copy of both executables. The panel shows the build provider, version, compressed size and progress. Downloads continue when the panel is closed or the page is reloaded. Movo verifies the pinned size and SHA-256, extracts only the selected executables and license, checks both executables, then activates the completed installation without restarting the app. Existing system installations and `PATH` are untouched.
+
+Automatic downloads support Windows x64 and Linux x64 with glibc 2.28 or newer. Other platforms can use manually installed tools. A stopped download is retried from the beginning; an interrupted staging directory is cleared on the next installation attempt. Previous managed copies remain available to processes already using them, and a failed repair preserves the active installation. See [media tools](docs/media-tools.md) for sources, configuration and validation.
 
 ## Import local media
 
@@ -49,6 +58,8 @@ bun run check
 bun run test:e2e:install
 bun run test:e2e
 ```
+
+`bun run test:tools:real` is an opt-in check that downloads the platform's pinned package into a temporary directory, imports real audio and converts it using the managed executables. It requires internet access and is excluded from ordinary tests and CI.
 
 `check` verifies formatting, linting, types, fast tests and the production build. Browser tests use a fresh temporary data directory and the built server. On Linux, browser system packages can be installed with `bun run test:e2e:install --with-deps`.
 

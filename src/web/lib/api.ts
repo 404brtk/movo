@@ -8,6 +8,7 @@ import {
   MediaItem,
   MediaList,
 } from "../../shared/contracts/media.ts";
+import { activeInstallationPhases, MediaToolsStatus } from "../../shared/contracts/media-tools.ts";
 
 const client = hc<AppType>("/");
 
@@ -58,7 +59,7 @@ async function readResponse<S extends Schema.ConstraintDecoder<unknown>>(
   if (Result.isFailure(result))
     throw new ApiError(
       response.status,
-      "The local app returned invalid media information.",
+      "The local app returned invalid information.",
       result.failure,
     );
   return result.success;
@@ -81,10 +82,31 @@ export const mediaItemOptions = (id: string) =>
     retry: false,
   });
 
-export function importMedia(file: File) {
+export const mediaToolsOptions = queryOptions({
+  queryKey: ["media-tools"],
+  queryFn: ({ signal }) =>
+    readResponse(client.api["media-tools"].$get({}, { init: { signal } }), MediaToolsStatus),
+  refetchInterval: (query) =>
+    activeInstallationPhases.includes(query.state.data?.installation.phase ?? "") ? 1000 : false,
+  retry: false,
+});
+
+export function installMediaTools() {
+  return readResponse(client.api["media-tools"].install.$post(), MediaToolsStatus);
+}
+
+export async function importMedia(file: File) {
   if (file.size === 0)
     throw new ApiError(400, "This file is empty. Choose an audio or video file.");
   if (file.size > maxImportBytes) throw new ApiError(413, "Files must be 10 GiB or smaller.");
+  const tools = await readResponse(client.api["media-tools"].$get(), MediaToolsStatus);
+  if (tools.ffprobe.state !== "ready")
+    throw new ApiError(
+      503,
+      tools.ffprobe.state === "broken"
+        ? tools.ffprobe.message
+        : "Download media tools before importing a file.",
+    );
   return readResponse(
     client.api.media.$post(
       {},

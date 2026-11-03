@@ -30,7 +30,7 @@ jobs:
       - name: Install FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y ffmpeg
+          sudo apt-get install --no-install-recommends -y ffmpeg tar xz-utils
       - run: bun run audit:runtime
       - run: bun run check
       - name: Install Chromium

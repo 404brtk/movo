@@ -9,7 +9,8 @@ describe("server configuration", () => {
       port: 4310,
       dataDirectory: join(homedir(), ".movo"),
       databasePath: join(homedir(), ".movo", "app.sqlite"),
-      ffprobePath: "ffprobe",
+      ffprobePath: undefined,
+      ffmpegPath: undefined,
     });
   });
 
@@ -27,7 +28,19 @@ describe("server configuration", () => {
       port: 4500,
       dataDirectory,
       databasePath: join(dataDirectory, "app.sqlite"),
-      ffprobePath: "ffprobe",
+      ffprobePath: undefined,
+      ffmpegPath: undefined,
     });
+  });
+
+  it("preserves explicit executable overrides and rejects empty ones", () => {
+    const config = readServerConfig({
+      FFPROBE_PATH: "custom-ffprobe",
+      FFMPEG_PATH: "custom-ffmpeg",
+    });
+    expect(config.ffprobePath).toBe("custom-ffprobe");
+    expect(config.ffmpegPath).toBe("custom-ffmpeg");
+    expect(() => readServerConfig({ FFPROBE_PATH: "" })).toThrow(/Expected/u);
+    expect(() => readServerConfig({ FFMPEG_PATH: "" })).toThrow(/Expected/u);
   });
 });

@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError, type MediaErrorReason } from "../media/error.ts";
 import { createMediaLibrary } from "../media/library.ts";
+import { createMediaTools, type MediaToolsConfig } from "../media-tools/tools.ts";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -25,10 +26,13 @@ async function runMedia<A>(operation: Effect.Effect<A, MediaError>) {
 
 export function createApp(
   database: AppDatabase,
-  config: { dataDirectory: string; ffprobePath: string },
+  config: MediaToolsConfig,
   staticDirectory?: string,
+  tools = createMediaTools(config),
 ) {
-  const library = createMediaLibrary(database, config.dataDirectory, config.ffprobePath);
+  const library = createMediaLibrary(database, config.dataDirectory, () =>
+    tools.resolve("ffprobe"),
+  );
   const app = new Hono();
   app.use("*", async (context, next) => {
     const requestUrl = new URL(context.req.url);
@@ -47,6 +51,13 @@ export function createApp(
       database.get(sql`select 1`);
       return context.json({ status: "ok" } as const);
     })
+    .get("/media-tools", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(tools.status()));
+    })
+    .post("/media-tools/install", async (context) =>
+      context.json(await runMedia(tools.install()), 202),
+    )
     .get("/media", async (context) => context.json(await runMedia(library.list())))
     .get("/media/:id", async (context) =>
       context.json(await runMedia(library.get(context.req.param("id")))),

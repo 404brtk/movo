@@ -78,7 +78,7 @@ export function probeMedia(path: string, originalName: string, executable: strin
       if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {
         return new MediaError(
           "unavailable",
-          "FFprobe is unavailable. Install FFmpeg and add it to PATH, or set FFPROBE_PATH, then try again.",
+          "FFprobe is unavailable. Download media tools in Movo or set FFPROBE_PATH, then try again.",
           cause,
         );
       }

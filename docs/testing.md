@@ -6,6 +6,7 @@
 - Media import tests use local FFprobe and committed, generated audio/video fixtures from `tests/fixtures`. Install FFmpeg before running them, or set `FFPROBE_PATH` to its executable. They do not access media websites or model weights.
 - Playwright runs a small Chromium suite against the built application. Verify user-visible behavior and HTTP failures using roles, labels and explicit assertions. Add browser tests when navigation or interaction changes.
 - Real media-site downloads and large-model inference belong in a separate opt-in integration suite when those integrations exist. Normal tests and CI must not require model weights, credentials or third-party media availability.
+- Media-tools installer tests use small generated TAR archives, real filesystem directories and a loopback HTTP server. `tar` is required. Substitute only executable launches for those fixtures; retain real system-tool checks. `bun run test:tools:real` separately downloads the pinned platform package and verifies real managed tools, import, conversion and rediscovery. It uses `vitest.real.config.ts` and is excluded from normal checks and CI.
 
 Test behavior at its actual interface. A bug fix should add a regression test that fails without the fix. Cover invalid input, cleanup, cancellation and storage failures when relevant. Avoid tests that merely repeat a constant or inspect a private implementation.
 

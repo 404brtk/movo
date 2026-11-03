@@ -73,7 +73,7 @@ async function* uploadChunks(body: ReadableStream<Uint8Array>) {
 export function createMediaLibrary(
   database: AppDatabase,
   dataDirectory: string,
-  ffprobePath: string,
+  resolveProbe: () => Effect.Effect<string, MediaError>,
 ) {
   const mediaDirectory = join(dataDirectory, "media");
   const filePath = (item: MediaItem) =>
@@ -152,6 +152,7 @@ export function createMediaLibrary(
         if (declaredSize !== undefined && declaredSize > maxImportBytes) {
           return yield* Effect.fail(new MediaError("tooLarge", "Files must be 10 GiB or smaller."));
         }
+        const ffprobePath = yield* resolveProbe();
         const id = randomUUID();
         const temporaryPath = join(mediaDirectory, `${id}.part`);
         let destination: string | undefined;

@@ -7,10 +7,12 @@ import { describe, expect, it } from "vitest";
 import { maxImportBytes } from "../../shared/contracts/media.ts";
 import { openDatabase, type AppDatabase } from "../db/database.ts";
 import { createMediaLibrary } from "./library.ts";
+import { createMediaTools } from "../media-tools/tools.ts";
 
 const wave = readFileSync(new URL("../../../tests/fixtures/tone.wav", import.meta.url));
 const body = () => new Response(new Uint8Array(wave)).body;
 const probe = process.env.FFPROBE_PATH ?? "ffprobe";
+const resolveProbe = () => Effect.succeed(probe);
 
 async function withLibrary(
   run: (
@@ -26,7 +28,7 @@ async function withLibrary(
         Effect.gen(function* () {
           const database = yield* openDatabase(join(directory, "test.sqlite"));
           yield* Effect.promise(() =>
-            run(createMediaLibrary(database, directory, probe), database, directory),
+            run(createMediaLibrary(database, directory, resolveProbe), database, directory),
           );
         }),
       ),
@@ -47,7 +49,7 @@ describe("managed media library", () => {
         Effect.scoped(
           Effect.gen(function* () {
             const database = yield* openDatabase(databasePath);
-            return yield* createMediaLibrary(database, directory, probe).import(
+            return yield* createMediaLibrary(database, directory, resolveProbe).import(
               body(),
               "Próbka mowy.wav",
               wave.length,
@@ -68,7 +70,7 @@ describe("managed media library", () => {
         Effect.scoped(
           Effect.gen(function* () {
             const database = yield* openDatabase(databasePath);
-            const library = createMediaLibrary(database, directory, probe);
+            const library = createMediaLibrary(database, directory, resolveProbe);
             expect(yield* library.list()).toEqual([imported]);
             const stored = yield* library.file(imported.id);
             expect(readFileSync(stored.path)).toEqual(wave);
@@ -159,13 +161,27 @@ describe("managed media library", () => {
     });
   });
 
-  it("reports unavailable FFprobe and cleans up the upload", async () => {
+  it("rejects unavailable FFprobe before reading or storing the upload", async () => {
     await withLibrary(async (_library, database, directory) => {
-      const library = createMediaLibrary(database, directory, join(directory, "missing-ffprobe"));
-      await expect(Effect.runPromise(library.import(body(), "recording.wav"))).rejects.toThrow(
-        "FFprobe is unavailable",
+      const tools = createMediaTools({
+        dataDirectory: directory,
+        ffprobePath: join(directory, "missing-ffprobe"),
+      });
+      const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+      let read = false;
+      const upload = new ReadableStream<Uint8Array>(
+        {
+          pull() {
+            read = true;
+          },
+        },
+        { highWaterMark: 0 },
       );
-      expect(readdirSync(join(directory, "media"))).toEqual([]);
+      await expect(Effect.runPromise(library.import(upload, "recording.wav"))).rejects.toThrow(
+        "FFPROBE_PATH",
+      );
+      expect(read).toBe(false);
+      expect(readdirSync(directory)).not.toContain("media");
     });
   });
 
