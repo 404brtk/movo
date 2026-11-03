@@ -6,6 +6,8 @@
 
 The configuration targets React's automatic JSX runtime, so the legacy React-in-scope rule is disabled. Stylesheet side-effect imports are explicitly permitted; other unassigned imports remain checked.
 
+`jsx-a11y/media-has-caption` is disabled only in `src/web/components/media-player.tsx`. That player opens user-imported media, which may not include captions; it does not fabricate empty tracks. Native playback controls and accessible names remain required. Other authored media elements retain the caption rule.
+
 To add a rule:
 
 1. Check whether an existing Oxlint rule solves the problem.

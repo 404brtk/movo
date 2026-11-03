@@ -9,6 +9,7 @@ describe("server configuration", () => {
       port: 4310,
       dataDirectory: join(homedir(), ".movo"),
       databasePath: join(homedir(), ".movo", "app.sqlite"),
+      ffprobePath: "ffprobe",
     });
   });
 
@@ -26,6 +27,7 @@ describe("server configuration", () => {
       port: 4500,
       dataDirectory,
       databasePath: join(dataDirectory, "app.sqlite"),
+      ffprobePath: "ffprobe",
     });
   });
 });

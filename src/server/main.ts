@@ -17,7 +17,7 @@ const program = Effect.gen(function* () {
       new Error("Build the application before starting the production server"),
     );
   }
-  const app = createApp(database, staticDirectory);
+  const app = createApp(database, config, staticDirectory);
   yield* Effect.acquireRelease(
     Effect.sync(() => serve({ fetch: app.fetch, hostname: "127.0.0.1", port: config.port })),
     (server) =>

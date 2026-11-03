@@ -51,6 +51,10 @@
           }
         ]
       }
+    },
+    {
+      "files": ["src/web/components/media-player.tsx"],
+      "rules": { "jsx-a11y/media-has-caption": "off" }
     }
   ]
 }
