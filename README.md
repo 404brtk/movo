@@ -39,7 +39,7 @@ bun run test:e2e
 
 `check` verifies formatting, linting, types, fast tests and the production build. Browser tests use a fresh temporary data directory and the built server. On Linux, browser system packages can be installed with `bun run test:e2e:install --with-deps`.
 
-Pre-commit formats/lints staged files, then runs types and fast tests. CI checks the foundation on Windows and Linux and runs Chromium smoke tests on Linux. The workflow uses read-only repository permissions and commit-pinned actions.
+Pre-commit formats/lints staged files, then runs types and fast tests. CI checks the foundation and runs Chromium smoke tests on Ubuntu. The workflow uses read-only repository permissions and commit-pinned actions.
 
 See [testing policy](docs/testing.md) for test selection and [custom lint rules](tooling/lint/README.md) for rule development. Authored JavaScript/TypeScript comments are lint errors; the generated route tree is excluded.
 

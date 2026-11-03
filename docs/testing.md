@@ -14,7 +14,7 @@ Keep mocks at genuinely external interfaces. Prefer real SQLite/filesystem behav
 
 Use `bun run test` for the fast suite, `bun run test:watch` while editing, `bun run check` for the full non-browser gate, and `bun run test:e2e` for browser checks. `package.json` owns the command definitions.
 
-Pre-commit formats/lints staged files and runs type checks and fast tests. CI runs a frozen dependency install, formatting, linting, type checks, tests and production build on Windows and Linux, then browser smoke tests. Native prerequisites and browser installation are explicit setup steps.
+Pre-commit formats/lints staged files and runs type checks and fast tests. CI runs a frozen dependency install, formatting, linting, type checks, tests, production build and browser smoke tests on Ubuntu. Native prerequisites and browser installation are explicit setup steps.
 
 There is no blanket coverage percentage. Add assertions where behavior and risk justify them. Do not add skipped tests, empty test suites or permissive assertions to satisfy a gate. Prefer adding a focused test over expanding a broad mock harness.
 
