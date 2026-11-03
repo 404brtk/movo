@@ -1,0 +1,56 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y", "promise", "vitest", "import"],
+  "jsPlugins": [{ "name": "project", "specifier": "./tooling/lint/index.ts" }],
+  "categories": { "correctness": "error", "suspicious": "error" },
+  "options": { "typeAware": true, "denyWarnings": true, "respectEslintDisableDirectives": false },
+  "rules": {
+    "project/no-comments": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/consistent-type-imports": "error",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "react/react-in-jsx-scope": "off",
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
+    "import/no-cycle": "error",
+    "no-debugger": "error"
+  },
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    ".bootstrap",
+    ".agent-notes",
+    "playwright-report",
+    "test-results",
+    "src/web/routeTree.gen.ts"
+  ],
+  "overrides": [
+    {
+      "files": ["src/web/**/*.{ts,tsx}"],
+      "env": { "browser": true },
+      "rules": {
+        "no-console": "error",
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "node:*",
+                  "better-sqlite3",
+                  "drizzle-orm*",
+                  "@effect/platform-node",
+                  "**/server/**"
+                ],
+                "allowTypeImports": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

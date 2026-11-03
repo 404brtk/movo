@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": true,
+  "singleQuote": false,
+  "printWidth": 100,
+  "tabWidth": 2,
+  "ignorePatterns": [
+    "bun.lock",
+    "dist/**",
+    ".bootstrap/**",
+    ".agent-notes/**",
+    "playwright-report/**",
+    "test-results/**",
+    "src/web/routeTree.gen.ts"
+  ],
+  "sortTailwindcss": { "stylesheet": "./src/web/index.css", "functions": ["cn", "cva"] }
+}
