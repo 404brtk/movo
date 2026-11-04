@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1793733960895,
+      "tag": "0000_local_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793748829414,
+      "tag": "0001_download_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793750113373,
+      "tag": "0002_download_queue_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793823425654,
+      "tag": "0003_download_cleanup_errors",
+      "breakpoints": true
+    }
+  ]
+}
