@@ -3,13 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { maxImportBytes } from "../../shared/contracts/media.ts";
-import { createMediaTools } from "../media-tools/tools.ts";
-import { MediaError } from "../media/error.ts";
-import { runCommand } from "../process/command.ts";
-import { createYoutubeDownloader } from "./ytdlp.ts";
+import { maxImportBytes } from "../../../../src/shared/contracts/media.ts";
+import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { MediaError } from "../../../../src/server/media/error.ts";
+import { runCommand } from "../../../../src/server/process/command.ts";
+import { createYoutubeDownloader } from "../../../../src/server/downloads/ytdlp.ts";
 
-vi.mock("../process/command.ts", () => ({ runCommand: vi.fn<typeof runCommand>() }));
+vi.mock("../../../../src/server/process/command.ts", () => ({
+  runCommand: vi.fn<typeof runCommand>(),
+}));
 const command = vi.mocked(runCommand);
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
 const metadata = {

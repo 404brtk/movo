@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { readServerConfig } from "./config.ts";
+import { readServerConfig } from "../../../src/server/config.ts";
 
 describe("server configuration", () => {
   it("uses a local data directory and a nonprivileged default port", () => {

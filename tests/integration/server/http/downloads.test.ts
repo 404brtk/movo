@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Fiber, Schema } from "effect";
 import { expect, it } from "vitest";
-import { DownloadJob, DownloadJobList } from "../../shared/contracts/downloads.ts";
-import { openDatabase } from "../db/database.ts";
-import { createDownloads } from "../downloads/jobs.ts";
-import { createMediaTools } from "../media-tools/tools.ts";
-import { createApp } from "./app.ts";
+import { DownloadJob, DownloadJobList } from "../../../../src/shared/contracts/downloads.ts";
+import { openDatabase } from "../../../../src/server/db/database.ts";
+import { createDownloads } from "../../../../src/server/downloads/jobs.ts";
+import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { createApp } from "../../../../src/server/http/app.ts";
 
 const base = "http://127.0.0.1:4310/api/downloads";
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";

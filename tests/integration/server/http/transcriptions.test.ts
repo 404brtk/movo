@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Fiber, Schema } from "effect";
 import { expect, it } from "vitest";
-import { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
-import { openDatabase } from "../db/database.ts";
-import { createMediaLibrary } from "../media/library.ts";
-import { createMediaTools } from "../media-tools/tools.ts";
-import { createTranscriptions } from "../transcriptions/jobs.ts";
-import { createApp } from "./app.ts";
+import { TranscriptionJob } from "../../../../src/shared/contracts/transcriptions.ts";
+import { openDatabase } from "../../../../src/server/db/database.ts";
+import { createMediaLibrary } from "../../../../src/server/media/library.ts";
+import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { createTranscriptions } from "../../../../src/server/transcriptions/jobs.ts";
+import { createApp } from "../../../../src/server/http/app.ts";
 
 it("runs transcription beyond the initiating request and exposes status, cancel and retry", async () => {
   const directory = await mkdtemp(join(tmpdir(), "movo-transcription-http-"));
@@ -21,7 +21,7 @@ it("runs transcription beyond the initiating request and exposes status, cancel 
           const config = { dataDirectory: directory };
           const tools = createMediaTools(config);
           const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
-          const audio = readFileSync(new URL("../../../tests/fixtures/tone.wav", import.meta.url));
+          const audio = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
           const media = yield* library.import(
             new Response(audio).body,
             "recording.wav",

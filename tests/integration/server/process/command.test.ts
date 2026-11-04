@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { Effect, Fiber } from "effect";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { runCommand } from "./command.ts";
-import { MediaError } from "../media/error.ts";
+import { runCommand } from "../../../../src/server/process/command.ts";
+import { MediaError } from "../../../../src/server/media/error.ts";
 import { spawn } from "node:child_process";
 
 describe("owned background processes", () => {
@@ -13,7 +13,7 @@ describe("owned background processes", () => {
     const directory = await mkdtemp(join(tmpdir(), "movo-process-owner-"));
     const started = join(directory, "started");
     const childCode = `const fs = require('node:fs'); process.once('disconnect', () => process.exit(0)); fs.writeFileSync(${JSON.stringify(started)}, JSON.stringify({pid: process.pid, connected: process.connected, parent: process.ppid})); setInterval(() => {}, 1000)`;
-    const source = `import { Effect } from 'effect'; import { runCommand } from ${JSON.stringify(new URL("./command.ts", import.meta.url).href)}; await Effect.runPromise(runCommand(process.execPath, ['-e', ${JSON.stringify(childCode)}], { timeoutMs: 10000, ipc: true }));`;
+    const source = `import { Effect } from 'effect'; import { runCommand } from ${JSON.stringify(new URL("../../../../src/server/process/command.ts", import.meta.url).href)}; await Effect.runPromise(runCommand(process.execPath, ['-e', ${JSON.stringify(childCode)}], { timeoutMs: 10000, ipc: true }));`;
     const owner = spawn(process.execPath, ["--input-type=module", "-e", source], {
       windowsHide: true,
       stdio: "ignore",

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 import { expect, it, onTestFinished } from "vitest";
-import { acquireDataDirectory } from "./instance.ts";
+import { acquireDataDirectory } from "../../../src/server/instance.ts";
 
 it("holds ownership until scope exit and allows independent data directories", async () => {
   const directory = await mkdtemp(join(tmpdir(), "movo-instance-scope-"));
@@ -56,17 +56,21 @@ async function freePort() {
 }
 
 function backend(directory: string, port: number) {
-  const child = spawn(process.execPath, [fileURLToPath(new URL("./main.ts", import.meta.url))], {
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      NODE_ENV: "development",
-      MOVO_DATA_DIR: directory,
-      PORT: String(port),
-      HF_HUB_CACHE: join(directory, "hf-cache"),
+  const child = spawn(
+    process.execPath,
+    [fileURLToPath(new URL("../../../src/server/main.ts", import.meta.url))],
+    {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        NODE_ENV: "development",
+        MOVO_DATA_DIR: directory,
+        PORT: String(port),
+        HF_HUB_CACHE: join(directory, "hf-cache"),
+      },
     },
-  });
+  );
   let stdout = "";
   let stderr = "";
   const ready = new Promise<void>((resolve) => {

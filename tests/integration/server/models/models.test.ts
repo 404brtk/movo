@@ -17,13 +17,13 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { Effect, Schema } from "effect";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { activeModelPhases, ModelStatus } from "../../shared/contracts/models.ts";
-import { openDatabase } from "../db/database.ts";
-import { createApp } from "../http/app.ts";
-import { huggingFaceCacheDirectory, modelCachePath } from "./cache.ts";
-import { transcriptionModel, type ModelDefinition } from "./catalog.ts";
-import { createModels, type Models } from "./models.ts";
-import { validateModel } from "./validation.ts";
+import { activeModelPhases, ModelStatus } from "../../../../src/shared/contracts/models.ts";
+import { openDatabase } from "../../../../src/server/db/database.ts";
+import { createApp } from "../../../../src/server/http/app.ts";
+import { huggingFaceCacheDirectory, modelCachePath } from "../../../../src/server/models/cache.ts";
+import { transcriptionModel, type ModelDefinition } from "../../../../src/server/models/catalog.ts";
+import { createModels, type Models } from "../../../../src/server/models/models.ts";
+import { validateModel } from "../../../../src/server/models/validation.ts";
 
 const execute = promisify(execFile);
 
@@ -256,7 +256,7 @@ describe("shared transcription model cache", () => {
       });
       const script = `
         import { Effect } from "effect";
-        import { createModels } from ${JSON.stringify(new URL("./models.ts", import.meta.url).href)};
+        import { createModels } from ${JSON.stringify(new URL("../../../../src/server/models/models.ts", import.meta.url).href)};
         const definition = JSON.parse(process.argv[1]);
         const models = createModels({ definition, cacheDirectory: process.argv[2] });
         try {

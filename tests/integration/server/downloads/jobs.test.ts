@@ -4,18 +4,18 @@ import { join } from "node:path";
 import { Deferred, Effect, Fiber, Result, type Scope } from "effect";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { openDatabase, type AppDatabase } from "../db/database.ts";
-import { createMediaLibrary } from "../media/library.ts";
-import { MediaError } from "../media/error.ts";
-import { createMediaTools } from "../media-tools/tools.ts";
-import { createDownloads, type Downloads } from "./jobs.ts";
-import { downloadJobs } from "./downloads.schema.ts";
-import type { YoutubeDownloader } from "./ytdlp.ts";
-import { blockCleanup } from "../../../tests/helpers/block-cleanup.ts";
+import { openDatabase, type AppDatabase } from "../../../../src/server/db/database.ts";
+import { createMediaLibrary } from "../../../../src/server/media/library.ts";
+import { MediaError } from "../../../../src/server/media/error.ts";
+import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { createDownloads, type Downloads } from "../../../../src/server/downloads/jobs.ts";
+import { downloadJobs } from "../../../../src/server/downloads/downloads.schema.ts";
+import type { YoutubeDownloader } from "../../../../src/server/downloads/ytdlp.ts";
+import { blockCleanup } from "../../../helpers/block-cleanup.ts";
 
 const firstUrl = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
 const secondUrl = "https://www.youtube.com/watch?v=bbbbbbbbbbb";
-const wavePath = new URL("../../../tests/fixtures/tone.wav", import.meta.url);
+const wavePath = new URL("../../../fixtures/tone.wav", import.meta.url);
 const preview = (url: string) =>
   Effect.succeed({ url, title: "A controlled source recording", durationSeconds: 2 });
 const fixtureDownload: YoutubeDownloader["download"] = (url, directory, update) =>

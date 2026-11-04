@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { openDatabase } from "./database.ts";
+import { openDatabase } from "../../../../src/server/db/database.ts";
 
 describe("SQLite connection", () => {
   it("persists records, rolls back failed transactions and closes scoped connections", async () => {

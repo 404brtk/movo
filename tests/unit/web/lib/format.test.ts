@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatDuration } from "./format.ts";
+import { formatBytes, formatDuration } from "../../../../src/web/lib/format.ts";
 
 describe("media display formatting", () => {
   it.each([

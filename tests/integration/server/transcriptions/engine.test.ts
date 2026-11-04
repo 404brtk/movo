@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 import { expect, it, onTestFinished } from "vitest";
-import { createMediaTools } from "../media-tools/tools.ts";
-import { runCommand } from "../process/command.ts";
-import { createTranscriptionEngine } from "./engine.ts";
+import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { runCommand } from "../../../../src/server/process/command.ts";
+import { createTranscriptionEngine } from "../../../../src/server/transcriptions/engine.ts";
 
 it.for(["tone.wav", "sample.webm"])(
   "prepares real %s audio and validates the isolated engine result",
@@ -16,7 +16,7 @@ it.for(["tone.wav", "sample.webm"])(
     onTestFinished(() =>
       rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }),
     );
-    const source = new URL(`../../../tests/fixtures/${filename}`, import.meta.url);
+    const source = new URL(`../../../fixtures/${filename}`, import.meta.url);
     const original = readFileSync(source);
     const staging = join(directory, "work");
     await mkdir(staging);

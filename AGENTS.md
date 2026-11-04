@@ -15,7 +15,7 @@ A local browser application for managing media and optional local transcription.
 
 ## Verification
 
-- For test changes and behavior regressions, follow [docs/testing.md](docs/testing.md).
+- For test placement, test changes and behavior regressions, follow [docs/testing.md](docs/testing.md).
 - For a new lint constraint, prefer an existing Oxlint rule; otherwise follow [tooling/lint/README.md](tooling/lint/README.md) and add valid/invalid regression cases.
 - Run `bun run check` after code or tooling changes. Also run `bun run test:e2e` when browser behavior, routing or the built server changes.
 - Storage integration tests use real temporary SQLite databases and filesystem directories.

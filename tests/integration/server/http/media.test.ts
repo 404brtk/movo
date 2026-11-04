@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { maxImportBytes, MediaItem, MediaList } from "../../shared/contracts/media.ts";
-import { openDatabase } from "../db/database.ts";
-import { createApp } from "./app.ts";
+import { maxImportBytes, MediaItem, MediaList } from "../../../../src/shared/contracts/media.ts";
+import { openDatabase } from "../../../../src/server/db/database.ts";
+import { createApp } from "../../../../src/server/http/app.ts";
 
-const wave = readFileSync(new URL("../../../tests/fixtures/tone.wav", import.meta.url));
-const video = readFileSync(new URL("../../../tests/fixtures/sample.webm", import.meta.url));
+const wave = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
+const video = readFileSync(new URL("../../../fixtures/sample.webm", import.meta.url));
 const base = "http://127.0.0.1:4310/api/media";
 
 async function withApp(run: (app: ReturnType<typeof createApp>) => Promise<void>) {

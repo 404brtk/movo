@@ -4,12 +4,12 @@ import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { maxImportBytes } from "../../shared/contracts/media.ts";
-import { openDatabase, type AppDatabase } from "../db/database.ts";
-import { createMediaLibrary } from "./library.ts";
-import { createMediaTools } from "../media-tools/tools.ts";
+import { maxImportBytes } from "../../../../src/shared/contracts/media.ts";
+import { openDatabase, type AppDatabase } from "../../../../src/server/db/database.ts";
+import { createMediaLibrary } from "../../../../src/server/media/library.ts";
+import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 
-const wave = readFileSync(new URL("../../../tests/fixtures/tone.wav", import.meta.url));
+const wave = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
 const body = () => new Response(new Uint8Array(wave)).body;
 const probe = process.env.FFPROBE_PATH ?? "ffprobe";
 const resolveProbe = () => Effect.succeed(probe);

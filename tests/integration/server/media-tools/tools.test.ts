@@ -7,9 +7,12 @@ import { delimiter, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { Effect, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
-import { activeInstallationPhases, MediaToolsStatus } from "../../shared/contracts/media-tools.ts";
-import { createMediaTools, type MediaTools } from "./tools.ts";
-import type { MediaToolsPackage } from "./packages.ts";
+import {
+  activeInstallationPhases,
+  MediaToolsStatus,
+} from "../../../../src/shared/contracts/media-tools.ts";
+import { createMediaTools, type MediaTools } from "../../../../src/server/media-tools/tools.ts";
+import type { MediaToolsPackage } from "../../../../src/server/media-tools/packages.ts";
 
 const execute = promisify(execFile);
 const suffix = process.platform === "win32" ? ".exe" : "";

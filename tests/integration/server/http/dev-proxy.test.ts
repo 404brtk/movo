@@ -6,9 +6,9 @@ import { serve } from "@hono/node-server";
 import { Effect } from "effect";
 import { createServer, type ViteDevServer } from "vite";
 import { describe, expect, it } from "vitest";
-import viteConfig from "../../../vite.config.ts";
-import { openDatabase } from "../db/database.ts";
-import { createApp } from "./app.ts";
+import viteConfig from "../../../../vite.config.ts";
+import { openDatabase } from "../../../../src/server/db/database.ts";
+import { createApp } from "../../../../src/server/http/app.ts";
 
 describe("development API proxy", () => {
   it("accepts same-origin writes through localhost and the loopback IP while rejecting foreign origins", async () => {

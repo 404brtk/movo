@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { HealthResponse } from "../../shared/contracts/health.ts";
-import { openDatabase } from "../db/database.ts";
-import { createApp } from "./app.ts";
+import { HealthResponse } from "../../../../src/shared/contracts/health.ts";
+import { openDatabase } from "../../../../src/server/db/database.ts";
+import { createApp } from "../../../../src/server/http/app.ts";
 
 const config = { dataDirectory: tmpdir(), ffprobePath: "ffprobe" };
 

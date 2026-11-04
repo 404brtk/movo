@@ -4,17 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Deferred, Effect, Fiber, Result, type Scope } from "effect";
 import { expect, it, onTestFinished } from "vitest";
-import { openDatabase, type AppDatabase } from "../db/database.ts";
-import { createMediaLibrary } from "../media/library.ts";
-import { createMediaTools, type MediaTools } from "../media-tools/tools.ts";
-import { MediaError } from "../media/error.ts";
-import type { MediaItem } from "../../shared/contracts/media.ts";
-import { createTranscriptions, type Transcriptions } from "./jobs.ts";
-import { blockCleanup } from "../../../tests/helpers/block-cleanup.ts";
+import { openDatabase, type AppDatabase } from "../../../../src/server/db/database.ts";
+import { createMediaLibrary } from "../../../../src/server/media/library.ts";
+import { createMediaTools, type MediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { MediaError } from "../../../../src/server/media/error.ts";
+import type { MediaItem } from "../../../../src/shared/contracts/media.ts";
+import {
+  createTranscriptions,
+  type Transcriptions,
+} from "../../../../src/server/transcriptions/jobs.ts";
+import { blockCleanup } from "../../../helpers/block-cleanup.ts";
 import { eq } from "drizzle-orm";
-import { transcriptionJobs } from "./transcriptions.schema.ts";
+import { transcriptionJobs } from "../../../../src/server/transcriptions/transcriptions.schema.ts";
 
-const audio = readFileSync(new URL("../../../tests/fixtures/tone.wav", import.meta.url));
+const audio = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
 const transcript = {
   language: "en",
   segments: [

@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { MediaToolsStatus } from "../../shared/contracts/media-tools.ts";
-import { openDatabase } from "../db/database.ts";
-import { createMediaTools } from "../media-tools/tools.ts";
-import { createApp } from "./app.ts";
+import { MediaToolsStatus } from "../../../../src/shared/contracts/media-tools.ts";
+import { openDatabase } from "../../../../src/server/db/database.ts";
+import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { createApp } from "../../../../src/server/http/app.ts";
 
 describe("media tools HTTP interface", () => {
   it("starts without tools, serves uncached status and rejects unavailable installation without writing files", async () => {

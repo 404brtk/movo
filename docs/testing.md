@@ -1,11 +1,30 @@
 # Testing policy
 
-## Test levels
+## Layout and test levels
 
-- Vitest runs deterministic logic and integration tests on Node. Co-locate these tests with the behavior they verify. Filesystem tests use isolated temporary directories; database tests use real temporary SQLite files with Drizzle.
+All test files live under `tests/`. Within `unit/` and `integration/`, mirror the module path after `src/`; tooling tests mirror `tooling/`. For example, `src/server/downloads/url.ts` has its test at `tests/unit/server/downloads/url.test.ts`.
+
+```text
+tests/
+  unit/
+    server/
+    web/
+    tooling/
+  integration/
+    server/
+    tooling/
+  e2e/
+  real/
+  fixtures/
+  helpers/
+```
+
+- `unit/`: Vitest tests of isolated logic on Node, without filesystem writes, child processes or network requests.
+- `integration/`: Vitest tests of local boundaries on Node. Filesystem tests use isolated temporary directories; database tests use real temporary SQLite files with Drizzle. HTTP, process and CLI tests belong here, including files that also contain isolated logic checks.
+- `fixtures/`: shared static media and its generation instructions. `helpers/`: shared test-only utilities; helpers used by one suite stay in that test file.
 - Media import tests use local FFprobe and committed, generated audio/video fixtures from `tests/fixtures`. Install FFmpeg before running them, or set `FFPROBE_PATH` to its executable. They do not access media websites or model weights.
-- Playwright runs a small Chromium suite against the built application. Verify user-visible behavior and HTTP failures using roles, labels and explicit assertions. Add browser tests when navigation or interaction changes.
-- Real media-site downloads and large-model inference belong in a separate opt-in integration suite when those integrations exist. Normal tests and CI must not require model weights, credentials or third-party media availability.
+- `e2e/`: Playwright runs a small Chromium suite against the built application. Verify user-visible behavior and HTTP failures using roles, labels and explicit assertions. Add browser tests when navigation or interaction changes.
+- `real/`: actual media-site downloads, platform-package downloads and large-model inference run only through the separate opt-in configuration. Normal tests and CI must not require model weights, credentials or third-party media availability.
 - Media-tools installer tests use small generated TAR archives, real filesystem directories and a loopback HTTP server. `tar` is required. Substitute only executable launches for those fixtures; retain real system-tool checks. `bun run test:tools:real` separately downloads the pinned platform package and verifies real managed tools, import, conversion and rediscovery. It uses `vitest.real.config.ts` and is excluded from normal checks and CI.
 
 Test behavior at its actual interface. A bug fix should add a regression test that fails without the fix. Cover invalid input, cleanup, cancellation and storage failures when relevant. Avoid tests that merely repeat a constant or inspect a private implementation.
@@ -19,6 +38,8 @@ Temporary databases and managed media use a fresh directory per test or browser 
 ## Commands and enforcement
 
 Use `bun run test` for the fast suite, `bun run test:watch` while editing, `bun run check` for the full non-browser gate, and `bun run test:e2e` for browser checks. `package.json` owns the command definitions.
+
+The default Vitest configuration includes only `unit/` and `integration/`. Run either group with `bun run test tests/unit` or `bun run test tests/integration`. Playwright discovers only `e2e/`; `vitest.real.config.ts` discovers only `real/`. Keep these discovery boundaries explicit so normal checks cannot pick up opt-in tests.
 
 The fast suite has a 30-second test and cleanup-hook budget. Polling and command timeouts must leave room for resource cleanup within that budget; do not extend an inner wait beyond the enclosing test. Existing queue and installer polls allow 10 and 15 seconds respectively. Match each assertion to the failure it claims to cover: write partial files before simulating a failed download, exceed a combined limit with individually valid streams, and verify HTTP methods and payloads in controlled browser routes.
 

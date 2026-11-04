@@ -12,9 +12,9 @@ To add a rule:
 
 1. Check whether an existing Oxlint rule solves the problem.
 2. Add a focused rule under `rules/`, with an actionable message and no automatic fix unless the transformation is provably safe.
-3. Add valid/invalid cases using `RuleTester` from `oxlint/plugins-dev`, with regression and false-positive cases.
+3. Add valid/invalid cases under `tests/unit/tooling/lint/rules/` using `RuleTester` from `oxlint/plugins-dev`, with regression and false-positive cases.
 4. Register it in `index.ts` and enable it in `.oxlintrc.json`.
-5. Test the normal CLI entry point when configuration, suppression or file selection affects correctness.
+5. Test the normal CLI entry point under `tests/integration/tooling/lint/` when configuration, suppression or file selection affects correctness.
 6. Run the project checks. Keep rule explanations here or in test names, not in code comments.
 
 The plugin API is version-sensitive. Update the pinned Oxlint version together with its rule tests. Source: [Oxlint plugin testing](https://oxc.rs/docs/guide/usage/linter/writing-js-plugins.html).

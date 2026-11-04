@@ -1,6 +1,6 @@
 import { RuleTester } from "oxlint/plugins-dev";
 import { describe, it } from "vitest";
-import { noComments } from "./no-comments.ts";
+import { noComments } from "../../../../../tooling/lint/rules/no-comments.ts";
 
 RuleTester.describe = describe;
 RuleTester.it = it;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { youtubeUrl } from "./url.ts";
+import { youtubeUrl } from "../../../../src/server/downloads/url.ts";
 
 describe("single public YouTube URLs", () => {
   it.each([
