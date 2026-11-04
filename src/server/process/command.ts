@@ -32,7 +32,7 @@ export function runCommand(
       });
       let closed = false;
       let stdout = "";
-      let pending = "";
+      const pending = { stdout: "", stderr: "" };
       let stderr = "";
       let failure: unknown;
       let stopping: Promise<void> | undefined;
@@ -89,28 +89,31 @@ export function runCommand(
         })();
         return stopping;
       };
-      const receive = (line: string) => {
+      const receive = (line: string, stream: "stdout" | "stderr") => {
         if (onLine) onLine(line);
-        else {
+        else if (stream === "stdout") {
           stdout += `${line}\n`;
           if (stdout.length > 8 * 1024 * 1024)
             throw new MediaError("unsupported", "The media source returned too much metadata.");
         }
       };
-      child.stdout.setEncoding("utf8");
-      child.stdout.on("data", (chunk: string) => {
+      const consume = (stream: "stdout" | "stderr", chunk: string) => {
+        if (stream === "stderr") {
+          stderr = (stderr + chunk).slice(-8192);
+          if (!onLine) return;
+        }
         if (failure) return;
         try {
-          pending += chunk;
-          if (pending.length > 8 * 1024 * 1024)
+          pending[stream] += chunk;
+          if (pending[stream].length > 8 * 1024 * 1024)
             throw new MediaError(
               "unsupported",
               "The media source returned an oversized output line.",
             );
           let newline: number;
-          while ((newline = pending.indexOf("\n")) >= 0) {
-            receive(pending.slice(0, newline).replace(/\r$/u, ""));
-            pending = pending.slice(newline + 1);
+          while ((newline = pending[stream].indexOf("\n")) >= 0) {
+            receive(pending[stream].slice(0, newline).replace(/\r$/u, ""), stream);
+            pending[stream] = pending[stream].slice(newline + 1);
           }
         } catch (cause) {
           failure = cause;
@@ -118,11 +121,11 @@ export function runCommand(
             failure = error;
           });
         }
-      });
+      };
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (chunk: string) => consume("stdout", chunk));
       child.stderr.setEncoding("utf8");
-      child.stderr.on("data", (chunk: string) => {
-        stderr = (stderr + chunk).slice(-8192);
-      });
+      child.stderr.on("data", (chunk: string) => consume("stderr", chunk));
       const timer = setTimeout(() => {
         timedOut = true;
         void stop().catch((error: unknown) => {
@@ -158,7 +161,9 @@ export function runCommand(
               failure ?? new Error(stderr),
             );
           }
-          if (pending) receive(pending);
+          for (const stream of ["stdout", "stderr"] as const) {
+            if (pending[stream]) receive(pending[stream].replace(/\r$/u, ""), stream);
+          }
           return stdout;
         },
         clear: () => clearTimeout(timer),

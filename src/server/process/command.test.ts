@@ -5,8 +5,66 @@ import { setTimeout } from "node:timers/promises";
 import { Effect, Fiber } from "effect";
 import { describe, expect, it } from "vitest";
 import { runCommand } from "./command.ts";
+import { MediaError } from "../media/error.ts";
 
 describe("owned background processes", () => {
+  it("delivers separate complete lines from stdout and stderr, including split and unterminated lines", async () => {
+    const lines: string[] = [];
+    await Effect.runPromise(
+      runCommand(
+        process.execPath,
+        [
+          "-e",
+          "process.stdout.write('OUT_A\\r'); process.stderr.write('MOVO_PRO'); setTimeout(() => { process.stdout.write('\\nOUT_B'); process.stderr.write('CESSING\\r\\nERR_END'); }, 20)",
+        ],
+        {
+          timeoutMs: 5000,
+          onLine: (line) => {
+            lines.push(line);
+          },
+        },
+      ),
+    );
+    expect(lines.filter((line) => line.startsWith("OUT_"))).toEqual(["OUT_A", "OUT_B"]);
+    expect(lines.filter((line) => !line.startsWith("OUT_"))).toEqual([
+      "MOVO_PROCESSING",
+      "ERR_END",
+    ]);
+  });
+
+  it("keeps stderr warnings out of stdout metadata without a line callback", async () => {
+    const output = await Effect.runPromise(
+      runCommand(
+        process.execPath,
+        [
+          "-e",
+          "process.stdout.write('{\"ok\":true}'); process.stderr.write('WARNING: diagnostic output\\n');",
+        ],
+        { timeoutMs: 5000 },
+      ),
+    );
+    expect(JSON.parse(output)).toEqual({ ok: true });
+  });
+
+  it("stops the process and preserves a progress callback failure from stderr", async () => {
+    await expect(
+      Effect.runPromise(
+        runCommand(
+          process.execPath,
+          [
+            "-e",
+            "process.stderr.write('MOVO_PROGRESS:over limit\\n'); setInterval(() => {}, 1000)",
+          ],
+          {
+            timeoutMs: 5000,
+            onLine: () => {
+              throw new MediaError("tooLarge", "The download exceeds the limit.");
+            },
+          },
+        ),
+      ),
+    ).rejects.toMatchObject({ reason: "tooLarge", message: "The download exceeds the limit." });
+  });
   it("passes arguments without a shell and preserves stdout", async () => {
     const result = await Effect.runPromise(
       runCommand(
@@ -45,6 +103,16 @@ describe("owned background processes", () => {
       Effect.runPromise(
         runCommand(process.execPath, ["-e", "process.stdout.write('x'.repeat(9 * 1024 * 1024))"], {
           timeoutMs: 5000,
+        }),
+      ),
+    ).rejects.toThrow("oversized output line");
+  });
+  it("bounds stderr progress lines before invoking the callback", async () => {
+    await expect(
+      Effect.runPromise(
+        runCommand(process.execPath, ["-e", "process.stderr.write('x'.repeat(9 * 1024 * 1024))"], {
+          timeoutMs: 5000,
+          onLine: () => undefined,
         }),
       ),
     ).rejects.toThrow("oversized output line");
