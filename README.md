@@ -63,6 +63,8 @@ Jobs and source URLs persist in SQLite. The same normalized video URL returns it
 
 Partial files and private source metadata stay in `MOVO_DATA_DIR/downloads/<job-id>/`. Successful downloads are inspected by FFprobe and moved into the regular library, retaining their source URL. Cancellation waits for the owned process tree to stop and removes its temporary files. Normal completion/failure also removes staging files; restart clears staging for finished or interrupted jobs. The final save to the library finishes before cancellation or shutdown can interrupt it.
 
+If temporary files cannot be removed, Movo records a separate cleanup warning on that job and continues serving the library and other downloads. Saved media stays available. Retrying a failed, cancelled or interrupted job first requires successful cleanup; restarting Movo also attempts cleanup again without discarding the original download error.
+
 The API provides `POST /api/downloads/preview` and `POST /api/downloads` with a JSON `{ "url": "https://www.youtube.com/watch?v=…" }` body, plus `GET /api/downloads`, `GET /api/downloads/:id`, `POST /api/downloads/:id/cancel` and `POST /api/downloads/:id/retry`. Enqueue and retry return HTTP 202 immediately; the worker owns the download independently of the request. Contracts live in `src/shared/contracts/downloads.ts`.
 
 ## Install a transcription model

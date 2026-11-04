@@ -88,6 +88,11 @@ function Downloads() {
                 {job.error ? (
                   <p className="max-w-xl text-sm wrap-anywhere text-destructive">{job.error}</p>
                 ) : null}
+                {job.cleanupError && job.cleanupError !== job.error ? (
+                  <p className="max-w-xl text-sm wrap-anywhere text-destructive">
+                    {job.cleanupError}
+                  </p>
+                ) : null}
                 <a
                   href={job.url}
                   target="_blank"

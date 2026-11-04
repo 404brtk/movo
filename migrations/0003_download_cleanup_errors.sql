@@ -1,0 +1,1 @@
+ALTER TABLE `download_jobs` ADD `cleanup_error` text;

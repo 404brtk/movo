@@ -27,6 +27,7 @@ export const DownloadJob = Schema.Struct({
   phase: Schema.Literals(["queued", "checking", "downloading", "processing", "saving", "finished"]),
   downloadedBytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
   error: Schema.NullOr(Schema.String),
+  cleanupError: Schema.NullOr(Schema.String),
   mediaId: Schema.NullOr(MediaId),
   createdAt: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
   updatedAt: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),

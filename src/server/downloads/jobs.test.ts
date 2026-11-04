@@ -1,4 +1,15 @@
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Deferred, Effect, Fiber, type Scope } from "effect";
@@ -58,7 +69,124 @@ const waitFor = (jobs: Downloads, id: string, status: string) =>
       .toBe(status);
   });
 
+async function blockCleanup(directory: string) {
+  const blocked = process.platform === "win32" ? directory : join(directory, "locked");
+  if (blocked !== directory) await mkdir(blocked);
+  const path = join(blocked, "held.partial");
+  await writeFile(path, "temporary download bytes");
+  if (process.platform !== "win32") {
+    await chmod(blocked, 0o500);
+    return async () => {
+      await chmod(blocked, 0o700);
+    };
+  }
+  const child = spawn(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "$path = [Console]::In.ReadLine(); $file = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None); [Console]::Out.WriteLine('LOCKED'); [Console]::Out.Flush(); [void][Console]::In.ReadLine(); $file.Dispose()",
+    ],
+    { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] },
+  );
+  let closed = false;
+  const exited = new Promise<void>((resolve) =>
+    child.once("close", () => {
+      closed = true;
+      resolve();
+    }),
+  );
+  const release = async () => {
+    if (!closed) child.stdin.end("\n");
+    await exited;
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let output = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        output += chunk.toString();
+        if (output.includes("LOCKED")) resolve();
+      });
+      child.once("error", reject);
+      child.stderr.on("data", (chunk: Buffer) => reject(new Error(chunk.toString())));
+      timer = setTimeout(() => reject(new Error("File lock fixture timed out.")), 5000);
+      child.stdin.write(`${path}\n`);
+    });
+    return release;
+  } catch (cause) {
+    child.kill();
+    await exited;
+    throw cause;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 describe("persistent download jobs", () => {
+  it.for(["failed", "completed", "cancelled"])(
+    "isolates cleanup errors after a %s download and continues the queue",
+    async (outcome, { signal }) => {
+      await withJobs(signal, (database, directory) =>
+        Effect.gen(function* () {
+          let release: (() => Promise<void>) | undefined;
+          let firstAttempt = true;
+          const held = yield* Deferred.make<void>();
+          yield* Effect.acquireRelease(Effect.void, () =>
+            Effect.promise(async () => {
+              await release?.();
+            }),
+          );
+          const tools = createMediaTools({ dataDirectory: directory });
+          const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+            preview,
+            download: (url, staging, update) =>
+              Effect.gen(function* () {
+                if (url === firstUrl && firstAttempt) {
+                  firstAttempt = false;
+                  release = yield* Effect.promise(() => blockCleanup(staging));
+                  yield* Deferred.succeed(held, undefined);
+                  if (outcome === "cancelled") return yield* Effect.never;
+                  if (outcome === "failed")
+                    return yield* Effect.fail(
+                      new MediaError("unavailable", "Controlled source failure."),
+                    );
+                }
+                return yield* fixtureDownload(url, staging, update);
+              }),
+          });
+          const first = yield* jobs.enqueue(firstUrl);
+          const second = yield* jobs.enqueue(secondUrl);
+          const worker = yield* jobs.start();
+          if (outcome === "cancelled") {
+            yield* Deferred.await(held);
+            yield* jobs.cancel(first.id);
+          }
+          yield* waitFor(jobs, second.id, "completed");
+          expect(yield* jobs.get(first.id)).toMatchObject({
+            status: outcome,
+            error: outcome === "failed" ? "Controlled source failure." : null,
+            cleanupError: expect.stringContaining("temporary download files"),
+          });
+          const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+          expect((yield* library.list()).length).toBe(outcome === "completed" ? 2 : 1);
+          const retry = yield* Effect.result(jobs.retry(first.id));
+          expect(retry).toMatchObject({ _tag: "Failure" });
+          expect((yield* jobs.get(first.id)).status).toBe(outcome);
+          if (!release) throw new Error("Cleanup fixture did not start.");
+          yield* Effect.promise(release);
+          release = undefined;
+          if (outcome !== "completed") {
+            yield* jobs.retry(first.id);
+            yield* waitFor(jobs, first.id, "completed");
+          }
+          expect((yield* jobs.get(first.id)).status).toBe("completed");
+          yield* Fiber.interrupt(worker);
+        }),
+      );
+    },
+  );
   it("claims a queued download, publishes a real media file and prevents duplicate URL jobs", async ({
     signal,
   }) => {
@@ -85,6 +213,58 @@ describe("persistent download jobs", () => {
         );
         yield* Fiber.interrupt(worker);
         expect(yield* Effect.promise(() => readdir(join(directory, "downloads")))).toEqual([]);
+      }),
+    );
+  });
+
+  it("starts with uncleared terminal jobs and clears their cleanup warning after recovery", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
+      Effect.gen(function* () {
+        let release: (() => Promise<void>) | undefined;
+        yield* Effect.acquireRelease(Effect.void, () =>
+          Effect.promise(async () => {
+            await release?.();
+          }),
+        );
+        const tools = createMediaTools({ dataDirectory: directory });
+        const downloader = { preview, download: fixtureDownload };
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, downloader);
+        const first = yield* jobs.enqueue(firstUrl);
+        database
+          .update(downloadJobs)
+          .set({ status: "failed", phase: "finished", error: "Previous source failure." })
+          .where(eq(downloadJobs.id, first.id))
+          .run();
+        yield* Effect.promise(() =>
+          mkdir(join(directory, "downloads", first.id), { recursive: true }),
+        );
+        release = yield* Effect.promise(() => blockCleanup(join(directory, "downloads", first.id)));
+        const second = yield* jobs.enqueue(secondUrl);
+        const worker = yield* jobs.start();
+        yield* waitFor(jobs, second.id, "completed");
+        expect(yield* jobs.get(first.id)).toMatchObject({
+          status: "failed",
+          error: "Previous source failure.",
+          cleanupError: expect.stringContaining("temporary download files"),
+        });
+        yield* Effect.promise(release);
+        release = undefined;
+        yield* Fiber.interrupt(worker);
+        const restarted = createDownloads(
+          database,
+          { dataDirectory: directory },
+          tools,
+          downloader,
+        );
+        const nextWorker = yield* restarted.start();
+        expect(yield* restarted.get(first.id)).toMatchObject({
+          status: "failed",
+          error: "Previous source failure.",
+          cleanupError: null,
+        });
+        yield* Fiber.interrupt(nextWorker);
       }),
     );
   });

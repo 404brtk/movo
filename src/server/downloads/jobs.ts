@@ -98,9 +98,24 @@ export function createDownloads(
       catch: (cause) =>
         new MediaError(
           "storage",
-          "Could not remove temporary download files. Check folder permissions.",
+          "Could not remove temporary download files. Close apps using them or check folder permissions, then retry or restart Movo.",
           cause,
         ),
+    });
+  const cleanupAndRecord = (id: string) =>
+    Effect.gen(function* () {
+      const result = yield* Effect.result(cleanup(id));
+      yield* databaseOperation(() =>
+        database
+          .update(downloadJobs)
+          .set({
+            cleanupError: Result.isFailure(result) ? result.failure.message : null,
+            updatedAt: Date.now(),
+          })
+          .where(eq(downloadJobs.id, id))
+          .run(),
+      );
+      return result;
     });
   const perform = (job: DownloadJob) =>
     Effect.gen(function* () {
@@ -157,7 +172,7 @@ export function createDownloads(
       Effect.ensuring(
         Effect.gen(function* () {
           yield* databaseOperation(() => markInterrupted(job.id));
-          yield* cleanup(job.id);
+          yield* cleanupAndRecord(job.id);
         }).pipe(Effect.orDie),
       ),
     );
@@ -205,11 +220,7 @@ export function createDownloads(
       active = undefined;
       if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause))
         yield* Effect.fail(
-          new MediaError(
-            "storage",
-            "The download worker could not finish its cleanup.",
-            exit.cause,
-          ),
+          new MediaError("storage", "The download worker could not update its state.", exit.cause),
         );
     }),
   );
@@ -278,6 +289,8 @@ export function createDownloads(
             ),
           );
         if (active?.id === id) yield* Fiber.interrupt(active.fiber);
+        const cleaned = yield* cleanupAndRecord(id);
+        if (Result.isFailure(cleaned)) return yield* Effect.fail(cleaned.failure);
         yield* databaseOperation(() =>
           database
             .update(downloadJobs)
@@ -317,7 +330,7 @@ export function createDownloads(
             .where(notInArray(downloadJobs.status, ["running", "queued"]))
             .all();
         });
-        for (const { id } of recovered) yield* cleanup(id);
+        for (const { id } of recovered) yield* cleanupAndRecord(id);
         started = true;
         return yield* Effect.forkScoped(worker);
       }),

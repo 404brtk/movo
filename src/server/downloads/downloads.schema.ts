@@ -16,6 +16,7 @@ export const downloadJobs = sqliteTable(
     }).notNull(),
     downloadedBytes: integer("downloaded_bytes").notNull().default(0),
     error: text("error"),
+    cleanupError: text("cleanup_error"),
     mediaId: text("media_id").references(() => mediaItems.id),
     ownerPid: integer("owner_pid"),
     createdAt: integer("created_at").notNull(),

@@ -16,9 +16,30 @@ const jobFixture = (): DownloadJob => ({
   phase: "downloading",
   downloadedBytes: 1024,
   error: null,
+  cleanupError: null,
   mediaId: null,
   createdAt: Date.now(),
   updatedAt: Date.now(),
+});
+
+test("keeps saved media available when temporary download cleanup fails", async ({ page }) => {
+  const job: DownloadJob = {
+    ...jobFixture(),
+    status: "completed",
+    phase: "finished",
+    mediaId: randomUUID(),
+    cleanupError:
+      "Could not remove temporary download files. Close apps using them, then restart Movo.",
+  };
+  await page.route("**/api/downloads", (route) => route.fulfill({ json: [job] }));
+  await page.goto("/downloads");
+  await expect(page.getByText("Saved to library", { exact: false })).toBeVisible();
+  await expect(page.getByText(job.cleanupError ?? "", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open media", exact: true })).toHaveAttribute(
+    "href",
+    `/media/${job.mediaId}`,
+  );
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
 });
 
 test("previews a link, recovers from a source error and keeps polling while another recording is open", async ({
