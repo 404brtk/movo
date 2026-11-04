@@ -63,6 +63,8 @@ The initial defaults are one active download, a maximum of 1080p and a 10 GiB si
 
 Jobs and source URLs persist in SQLite. The same normalized video URL returns its existing job; use **Retry** for a failed, cancelled or interrupted job. Retry starts from the beginning and goes to the end of the queue. Queued jobs start automatically after a restart; an active download interrupted by shutdown needs an explicit retry. If the media was already published before an interrupted job could record completion, startup reconciles it with the library. Run one Movo backend per data directory.
 
+Concurrent retry requests are serialized so a second request cannot remove files from a newly started attempt. Retrying a job already requeued or running is rejected. Once accepted, a retry finishes cleanup and requeueing before interruption can release its lock.
+
 Partial files and private source metadata stay in `MOVO_DATA_DIR/downloads/<job-id>/`. Successful downloads are inspected by FFprobe and moved into the regular library, retaining their source URL. Cancellation waits for the owned process tree to stop and removes its temporary files. Normal completion/failure also removes staging files; restart clears staging for finished or interrupted jobs. The final save to the library finishes before cancellation or shutdown can interrupt it.
 
 If temporary files cannot be removed, Movo records a separate cleanup warning on that job and continues serving the library and other downloads. Saved media stays available. Retrying a failed, cancelled or interrupted job first requires successful cleanup; restarting Movo also attempts cleanup again without discarding the original download error.

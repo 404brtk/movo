@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { and, asc, desc, eq, notInArray, sql } from "drizzle-orm";
-import { Cause, Effect, Exit, Fiber, Result, Schema } from "effect";
+import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
 import { DownloadJob, DownloadJobList } from "../../shared/contracts/downloads.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
 import type { AppDatabase } from "../db/database.ts";
@@ -37,6 +37,7 @@ export function createDownloads(
   tools: MediaTools,
   downloader = createYoutubeDownloader(config.ytdlpPath ?? "yt-dlp", tools),
 ) {
+  const retryLock = Semaphore.makeUnsafe(1);
   const library = createMediaLibrary(database, config.dataDirectory, () =>
     tools.resolve("ffprobe"),
   );
@@ -297,7 +298,7 @@ export function createDownloads(
             .run(),
         );
         return yield* get(id);
-      }),
+      }).pipe(Effect.uninterruptible, Semaphore.withPermit(retryLock)),
     start: () =>
       Effect.gen(function* () {
         if (started)

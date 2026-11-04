@@ -12,7 +12,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Deferred, Effect, Fiber, type Scope } from "effect";
+import { Deferred, Effect, Fiber, Result, type Scope } from "effect";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { openDatabase, type AppDatabase } from "../db/database.ts";
@@ -376,6 +376,41 @@ describe("persistent download jobs", () => {
         expect(attempts).toBe(2);
         expect((yield* jobs.list()).length).toBe(1);
         expect((yield* library.list()).length).toBe(1);
+        yield* Fiber.interrupt(worker);
+      }),
+    );
+  });
+
+  it("accepts only one concurrent retry and saves the retried media intact", async ({ signal }) => {
+    await withJobs(signal, (database, directory) =>
+      Effect.gen(function* () {
+        const tools = createMediaTools({ dataDirectory: directory });
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download: fixtureDownload,
+        });
+        const job = yield* jobs.enqueue(firstUrl);
+        yield* jobs.cancel(job.id);
+        const staging = join(directory, "downloads", job.id);
+        yield* Effect.promise(async () => {
+          await mkdir(staging, { recursive: true });
+          await writeFile(join(staging, "media.wav.part"), "previous download bytes");
+        });
+        const retries = yield* Effect.all(
+          [Effect.result(jobs.retry(job.id)), Effect.result(jobs.retry(job.id))],
+          { concurrency: "unbounded" },
+        );
+        expect(retries.filter(Result.isSuccess)).toHaveLength(1);
+        expect(retries.filter(Result.isFailure)).toMatchObject([
+          { failure: { reason: "invalid" } },
+        ]);
+        const worker = yield* jobs.start();
+        yield* waitFor(jobs, job.id, "completed");
+        const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+        const file = yield* library.file(job.id);
+        expect(yield* Effect.promise(() => readFile(file.path))).toEqual(
+          yield* Effect.promise(() => readFile(wavePath)),
+        );
         yield* Fiber.interrupt(worker);
       }),
     );
