@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
+import type { Route } from "@playwright/test";
 import type { TranscriptionJob } from "../../src/shared/contracts/transcriptions.ts";
 
 test("transcribes explicitly, keeps working across navigation and seeks from saved passages", async ({
@@ -149,5 +150,76 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   );
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
+  );
+});
+
+test("keeps retry progress when an older failed status arrives after retry succeeds", async ({
+  page,
+  request,
+}) => {
+  const title = `Retry ${randomUUID()}`;
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+    headers: { "x-file-name": encodeURIComponent(`${title}.wav`) },
+  });
+  expect(uploaded.status()).toBe(201);
+  const media: { id: string } = await uploaded.json();
+  const failed: TranscriptionJob = {
+    mediaId: media.id,
+    modelId: "parakeet-ultra-q8",
+    status: "failed",
+    phase: "finished",
+    transcript: null,
+    error: "The previous transcription failed.",
+    cleanupError: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  let job = failed;
+  let reads = 0;
+  let delayRead: (route: Route) => void;
+  const delayed = new Promise<Route>((resolve) => {
+    delayRead = resolve;
+  });
+  await page.route(`**/api/media/${media.id}/transcription`, async (route) => {
+    expect(route.request().method()).toBe("GET");
+    if (++reads === 2) {
+      delayRead(route);
+    } else {
+      await route.fulfill({ json: job });
+    }
+  });
+  await page.route(`**/api/media/${media.id}/transcription/retry`, (route) => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postData()).toBeNull();
+    job = { ...job, status: "running", phase: "transcribing", error: null };
+    return route.fulfill({ status: 202, json: job });
+  });
+  await page.goto(`/media/${media.id}`);
+  const panel = page.getByRole("region", { name: "Transcription", exact: true });
+  await expect(
+    panel.getByRole("button", { name: "Retry transcription", exact: true }),
+  ).toBeEnabled();
+  await page.getByRole("link", { name: "Back to library", exact: true }).click();
+  await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
+  const staleRead = await delayed;
+  await panel.getByRole("button", { name: "Retry transcription", exact: true }).click();
+  await expect(panel.getByRole("status")).toContainText("Transcribing");
+  job = {
+    ...job,
+    status: "completed",
+    phase: "finished",
+    transcript: {
+      language: "en",
+      segments: [{ startMs: 0, endMs: 1000, text: "The retried transcription completed." }],
+    },
+  };
+  await staleRead.fulfill({ json: failed });
+  await expect(
+    panel.getByText("The retried transcription completed.", { exact: true }),
+  ).toBeVisible();
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Retry transcription", exact: true })).toHaveCount(
+    0,
   );
 });

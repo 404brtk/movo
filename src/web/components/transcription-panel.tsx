@@ -37,9 +37,11 @@ export function TranscriptionPanel({
         : operation === "cancel"
           ? cancelTranscription(mediaId)
           : retryTranscription(mediaId),
+    onMutate: () => client.cancelQueries({ queryKey: options.queryKey, exact: true }),
     onSuccess: (job) => {
       client.setQueryData(options.queryKey, job);
     },
+    onSettled: () => client.invalidateQueries({ queryKey: options.queryKey, exact: true }),
   });
   const job = query.data;
   const active = job?.status === "queued" || job?.status === "running";
