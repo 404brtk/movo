@@ -17,7 +17,8 @@ import { promisify } from "node:util";
 import { Effect, Result, Schema } from "effect";
 import { MediaToolsStatus } from "../../shared/contracts/media-tools.ts";
 import { MediaError } from "../media/error.ts";
-import { downloadArchive, extractArchive, tarExecutable } from "./archive.ts";
+import { extractArchive, tarExecutable } from "./archive.ts";
+import { downloadFile } from "../files/download.ts";
 import { mediaToolsPackage, type MediaToolsPackage } from "./packages.ts";
 
 const execute = promisify(execFile);
@@ -233,7 +234,7 @@ export function createMediaTools(
           await mkdir(staging);
           const archive = join(staging, "download");
           installation = { phase: "downloading", downloadedBytes: 0, error: null };
-          await downloadArchive(selected, archive, signal, (downloadedBytes) => {
+          await downloadFile(selected, archive, signal, (downloadedBytes) => {
             installation = {
               ...installation,
               downloadedBytes,

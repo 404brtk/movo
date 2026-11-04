@@ -16,7 +16,13 @@ export function DownloadActivity() {
     if (completed) void queryClient.invalidateQueries({ queryKey: mediaListOptions.queryKey });
   }, [completed, queryClient]);
   return (
-    <nav aria-label="Main navigation">
+    <nav aria-label="Main navigation" className="flex items-center gap-1">
+      <Link
+        to="/models"
+        className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        Models
+      </Link>
       <Link
         to="/downloads"
         className="inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"

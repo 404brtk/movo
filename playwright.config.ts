@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { join } from "node:path";
 
 const dataDirectory = process.env.MOVO_TEST_DATA_DIR;
 if (!dataDirectory) {
@@ -17,7 +18,11 @@ export default defineConfig({
     command: "bun run start",
     url: "http://127.0.0.1:4311/api/health",
     reuseExistingServer: false,
-    env: { PORT: "4311", MOVO_DATA_DIR: dataDirectory },
+    env: {
+      PORT: "4311",
+      MOVO_DATA_DIR: dataDirectory,
+      HF_HUB_CACHE: join(dataDirectory, "hf-cache"),
+    },
     timeout: 30000,
   },
 });

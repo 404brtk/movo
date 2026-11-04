@@ -1,12 +1,13 @@
 # movo
 
-A local media workspace. Import audio and video or download a public YouTube video into a persistent library, then play saved copies. Downloads run in the background while you browse other recordings. Transcription has not been implemented yet.
+A local media workspace. Import audio and video or download a public YouTube video into a persistent library, then play saved copies. Downloads run in the background while you browse other recordings. You can install and verify a local transcription model; transcription itself has not been implemented yet.
 
 ## Requirements
 
 - Node **26.13.0**, pinned in `.node-version` and `.nvmrc`.
 - Bun **1.4.4**, pinned in `package.json`.
 - FFprobe for imports. Movo detects existing tools and offers an explicit download of FFmpeg and FFprobe when needed. The app starts without either tool or any model weights.
+- Native model loading uses the bundled `transcribe-cpp` Node binding and its optional platform-native package. Keep optional dependencies enabled when installing the app. On Windows x64, native loading requires [Microsoft Visual C++ 2015–2022 Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) version 14.40 or newer. Cache discovery and model downloads do not load the native engine.
 - For YouTube downloads, both FFmpeg and FFprobe plus the [official yt-dlp standalone executable](https://github.com/yt-dlp/yt-dlp#installation). Install yt-dlp yourself and add it to `PATH`, or set `YTDLP_PATH` to its absolute executable path, then restart Movo. Movo does not download yt-dlp automatically. Its bundled JavaScript components use Movo's Node executable.
 - Windows' system `tar`, or `tar` and `xz` on Linux, for downloading/unpacking tools and running integration tests. Movo selects `%SystemRoot%/System32/tar.exe` on Windows so Git's bundled GNU tar cannot override it. Existing FFmpeg/FFprobe installations can be used without unpacking anything.
 
@@ -64,6 +65,14 @@ Partial files and private source metadata stay in `MOVO_DATA_DIR/downloads/<job-
 
 The API provides `POST /api/downloads/preview` and `POST /api/downloads` with a JSON `{ "url": "https://www.youtube.com/watch?v=…" }` body, plus `GET /api/downloads`, `GET /api/downloads/:id`, `POST /api/downloads/:id/cancel` and `POST /api/downloads/:id/retry`. Enqueue and retry return HTTP 202 immediately; the worker owns the download independently of the request. Contracts live in `src/shared/contracts/downloads.ts`.
 
+## Install a transcription model
+
+Open **Models** from the header. The initial catalog contains **Parakeet Ultra Q8_0**, a 740 MB GGUF conversion published by Handy from Moondream's model. The page shows its size, license, source and supported languages. Choose **Download model** explicitly; opening the app or the catalog never downloads weights.
+
+Movo reuses the pinned weights from your shared Hugging Face cache, including files downloaded by Handy, without another copy or an installation manifest. It verifies size, SHA-256 and GGUF metadata on discovery and remembers the result in memory while the file is unchanged. The cache defaults to `~/.cache/huggingface/hub`; `HF_HUB_CACHE`, `HF_HOME` and `XDG_CACHE_HOME` can override it.
+
+New downloads use unique temporary files and publish verified weights without overwriting existing shared files. They continue while you browse or reload, provided the backend remains running, and support cancellation and retry. Damaged shared files require explicit repair through your cache-management tool. Model setup checks the artifact without loading it into the native engine; runtime compatibility is checked when the engine is used. See [model setup](docs/models.md) for storage, provenance and validation limits.
+
 ## Verification
 
 ```sh
@@ -75,6 +84,8 @@ bun run test:e2e
 `bun run test:tools:real` is an opt-in check that downloads the platform's pinned package into a temporary directory, imports real audio and converts it using the managed executables. It requires internet access and is excluded from ordinary tests and CI.
 
 `bun run test:downloads:real` separately previews and downloads a short public YouTube video, validates its library entry and removes the temporary database and media. It requires internet access, yt-dlp, FFmpeg and FFprobe. Set `MOVO_TEST_YOUTUBE_URL` to use a different public video. Ordinary tests and CI use controlled source/process fixtures and never contact YouTube.
+
+`bun run test:models:real` separately downloads the pinned model into an isolated temporary HF cache, verifies and loads it with the real native engine, checks rediscovery, then removes the weights and temporary files. Ordinary tests use tiny generated GGUF files and real temporary caches, including concurrent Node writers. They initialize the native engine without weights and reject a tiny invalid model. They do not download models or run speech inference.
 
 `check` verifies formatting, linting, types, fast tests and the production build. Browser tests use a fresh temporary data directory and the built server. On Linux, browser system packages can be installed with `bun run test:e2e:install --with-deps`.
 

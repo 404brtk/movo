@@ -1,10 +1,6 @@
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
 import { chmod, open, stat } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import { isAbsolute, join } from "node:path";
-import { Transform } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { MediaError } from "../media/error.ts";
 import type { MediaToolsPackage } from "./packages.ts";
 
@@ -18,45 +14,6 @@ export function tarExecutable() {
     );
   }
   return join(systemRoot, "System32", "tar.exe");
-}
-
-export async function downloadArchive(
-  build: MediaToolsPackage,
-  destination: string,
-  signal: AbortSignal,
-  progress: (bytes: number) => void,
-) {
-  const response = await fetch(build.url, { signal });
-  if (!response.ok || !response.body) {
-    await response.body?.cancel();
-    throw new MediaError(
-      "unavailable",
-      `Could not download media tools (HTTP ${response.status}). Try again or configure local tools manually.`,
-    );
-  }
-  const hash = createHash("sha256");
-  let bytes = 0;
-  const counter = new Transform({
-    transform(chunk: Buffer, _encoding, callback) {
-      bytes += chunk.byteLength;
-      if (bytes > build.bytes) {
-        callback(new MediaError("unavailable", "The media tools download has an unexpected size."));
-        return;
-      }
-      hash.update(chunk);
-      progress(bytes);
-      callback(null, chunk);
-    },
-  });
-  await pipeline(response.body, counter, createWriteStream(destination, { flags: "wx" }), {
-    signal,
-  });
-  if (bytes !== build.bytes || hash.digest("hex") !== build.sha256) {
-    throw new MediaError(
-      "unavailable",
-      "The media tools download failed its integrity check. No tools were activated. Try again.",
-    );
-  }
 }
 
 export async function extractArchive(

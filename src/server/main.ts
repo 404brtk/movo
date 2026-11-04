@@ -8,6 +8,7 @@ import { openDatabase } from "./db/database.ts";
 import { createApp } from "./http/app.ts";
 import { createMediaTools } from "./media-tools/tools.ts";
 import { createDownloads } from "./downloads/jobs.ts";
+import { createModels } from "./models/models.ts";
 
 const program = Effect.gen(function* () {
   const config = yield* Effect.try(() => readServerConfig(process.env));
@@ -24,8 +25,12 @@ const program = Effect.gen(function* () {
     (managedTools) => managedTools.close(),
   );
   const downloads = createDownloads(database, config, tools);
+  const models = yield* Effect.acquireRelease(
+    Effect.sync(() => createModels()),
+    (manager) => manager.close(),
+  );
   const worker = yield* downloads.start();
-  const app = createApp(database, config, staticDirectory, { tools, downloads });
+  const app = createApp(database, config, staticDirectory, { tools, downloads, models });
   yield* Effect.acquireRelease(
     Effect.sync(() => serve({ fetch: app.fetch, hostname: "127.0.0.1", port: config.port })),
     (server) =>

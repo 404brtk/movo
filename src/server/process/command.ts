@@ -140,7 +140,7 @@ export function runCommand(
           if (failure instanceof Error && "code" in failure && failure.code === "ENOENT")
             throw new MediaError(
               "unavailable",
-              "yt-dlp is unavailable. Install its official standalone executable and add it to PATH, or set YTDLP_PATH, then restart Movo.",
+              "The required executable is unavailable. Check its installation and configuration.",
               failure,
             );
           if (failure || code !== 0) {
@@ -153,8 +153,8 @@ export function runCommand(
             throw new MediaError(
               "unavailable",
               detail
-                ? `Could not process this video: ${detail}`
-                : "The media command failed. Check the link, tool versions and network connection, then try again.",
+                ? `The media command failed: ${detail}`
+                : "The media command failed. Check the required tools and try again.",
               failure ?? new Error(stderr),
             );
           }

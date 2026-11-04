@@ -5,7 +5,7 @@ import { DownloadPreview } from "../../shared/contracts/downloads.ts";
 import { maxImportBytes } from "../../shared/contracts/media.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
-import { runCommand } from "./command.ts";
+import { runCommand } from "../process/command.ts";
 import { youtubeUrl } from "./url.ts";
 
 const Metadata = Schema.Struct({
@@ -41,6 +41,19 @@ const baseArguments = [
 
 export function createYoutubeDownloader(ytdlpPath: string, tools: MediaTools) {
   const executable = /[/\\]/u.test(ytdlpPath) ? resolve(ytdlpPath) : ytdlpPath;
+  const run = (args: string[], options: Parameters<typeof runCommand>[2]) =>
+    runCommand(executable, args, options).pipe(
+      Effect.mapError((error) => {
+        const cause = error.cause;
+        return cause instanceof Error && "code" in cause && cause.code === "ENOENT"
+          ? new MediaError(
+              "unavailable",
+              "yt-dlp is unavailable. Install its official standalone executable and add it to PATH, or set YTDLP_PATH, then restart Movo.",
+              error,
+            )
+          : error;
+      }),
+    );
   const inspect = (input: string) =>
     Effect.gen(function* () {
       const url = yield* Effect.try({
@@ -50,11 +63,9 @@ export function createYoutubeDownloader(ytdlpPath: string, tools: MediaTools) {
             ? cause
             : new MediaError("invalid", "Invalid YouTube URL.", cause),
       });
-      const raw = yield* runCommand(
-        executable,
-        [...baseArguments, "--simulate", "--dump-single-json", "--", url],
-        { timeoutMs: 45000 },
-      );
+      const raw = yield* run([...baseArguments, "--simulate", "--dump-single-json", "--", url], {
+        timeoutMs: 45000,
+      });
       const preview = yield* Effect.try({
         try: () => {
           const metadata = Schema.decodeUnknownSync(Metadata)(JSON.parse(raw));
@@ -130,8 +141,7 @@ export function createYoutubeDownloader(ytdlpPath: string, tools: MediaTools) {
         });
         const received = new Map<string, number>();
         let file: string | undefined;
-        yield* runCommand(
-          executable,
+        yield* run(
           [
             ...baseArguments,
             "--load-info-json",

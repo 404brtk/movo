@@ -5,10 +5,11 @@ import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { maxImportBytes } from "../../shared/contracts/media.ts";
 import { createMediaTools } from "../media-tools/tools.ts";
-import { runCommand } from "./command.ts";
+import { MediaError } from "../media/error.ts";
+import { runCommand } from "../process/command.ts";
 import { createYoutubeDownloader } from "./ytdlp.ts";
 
-vi.mock("./command.ts", () => ({ runCommand: vi.fn<typeof runCommand>() }));
+vi.mock("../process/command.ts", () => ({ runCommand: vi.fn<typeof runCommand>() }));
 const command = vi.mocked(runCommand);
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
 const metadata = {
@@ -20,6 +21,17 @@ const metadata = {
 afterEach(() => vi.resetAllMocks());
 
 describe("YouTube downloader protocol", () => {
+  it("explains how to configure yt-dlp when the executable is missing", async () => {
+    const cause = Object.assign(new Error("Missing executable"), { code: "ENOENT" });
+    command.mockReturnValue(
+      Effect.fail(new MediaError("unavailable", "The executable is unavailable.", cause)),
+    );
+    const downloader = createYoutubeDownloader(
+      "yt-dlp",
+      createMediaTools({ dataDirectory: tmpdir() }),
+    );
+    await expect(Effect.runPromise(downloader.preview(url))).rejects.toThrow("YTDLP_PATH");
+  });
   it("allows unknown duration and passes a normalized URL as a single argument", async () => {
     command.mockReturnValue(Effect.succeed(JSON.stringify({ ...metadata, duration: null })));
     const downloader = createYoutubeDownloader(

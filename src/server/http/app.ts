@@ -9,6 +9,7 @@ import type { AppDatabase } from "../db/database.ts";
 import { MediaError, type MediaErrorReason } from "../media/error.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { createMediaTools, type MediaTools } from "../media-tools/tools.ts";
+import { createModels, type Models } from "../models/models.ts";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -42,7 +43,8 @@ export function createApp(
   {
     tools = createMediaTools(config),
     downloads = createDownloads(database, config, tools),
-  }: { tools?: MediaTools; downloads?: Downloads } = {},
+    models = createModels(),
+  }: { tools?: MediaTools; downloads?: Downloads; models?: Models } = {},
 ) {
   const library = createMediaLibrary(database, config.dataDirectory, () =>
     tools.resolve("ffprobe"),
@@ -79,6 +81,16 @@ export function createApp(
     })
     .post("/media-tools/install", async (context) =>
       context.json(await runMedia(tools.install()), 202),
+    )
+    .get("/models", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(models.list()));
+    })
+    .post("/models/:id/install", async (context) =>
+      context.json(await runMedia(models.install(context.req.param("id"))), 202),
+    )
+    .post("/models/:id/cancel", async (context) =>
+      context.json(await runMedia(models.cancel(context.req.param("id")))),
     )
     .get("/downloads", async (context) => {
       context.header("Cache-Control", "no-store");
