@@ -12,9 +12,15 @@ Test behavior at its actual interface. A bug fix should add a regression test th
 
 Keep mocks at genuinely external interfaces. Prefer real SQLite/filesystem behavior over mocking the database driver or filesystem. Tiny controlled local fixtures are appropriate; fake product data and simulated success paths do not replace real integration checks.
 
+CI installs FFmpeg/FFprobe once in its setup step; individual tests reuse those executables. The committed two-second audio/video fixtures are about 44 kB in total. Installer tests generate small archives and serve them over loopback HTTP, without contacting build providers. Real YouTube downloads and platform-package downloads remain opt-in. Dependency and Chromium installation are separate CI setup downloads.
+
+Temporary databases and managed media use a fresh directory per test or browser run, outside the application's normal data directory. Close workers, processes and database connections before removing that directory, including on failure. Queue fixtures pass the test's abort signal to Effect and use awaited test-finished cleanup so a timed-out test cannot race directory deletion against a running worker. A forced process termination can bypass in-process cleanup; do not rely on it to remove local temporary files. Browser reports/traces are diagnostic artifacts, not library data; CI uploads them on failure with a seven-day retention period.
+
 ## Commands and enforcement
 
 Use `bun run test` for the fast suite, `bun run test:watch` while editing, `bun run check` for the full non-browser gate, and `bun run test:e2e` for browser checks. `package.json` owns the command definitions.
+
+The fast suite has a 30-second test and cleanup-hook budget. Polling and command timeouts must leave room for resource cleanup within that budget; do not extend an inner wait beyond the enclosing test. Existing queue and installer polls allow 10 and 15 seconds respectively. Match each assertion to the failure it claims to cover: write partial files before simulating a failed download, exceed a combined limit with individually valid streams, and verify HTTP methods and payloads in controlled browser routes.
 
 Pre-commit formats/lints staged files and runs type checks and fast tests. CI runs a frozen dependency install, formatting, linting, type checks, tests, production build and browser flows on Ubuntu. FFmpeg and browser installation are explicit setup steps.
 

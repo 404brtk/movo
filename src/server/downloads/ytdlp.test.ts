@@ -92,7 +92,10 @@ describe("YouTube downloader protocol", () => {
       command.mockReturnValueOnce(Effect.succeed(JSON.stringify(metadata)));
       command.mockImplementationOnce((_file, _args, options) =>
         Effect.sync(() => {
-          options.onLine?.(`MOVO_PROGRESS:{"downloaded_bytes":${maxImportBytes + 1}}`);
+          options.onLine?.(
+            `MOVO_PROGRESS:{"downloaded_bytes":${maxImportBytes - 1},"filename":"video"}`,
+          );
+          options.onLine?.('MOVO_PROGRESS:{"downloaded_bytes":2,"filename":"audio"}');
           return "";
         }),
       );

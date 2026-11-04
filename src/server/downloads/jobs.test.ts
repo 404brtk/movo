@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Deferred, Effect, Fiber, type Scope } from "effect";
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { openDatabase, type AppDatabase } from "../db/database.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { MediaError } from "../media/error.ts";
@@ -31,21 +31,24 @@ const fixtureDownload: YoutubeDownloader["download"] = (url, directory, update) 
   });
 
 async function withJobs(
+  signal: AbortSignal,
   test: (database: AppDatabase, directory: string) => Effect.Effect<void, unknown, Scope.Scope>,
 ) {
   const directory = await mkdtemp(join(tmpdir(), "movo-download-jobs-"));
-  try {
-    await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const database = yield* openDatabase(join(directory, "app.sqlite"));
-          yield* test(database, directory);
-        }),
-      ),
-    );
-  } finally {
+  const running = Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const database = yield* openDatabase(join(directory, "app.sqlite"));
+        yield* test(database, directory);
+      }),
+    ),
+    { signal },
+  );
+  onTestFinished(async () => {
+    await running.catch(() => undefined);
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-  }
+  });
+  await running;
 }
 
 const waitFor = (jobs: Downloads, id: string, status: string) =>
@@ -56,8 +59,10 @@ const waitFor = (jobs: Downloads, id: string, status: string) =>
   });
 
 describe("persistent download jobs", () => {
-  it("claims a queued download, publishes a real media file and prevents duplicate URL jobs", async () => {
-    await withJobs((database, directory) =>
+  it("claims a queued download, publishes a real media file and prevents duplicate URL jobs", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
       Effect.gen(function* () {
         const tools = createMediaTools({ dataDirectory: directory });
         const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
@@ -84,8 +89,10 @@ describe("persistent download jobs", () => {
     );
   });
 
-  it("runs one download at a time, cancels its process work and continues with the next job", async () => {
-    await withJobs((database, directory) =>
+  it("runs one download at a time, cancels its process work and continues with the next job", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
       Effect.gen(function* () {
         const gate = yield* Deferred.make<void>();
         let active = 0;
@@ -126,14 +133,23 @@ describe("persistent download jobs", () => {
     );
   });
 
-  it("retries a failed job without losing its identity or publishing partial media", async () => {
-    await withJobs((database, directory) =>
+  it("retries a failed job without losing its identity or publishing partial media", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
       Effect.gen(function* () {
         let attempts = 0;
         const tools = createMediaTools({ dataDirectory: directory });
         const download: YoutubeDownloader["download"] = (url, path, update) =>
           ++attempts === 1
-            ? Effect.fail(new MediaError("unavailable", "The source is temporarily unavailable."))
+            ? Effect.gen(function* () {
+                yield* Effect.promise(() =>
+                  writeFile(join(path, "media.mp4.part"), "unfinished download"),
+                );
+                return yield* Effect.fail(
+                  new MediaError("unavailable", "The source is temporarily unavailable."),
+                );
+              })
             : fixtureDownload(url, path, update);
         const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
           preview,
@@ -143,17 +159,28 @@ describe("persistent download jobs", () => {
         const worker = yield* jobs.start();
         yield* waitFor(jobs, job.id, "failed");
         expect((yield* jobs.get(job.id)).error).toBe("The source is temporarily unavailable.");
+        yield* Effect.promise(async () => {
+          await expect.poll(() => readdir(join(directory, "downloads"))).toEqual([]);
+        });
+        const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+        expect(yield* library.list()).toEqual([]);
+        expect(
+          yield* Effect.promise(() => stat(join(directory, "media")).catch(() => null)),
+        ).toBeNull();
         expect((yield* jobs.retry(job.id)).id).toBe(job.id);
         yield* waitFor(jobs, job.id, "completed");
         expect(attempts).toBe(2);
         expect((yield* jobs.list()).length).toBe(1);
+        expect((yield* library.list()).length).toBe(1);
         yield* Fiber.interrupt(worker);
       }),
     );
   });
 
-  it("marks running work interrupted on shutdown while preserving queued work", async () => {
-    await withJobs((database, directory) =>
+  it("marks running work interrupted on shutdown while preserving queued work", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
       Effect.gen(function* () {
         const tools = createMediaTools({ dataDirectory: directory });
         const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
@@ -236,8 +263,10 @@ describe("persistent download jobs", () => {
     }
   });
 
-  it("reconciles media published before a crash without downloading it again", async () => {
-    await withJobs((database, directory) =>
+  it("reconciles media published before a crash without downloading it again", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
       Effect.gen(function* () {
         const tools = createMediaTools({ dataDirectory: directory });
         const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
@@ -275,8 +304,10 @@ describe("persistent download jobs", () => {
     );
   });
 
-  it("refuses a downloaded path outside its job directory and preserves that file", async () => {
-    await withJobs((database, directory) =>
+  it("refuses a downloaded path outside its job directory and preserves that file", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
       Effect.gen(function* () {
         const original = join(directory, "original.wav");
         yield* Effect.promise(() => copyFile(wavePath, original));

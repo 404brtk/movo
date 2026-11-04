@@ -25,6 +25,7 @@ test("previews a link, recovers from a source error and keeps polling while anot
   page,
   request,
 }) => {
+  const inputUrl = "https://youtu.be/aaaaaaaaaaa?si=sharing";
   const title = `While downloading ${randomUUID()}`;
   const imported = await request.post("/api/media", {
     headers: { "x-file-name": `${title}.wav` },
@@ -37,11 +38,17 @@ test("previews a link, recovers from a source error and keeps polling while anot
   let previewAttempts = 0;
   await page.route("**/api/downloads", async (route) => {
     if (route.request().method() === "POST") {
+      expect(route.request().postDataJSON()).toEqual({ url });
       queued = true;
       await route.fulfill({ status: 202, json: job });
-    } else await route.fulfill({ json: queued ? [job] : [] });
+    } else {
+      expect(route.request().method()).toBe("GET");
+      await route.fulfill({ json: queued ? [job] : [] });
+    }
   });
   await page.route("**/api/downloads/preview", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({ url: inputUrl });
     previewAttempts++;
     await route.fulfill(
       previewAttempts === 1
@@ -50,7 +57,7 @@ test("previews a link, recovers from a source error and keeps polling while anot
     );
   });
   await page.goto("/");
-  await page.getByRole("textbox", { name: "YouTube link" }).fill(url);
+  await page.getByRole("textbox", { name: "YouTube link" }).fill(inputUrl);
   await page.getByRole("button", { name: "Check link", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("The source is temporarily unavailable.");
   await page.getByRole("button", { name: "Check link", exact: true }).click();
@@ -79,12 +86,17 @@ test("retries and cancels a download, retains its state after reload and fits a 
     phase: "finished",
     error: "The connection was interrupted.",
   };
-  await page.route("**/api/downloads", (route) => route.fulfill({ json: [job] }));
-  await page.route("**/api/downloads/*/retry", async (route) => {
+  await page.route("**/api/downloads", (route) => {
+    expect(route.request().method()).toBe("GET");
+    return route.fulfill({ json: [job] });
+  });
+  await page.route(`**/api/downloads/${job.id}/retry`, async (route) => {
+    expect(route.request().method()).toBe("POST");
     job = { ...job, status: "running", phase: "checking", error: null };
     await route.fulfill({ status: 202, json: job });
   });
-  await page.route("**/api/downloads/*/cancel", async (route) => {
+  await page.route(`**/api/downloads/${job.id}/cancel`, async (route) => {
+    expect(route.request().method()).toBe("POST");
     job = { ...job, status: "cancelled", phase: "finished" };
     await route.fulfill({ json: job });
   });
