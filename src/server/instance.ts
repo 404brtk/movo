@@ -1,22 +1,24 @@
-import { mkdir, open } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { Effect } from "effect";
-import { tryLock } from "fs-native-extensions";
 
 export function acquireDataDirectory(directory: string) {
   return Effect.acquireRelease(
     Effect.tryPromise({
       try: async () => {
         await mkdir(directory, { recursive: true });
-        const file = await open(join(directory, "instance.lock"), "a+");
+        const database = new Database(join(directory, "instance.sqlite"), { timeout: 0 });
         try {
-          if (!tryLock(file.fd))
+          database.exec("BEGIN EXCLUSIVE");
+          return database;
+        } catch (cause) {
+          database.close();
+          if (cause instanceof Database.SqliteError && cause.code === "SQLITE_BUSY")
             throw new Error(
               "Another Movo backend is already using this data directory. Stop it or choose a different MOVO_DATA_DIR.",
+              { cause },
             );
-          return file;
-        } catch (cause) {
-          await file.close();
           throw cause;
         }
       },
@@ -25,6 +27,6 @@ export function acquireDataDirectory(directory: string) {
           ? cause
           : new Error("Could not lock Movo's data directory.", { cause }),
     }),
-    (file) => Effect.promise(() => file.close()),
+    (database) => Effect.sync(() => database.close()),
   );
 }

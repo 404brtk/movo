@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,22 @@ it("holds ownership until scope exit and allows independent data directories", a
       }),
     ),
   );
+  await expect(
+    Effect.runPromise(Effect.scoped(acquireDataDirectory(directory))),
+  ).resolves.toBeDefined();
+});
+
+it("preserves storage errors and releases a failed lock connection for repair", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "movo-instance-invalid-"));
+  onTestFinished(() =>
+    rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }),
+  );
+  const path = join(directory, "instance.sqlite");
+  await writeFile(path, "not a SQLite database");
+  await expect(
+    Effect.runPromise(Effect.scoped(acquireDataDirectory(directory))),
+  ).rejects.toMatchObject({ code: "SQLITE_NOTADB" });
+  await rm(path);
   await expect(
     Effect.runPromise(Effect.scoped(acquireDataDirectory(directory))),
   ).resolves.toBeDefined();
