@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm, stat } from "node:fs/promises";
-import { join, parse } from "node:path";
+import { lstat, mkdir, realpath, rename, rm, stat } from "node:fs/promises";
+import { basename, isAbsolute, join, parse, relative } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { desc, eq } from "drizzle-orm";
@@ -91,7 +91,90 @@ export function createMediaLibrary(
       catch: storageError,
     });
 
+  const save = (
+    path: string,
+    originalName: string,
+    title: string,
+    sourceUrl: string | null,
+    byteSize: number,
+    id: string,
+  ) =>
+    Effect.gen(function* () {
+      const ffprobePath = yield* resolveProbe();
+      const details = yield* probeMedia(path, originalName, ffprobePath);
+      const item = yield* Effect.try({
+        try: () =>
+          Schema.decodeUnknownSync(MediaItem)({
+            id,
+            originalName,
+            title,
+            sourceUrl,
+            byteSize,
+            importedAt: Date.now(),
+            ...details,
+          }),
+        catch: storageError,
+      });
+      let moved = false;
+      let committed = false;
+      return yield* Effect.gen(function* () {
+        yield* Effect.tryPromise({
+          try: async () => {
+            await mkdir(mediaDirectory, { recursive: true });
+            await rename(path, filePath(item));
+            moved = true;
+          },
+          catch: storageError,
+        });
+        yield* Effect.try({
+          try: () => {
+            database.insert(mediaItems).values(item).run();
+            committed = true;
+          },
+          catch: storageError,
+        });
+        return item;
+      }).pipe(
+        Effect.ensuring(
+          Effect.promise(async () => {
+            if (moved && !committed) await rm(filePath(item), { force: true });
+          }),
+        ),
+      );
+    });
+
   return {
+    adoptDownload: (path: string, title: string, sourceUrl: string, id: string) =>
+      Effect.gen(function* () {
+        yield* Effect.try({
+          try: () => Schema.decodeUnknownSync(MediaId)(id),
+          catch: (cause) => new MediaError("invalid", "Invalid download identifier.", cause),
+        });
+        const stored = yield* Effect.tryPromise({
+          try: async () => {
+            const root = await realpath(join(dataDirectory, "downloads", id));
+            const source = await realpath(path);
+            const within = relative(root, source);
+            const file = await lstat(path);
+            if (
+              !within ||
+              within.startsWith("..") ||
+              isAbsolute(within) ||
+              !file.isFile() ||
+              file.isSymbolicLink()
+            )
+              throw new MediaError(
+                "invalid",
+                "The downloaded file is outside its managed job directory.",
+              );
+            if (file.size < 1 || file.size > maxImportBytes)
+              throw new MediaError("tooLarge", "Files must be nonempty and 10 GiB or smaller.");
+            return file;
+          },
+          catch: storageError,
+        });
+        return yield* save(path, basename(path), title, sourceUrl, stored.size, id);
+      }),
     list: () =>
       Effect.try({
         try: () =>
@@ -152,12 +235,10 @@ export function createMediaLibrary(
         if (declaredSize !== undefined && declaredSize > maxImportBytes) {
           return yield* Effect.fail(new MediaError("tooLarge", "Files must be 10 GiB or smaller."));
         }
-        const ffprobePath = yield* resolveProbe();
+        yield* resolveProbe();
         const id = randomUUID();
         const temporaryPath = join(mediaDirectory, `${id}.part`);
-        let destination: string | undefined;
         let temporaryCreated = false;
-        let committed = false;
         return yield* Effect.gen(function* () {
           const byteSize = yield* Effect.tryPromise({
             try: async () => {
@@ -188,37 +269,18 @@ export function createMediaLibrary(
             },
             catch: storageError,
           });
-          const details = yield* probeMedia(temporaryPath, originalName, ffprobePath);
-          const item = yield* Effect.try({
-            try: () =>
-              Schema.decodeUnknownSync(MediaItem)({
-                id,
-                originalName,
-                title: parse(originalName).name.trim() || originalName,
-                byteSize,
-                importedAt: Date.now(),
-                ...details,
-              }),
-            catch: storageError,
-          });
-          yield* Effect.tryPromise({
-            try: () => rename(temporaryPath, filePath(item)),
-            catch: storageError,
-          });
-          destination = filePath(item);
-          yield* Effect.try({
-            try: () => {
-              database.insert(mediaItems).values(item).run();
-              committed = true;
-            },
-            catch: storageError,
-          });
-          return item;
+          return yield* save(
+            temporaryPath,
+            originalName,
+            parse(originalName).name.trim() || originalName,
+            null,
+            byteSize,
+            id,
+          );
         }).pipe(
           Effect.ensuring(
             Effect.promise(async () => {
               if (temporaryCreated) await rm(temporaryPath, { force: true });
-              if (!committed && destination) await rm(destination, { force: true });
             }),
           ),
         );

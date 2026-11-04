@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Link, Outlet } from "@tanstack/react-router";
+import { DownloadActivity } from "../components/download-activity.tsx";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: () => (
@@ -13,9 +14,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           >
             movo
           </Link>
-          <span className="text-xs text-muted-foreground sm:text-sm">
-            Your local media workspace
-          </span>
+          <DownloadActivity />
         </div>
       </header>
       <Outlet />

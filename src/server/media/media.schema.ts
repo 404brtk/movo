@@ -13,6 +13,7 @@ export const mediaItems = sqliteTable(
     byteSize: integer("byte_size").notNull(),
     durationSeconds: real("duration_seconds").notNull(),
     importedAt: integer("imported_at").notNull(),
+    sourceUrl: text("source_url"),
   },
   (table) => [
     check("media_positive_size", sql`${table.byteSize} > 0`),

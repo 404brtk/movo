@@ -1,11 +1,14 @@
 import { serveStatic } from "@hono/node-server/serve-static";
 import { sql } from "drizzle-orm";
-import { Effect, Result } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { DownloadRequest } from "../../shared/contracts/downloads.ts";
+import { createDownloads, type Downloads, type DownloadsConfig } from "../downloads/jobs.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError, type MediaErrorReason } from "../media/error.ts";
 import { createMediaLibrary } from "../media/library.ts";
-import { createMediaTools, type MediaToolsConfig } from "../media-tools/tools.ts";
+import { createMediaTools, type MediaTools } from "../media-tools/tools.ts";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -18,17 +21,28 @@ const errorStatuses = {
   storage: 500,
 } as const satisfies Record<MediaErrorReason, number>;
 
-async function runMedia<A>(operation: Effect.Effect<A, MediaError>) {
-  const result = await Effect.runPromise(Effect.result(operation));
+async function runMedia<A>(operation: Effect.Effect<A, MediaError>, signal?: AbortSignal) {
+  const result = await Effect.runPromise(Effect.result(operation), { signal });
   if (Result.isFailure(result)) throw result.failure;
   return result.success;
 }
 
+async function readDownloadUrl(payload: Promise<unknown>) {
+  try {
+    return Schema.decodeUnknownSync(DownloadRequest)(await payload).url;
+  } catch (cause) {
+    throw new MediaError("invalid", "Provide a valid JSON object with a video URL.", cause);
+  }
+}
+
 export function createApp(
   database: AppDatabase,
-  config: MediaToolsConfig,
+  config: DownloadsConfig,
   staticDirectory?: string,
-  tools = createMediaTools(config),
+  {
+    tools = createMediaTools(config),
+    downloads = createDownloads(database, config, tools),
+  }: { tools?: MediaTools; downloads?: Downloads } = {},
 ) {
   const library = createMediaLibrary(database, config.dataDirectory, () =>
     tools.resolve("ffprobe"),
@@ -46,6 +60,14 @@ export function createApp(
     return next();
   });
 
+  const downloadBodyLimit = bodyLimit({
+    maxSize: 4096,
+    onError: (context) =>
+      context.json({ error: "Download requests must be 4 KiB or smaller." }, 413),
+  });
+  app.use("/api/downloads", downloadBodyLimit);
+  app.use("/api/downloads/*", downloadBodyLimit);
+
   const api = new Hono()
     .get("/health", (context) => {
       database.get(sql`select 1`);
@@ -57,6 +79,33 @@ export function createApp(
     })
     .post("/media-tools/install", async (context) =>
       context.json(await runMedia(tools.install()), 202),
+    )
+    .get("/downloads", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(downloads.list()));
+    })
+    .post("/downloads/preview", async (context) =>
+      context.json(
+        await runMedia(
+          downloads.preview(await readDownloadUrl(context.req.json())),
+          context.req.raw.signal,
+        ),
+      ),
+    )
+    .post("/downloads", async (context) =>
+      context.json(
+        await runMedia(downloads.enqueue(await readDownloadUrl(context.req.json()))),
+        202,
+      ),
+    )
+    .get("/downloads/:id", async (context) =>
+      context.json(await runMedia(downloads.get(context.req.param("id")))),
+    )
+    .post("/downloads/:id/cancel", async (context) =>
+      context.json(await runMedia(downloads.cancel(context.req.param("id")))),
+    )
+    .post("/downloads/:id/retry", async (context) =>
+      context.json(await runMedia(downloads.retry(context.req.param("id"))), 202),
     )
     .get("/media", async (context) => context.json(await runMedia(library.list())))
     .get("/media/:id", async (context) =>

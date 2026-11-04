@@ -67,6 +67,16 @@ function MediaDetail() {
             </a>
           </div>
           <MediaPlayer key={item.id} item={item} />
+          {item.sourceUrl ? (
+            <a
+              href={item.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-10 items-center text-sm underline underline-offset-4"
+            >
+              View original source
+            </a>
+          ) : null}
           <dl className="grid grid-cols-2 gap-x-6 gap-y-6 border-t pt-6 text-sm sm:grid-cols-4">
             <div className="space-y-1.5">
               <dt className="text-muted-foreground">Type</dt>

@@ -7,6 +7,7 @@ const ServerConfig = Schema.Struct({
   dataDirectory: Schema.String.check(Schema.isMinLength(1)),
   ffprobePath: Schema.optional(Schema.String.check(Schema.isMinLength(1))),
   ffmpegPath: Schema.optional(Schema.String.check(Schema.isMinLength(1))),
+  ytdlpPath: Schema.optional(Schema.String.check(Schema.isMinLength(1))),
 });
 
 export function readServerConfig(environment: NodeJS.ProcessEnv) {
@@ -15,6 +16,7 @@ export function readServerConfig(environment: NodeJS.ProcessEnv) {
     dataDirectory: environment.MOVO_DATA_DIR ?? join(homedir(), ".movo"),
     ffprobePath: environment.FFPROBE_PATH,
     ffmpegPath: environment.FFMPEG_PATH,
+    ytdlpPath: environment.YTDLP_PATH,
   });
   if (!isAbsolute(config.dataDirectory)) {
     throw new Error("MOVO_DATA_DIR must be an absolute path");

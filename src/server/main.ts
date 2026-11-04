@@ -2,11 +2,12 @@ import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { NodeRuntime } from "@effect/platform-node";
 import { serve } from "@hono/node-server";
-import { Effect } from "effect";
+import { Effect, Fiber } from "effect";
 import { readServerConfig } from "./config.ts";
 import { openDatabase } from "./db/database.ts";
 import { createApp } from "./http/app.ts";
 import { createMediaTools } from "./media-tools/tools.ts";
+import { createDownloads } from "./downloads/jobs.ts";
 
 const program = Effect.gen(function* () {
   const config = yield* Effect.try(() => readServerConfig(process.env));
@@ -22,7 +23,9 @@ const program = Effect.gen(function* () {
     Effect.sync(() => createMediaTools(config)),
     (managedTools) => managedTools.close(),
   );
-  const app = createApp(database, config, staticDirectory, tools);
+  const downloads = createDownloads(database, config, tools);
+  const worker = yield* downloads.start();
+  const app = createApp(database, config, staticDirectory, { tools, downloads });
   yield* Effect.acquireRelease(
     Effect.sync(() => serve({ fetch: app.fetch, hostname: "127.0.0.1", port: config.port })),
     (server) =>
@@ -37,7 +40,7 @@ const program = Effect.gen(function* () {
       ),
   );
   yield* Effect.log(`Local service listening on http://127.0.0.1:${config.port}`);
-  return yield* Effect.never;
+  return yield* Fiber.join(worker);
 });
 
 NodeRuntime.runMain(Effect.scoped(program));

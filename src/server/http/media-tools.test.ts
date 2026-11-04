@@ -18,7 +18,7 @@ describe("media tools HTTP interface", () => {
         Effect.scoped(
           Effect.gen(function* () {
             const database = yield* openDatabase(":memory:");
-            const app = createApp(database, config, undefined, tools);
+            const app = createApp(database, config, undefined, { tools });
             yield* Effect.promise(async () => {
               const response = await app.request("http://localhost:4310/api/media-tools");
               expect(response.status).toBe(200);

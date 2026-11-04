@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ImportMedia } from "../components/import-media.tsx";
+import { DownloadLink } from "../components/download-link.tsx";
 import { MediaIcon } from "../components/media-icon.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { mediaListOptions } from "../lib/api.ts";
@@ -21,6 +22,7 @@ function Home() {
         </div>
         <ImportMedia />
       </div>
+      <DownloadLink />
       {library.isPending ? (
         <output className="block py-12 text-sm text-muted-foreground">Loading your library…</output>
       ) : null}

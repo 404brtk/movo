@@ -11,7 +11,7 @@ test("starts without model weights and connects to the local service", async ({ 
   await expect(page).toHaveTitle("movo");
   await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Import a file" })).toBeEnabled();
-  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(page.getByRole("status")).toHaveText("");
   expect(pageErrors).toEqual([]);
 });
 

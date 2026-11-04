@@ -36,6 +36,7 @@ export const MediaItem = Schema.Struct({
   ),
   durationSeconds: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
   importedAt: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+  sourceUrl: Schema.NullOr(Schema.String),
 });
 export type MediaItem = typeof MediaItem.Type;
 export const MediaList = Schema.Array(MediaItem);

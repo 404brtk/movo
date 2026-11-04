@@ -8,6 +8,20 @@
       "when": 1793733960895,
       "tag": "0000_local_media",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793748829414,
+      "tag": "0001_download_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793750113373,
+      "tag": "0002_download_queue_order",
+      "breakpoints": true
     }
   ]
 }

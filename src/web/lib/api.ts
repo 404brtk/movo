@@ -9,6 +9,7 @@ import {
   MediaList,
 } from "../../shared/contracts/media.ts";
 import { activeInstallationPhases, MediaToolsStatus } from "../../shared/contracts/media-tools.ts";
+import { DownloadJob, DownloadJobList, DownloadPreview } from "../../shared/contracts/downloads.ts";
 
 const client = hc<AppType>("/");
 
@@ -117,3 +118,49 @@ export async function importMedia(file: File) {
 }
 
 export const mediaFileUrl = (id: string) => `/api/media/${encodeURIComponent(id)}/file`;
+
+export const downloadsOptions = queryOptions({
+  queryKey: ["downloads"],
+  queryFn: ({ signal }) =>
+    readResponse(client.api.downloads.$get({}, { init: { signal } }), DownloadJobList),
+  refetchInterval: (query) =>
+    query.state.data?.some((job) => job.status === "queued" || job.status === "running")
+      ? 1000
+      : false,
+  retry: false,
+});
+
+export const previewOptions = (url: string) =>
+  queryOptions({
+    queryKey: ["download-preview", url],
+    queryFn: ({ signal }) =>
+      readResponse(
+        client.api.downloads.preview.$post(
+          {},
+          {
+            init: {
+              signal,
+              body: JSON.stringify({ url }),
+              headers: { "content-type": "application/json" },
+            },
+          },
+        ),
+        DownloadPreview,
+      ),
+    enabled: Boolean(url),
+    staleTime: Infinity,
+    retry: false,
+  });
+
+export const enqueueDownload = (url: string) =>
+  readResponse(
+    client.api.downloads.$post(
+      {},
+      { init: { body: JSON.stringify({ url }), headers: { "content-type": "application/json" } } },
+    ),
+    DownloadJob,
+  );
+export const cancelDownload = (id: string) =>
+  readResponse(client.api.downloads[":id"].cancel.$post({ param: { id } }), DownloadJob);
+export const retryDownload = (id: string) =>
+  readResponse(client.api.downloads[":id"].retry.$post({ param: { id } }), DownloadJob);

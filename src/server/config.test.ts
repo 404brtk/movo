@@ -11,6 +11,7 @@ describe("server configuration", () => {
       databasePath: join(homedir(), ".movo", "app.sqlite"),
       ffprobePath: undefined,
       ffmpegPath: undefined,
+      ytdlpPath: undefined,
     });
   });
 
@@ -30,6 +31,7 @@ describe("server configuration", () => {
       databasePath: join(dataDirectory, "app.sqlite"),
       ffprobePath: undefined,
       ffmpegPath: undefined,
+      ytdlpPath: undefined,
     });
   });
 
@@ -37,10 +39,13 @@ describe("server configuration", () => {
     const config = readServerConfig({
       FFPROBE_PATH: "custom-ffprobe",
       FFMPEG_PATH: "custom-ffmpeg",
+      YTDLP_PATH: "custom-ytdlp",
     });
     expect(config.ffprobePath).toBe("custom-ffprobe");
     expect(config.ffmpegPath).toBe("custom-ffmpeg");
+    expect(config.ytdlpPath).toBe("custom-ytdlp");
     expect(() => readServerConfig({ FFPROBE_PATH: "" })).toThrow(/Expected/u);
     expect(() => readServerConfig({ FFMPEG_PATH: "" })).toThrow(/Expected/u);
+    expect(() => readServerConfig({ YTDLP_PATH: "" })).toThrow(/Expected/u);
   });
 });

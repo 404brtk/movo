@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DownloadsRouteImport } from './routes/downloads'
 import { Route as MediaMediaIdRouteImport } from './routes/media.$mediaId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadsRoute = DownloadsRouteImport.update({
+  id: '/downloads',
+  path: '/downloads',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MediaMediaIdRoute = MediaMediaIdRouteImport.update({
@@ -25,27 +31,31 @@ const MediaMediaIdRoute = MediaMediaIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/downloads': typeof DownloadsRoute
   '/media/$mediaId': typeof MediaMediaIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/downloads': typeof DownloadsRoute
   '/media/$mediaId': typeof MediaMediaIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/downloads': typeof DownloadsRoute
   '/media/$mediaId': typeof MediaMediaIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/media/$mediaId'
+  fullPaths: '/' | '/downloads' | '/media/$mediaId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/media/$mediaId'
-  id: '__root__' | '/' | '/media/$mediaId'
+  to: '/' | '/downloads' | '/media/$mediaId'
+  id: '__root__' | '/' | '/downloads' | '/media/$mediaId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DownloadsRoute: typeof DownloadsRoute
   MediaMediaIdRoute: typeof MediaMediaIdRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/downloads': {
+      id: '/downloads'
+      path: '/downloads'
+      fullPath: '/downloads'
+      preLoaderRoute: typeof DownloadsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/media/$mediaId': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DownloadsRoute: DownloadsRoute,
   MediaMediaIdRoute: MediaMediaIdRoute,
 }
 export const routeTree = rootRouteImport
