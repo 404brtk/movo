@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 import { ModelId, ModelStatus, type ModelInstallation } from "../../shared/contracts/models.ts";
 import { MediaError } from "../media/error.ts";
-import { createModelCache, huggingFaceCacheDirectory } from "./cache.ts";
+import { createModelCache, huggingFaceCacheDirectory, modelCachePath } from "./cache.ts";
 import { transcriptionModel, type ModelDefinition } from "./catalog.ts";
 
 const modelError = (cause: unknown) =>
@@ -43,6 +43,22 @@ export function createModels({
       : modelError(cause);
   return {
     list: () => Effect.tryPromise({ try: async () => [await status()], catch: failure }),
+    resolve: (id: string) =>
+      Effect.tryPromise({
+        try: async () => {
+          checkId(id);
+          if (closed) throw failure(undefined);
+          const current = await status();
+          if (current.state !== "ready")
+            throw new MediaError(
+              "unavailable",
+              current.message ??
+                "Download Parakeet Ultra from Models before transcribing a recording.",
+            );
+          return modelCachePath(cacheDirectory, definition);
+        },
+        catch: failure,
+      }),
     install: (id: string) =>
       Effect.tryPromise({
         try: async () => {

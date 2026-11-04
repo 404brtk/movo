@@ -10,6 +10,8 @@ import { MediaError, type MediaErrorReason } from "../media/error.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { createMediaTools, type MediaTools } from "../media-tools/tools.ts";
 import { createModels, type Models } from "../models/models.ts";
+import { createTranscriptions, type Transcriptions } from "../transcriptions/jobs.ts";
+import { createTranscriptionEngine } from "../transcriptions/engine.ts";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -44,7 +46,18 @@ export function createApp(
     tools = createMediaTools(config),
     downloads = createDownloads(database, config, tools),
     models = createModels(),
-  }: { tools?: MediaTools; downloads?: Downloads; models?: Models } = {},
+    transcriptions = createTranscriptions(
+      database,
+      config,
+      tools,
+      createTranscriptionEngine(tools, models),
+    ),
+  }: {
+    tools?: MediaTools;
+    downloads?: Downloads;
+    models?: Models;
+    transcriptions?: Transcriptions;
+  } = {},
 ) {
   const library = createMediaLibrary(database, config.dataDirectory, () =>
     tools.resolve("ffprobe"),
@@ -122,6 +135,19 @@ export function createApp(
     .get("/media", async (context) => context.json(await runMedia(library.list())))
     .get("/media/:id", async (context) =>
       context.json(await runMedia(library.get(context.req.param("id")))),
+    )
+    .get("/media/:id/transcription", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(transcriptions.get(context.req.param("id"))));
+    })
+    .post("/media/:id/transcription", async (context) =>
+      context.json(await runMedia(transcriptions.enqueue(context.req.param("id"))), 202),
+    )
+    .post("/media/:id/transcription/cancel", async (context) =>
+      context.json(await runMedia(transcriptions.cancel(context.req.param("id")))),
+    )
+    .post("/media/:id/transcription/retry", async (context) =>
+      context.json(await runMedia(transcriptions.retry(context.req.param("id"))), 202),
     )
     .post("/media", async (context) => {
       let originalName: string;
