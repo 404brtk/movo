@@ -1,16 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import {
-  access,
-  mkdir,
-  open,
-  readFile,
-  rename,
-  rm,
-  stat,
-  writeFile,
-  type FileHandle,
-} from "node:fs/promises";
+import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
@@ -24,9 +14,6 @@ import { mediaToolsPackage, type MediaToolsPackage } from "./packages.ts";
 const execute = promisify(execFile);
 const ActiveInstallation = Schema.Struct({
   directory: Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9.-]+$/u)),
-});
-const LockOwner = Schema.Struct({
-  pid: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
 });
 type Tool = "ffprobe" | "ffmpeg";
 type Availability = MediaToolsStatus[Tool];
@@ -74,7 +61,6 @@ export function createMediaTools(
   const root = join(config.dataDirectory, "tools", "ffmpeg");
   const activePath = join(root, "active.json");
   const staging = join(root, ".installing");
-  const lockPath = join(root, "install.lock");
   const lifetime = new AbortController();
   let installation: MediaToolsStatus["installation"] = {
     phase: "idle",
@@ -170,42 +156,6 @@ export function createMediaTools(
       catch: toolsError,
     });
 
-  const acquireLock = async (): Promise<FileHandle> => {
-    try {
-      const lock = await open(lockPath, "wx");
-      try {
-        await lock.writeFile(JSON.stringify({ pid: process.pid }));
-        return lock;
-      } catch (cause) {
-        await lock.close();
-        await rm(lockPath, { force: true });
-        throw cause;
-      }
-    } catch (cause) {
-      if (!(cause instanceof Error && "code" in cause && cause.code === "EEXIST")) throw cause;
-      let stale = false;
-      try {
-        const { pid } = Schema.decodeUnknownSync(LockOwner)(
-          JSON.parse(await readFile(lockPath, "utf8")),
-        );
-        try {
-          process.kill(pid, 0);
-        } catch (error) {
-          stale = error instanceof Error && "code" in error && error.code === "ESRCH";
-        }
-      } catch {
-        stale = Date.now() - (await stat(lockPath)).mtimeMs > 30000;
-      }
-      if (!stale)
-        throw new MediaError(
-          "unavailable",
-          "Another Movo process is installing media tools. Wait for it to finish, then try again.",
-        );
-      await rm(lockPath);
-      return acquireLock();
-    }
-  };
-
   const installBuild = (selected: MediaToolsPackage) =>
     Effect.tryPromise({
       try: async (parentSignal) => {
@@ -215,7 +165,6 @@ export function createMediaTools(
           AbortSignal.timeout(10 * 60 * 1000),
         ]);
         await mkdir(root, { recursive: true });
-        const lock = await acquireLock();
         const directoryName = `${selected.id}-${randomUUID()}`;
         const destination = join(root, directoryName);
         const activeTemporary = join(root, `.active-${randomUUID()}`);
@@ -264,20 +213,15 @@ export function createMediaTools(
           activated = true;
           installation = { ...installation, phase: "complete" };
         } finally {
-          try {
-            await rm(activeTemporary, { force: true });
-            await rm(staging, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-            if (!activated)
-              await rm(destination, {
-                recursive: true,
-                force: true,
-                maxRetries: 3,
-                retryDelay: 100,
-              });
-          } finally {
-            await lock.close();
-            await rm(lockPath, { force: true });
-          }
+          await rm(activeTemporary, { force: true });
+          await rm(staging, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+          if (!activated)
+            await rm(destination, {
+              recursive: true,
+              force: true,
+              maxRetries: 3,
+              retryDelay: 100,
+            });
         }
       },
       catch: toolsError,

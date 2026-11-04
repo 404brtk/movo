@@ -31,15 +31,6 @@ const databaseOperation = <A>(operation: () => A) =>
           ),
   });
 
-function processAlive(pid: number) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (cause) {
-    return !(cause instanceof Error && "code" in cause && cause.code === "ESRCH");
-  }
-}
-
 export function createDownloads(
   database: AppDatabase,
   config: DownloadsConfig,
@@ -319,7 +310,6 @@ export function createDownloads(
             .from(downloadJobs)
             .where(eq(downloadJobs.status, "running"))
             .all()) {
-            if (job.ownerPid && processAlive(job.ownerPid)) continue;
             const media = database.select().from(mediaItems).where(eq(mediaItems.id, job.id)).get();
             if (media) markCompleted(job.id, media);
             else markInterrupted(job.id);

@@ -282,18 +282,15 @@ describe("media tools", () => {
     });
   });
 
-  it("recovers an interrupted installation after its owning process exits", async () => {
+  it("replaces abandoned installation staging without activating its partial files", async () => {
     await withInstallation(async ({ create, directory }) => {
-      const { stdout } = await execute(process.execPath, ["-p", "process.pid"]);
       const root = join(directory, "tools", "ffmpeg");
       await mkdir(join(root, ".installing"), { recursive: true });
-      await writeFile(join(root, "install.lock"), JSON.stringify({ pid: Number(stdout.trim()) }));
       await writeFile(join(root, ".installing", "interrupted-download"), "partial bytes");
       const tools = create();
       await Effect.runPromise(tools.install());
       expect((await finished(tools)).installation.phase).toBe("complete");
       expect(await readdir(root)).not.toContain(".installing");
-      expect(await readdir(root)).not.toContain("install.lock");
     });
   });
 
@@ -309,20 +306,6 @@ describe("media tools", () => {
       await Effect.runPromise(tools.close());
       expect((await Effect.runPromise(tools.status())).installation.phase).toBe("failed");
       expect(await readdir(join(directory, "tools", "ffmpeg"))).toEqual([]);
-    });
-  });
-
-  it("leaves another running process's installation untouched", async () => {
-    await withInstallation(async ({ create, directory, requests }) => {
-      const root = join(directory, "tools", "ffmpeg");
-      await mkdir(join(root, ".installing"), { recursive: true });
-      await writeFile(join(root, "install.lock"), JSON.stringify({ pid: process.pid }));
-      await writeFile(join(root, ".installing", "keep"), "keep");
-      const tools = create();
-      await Effect.runPromise(tools.install());
-      expect((await finished(tools)).installation.error).toContain("Another Movo process");
-      expect(await readFile(join(root, ".installing", "keep"), "utf8")).toBe("keep");
-      expect(requests()).toBe(0);
     });
   });
 

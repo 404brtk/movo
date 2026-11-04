@@ -125,6 +125,30 @@ async function blockCleanup(directory: string) {
 }
 
 describe("persistent download jobs", () => {
+  it("recovers a persisted running job even when its saved PID belongs to a live process", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
+      Effect.gen(function* () {
+        const tools = createMediaTools({ dataDirectory: directory });
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download: fixtureDownload,
+        });
+        const stale = yield* jobs.enqueue(firstUrl);
+        database
+          .update(downloadJobs)
+          .set({ status: "running", ownerPid: process.pid })
+          .where(eq(downloadJobs.id, stale.id))
+          .run();
+        const next = yield* jobs.enqueue(secondUrl);
+        const worker = yield* jobs.start();
+        expect((yield* jobs.get(stale.id)).status).toBe("interrupted");
+        yield* waitFor(jobs, next.id, "completed");
+        yield* Fiber.interrupt(worker);
+      }),
+    );
+  });
   it.for(["failed", "completed", "cancelled"])(
     "isolates cleanup errors after a %s download and continues the queue",
     async (outcome, { signal }) => {

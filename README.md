@@ -33,6 +33,8 @@ Open `http://127.0.0.1:4310`. The Node server serves both the browser applicatio
 
 An optional `.env` file can override `PORT`, `MOVO_DATA_DIR`, `FFPROBE_PATH`, `FFMPEG_PATH` and `YTDLP_PATH`. The data directory must be absolute and defaults to `~/.movo`. Local databases and media/model files are outside the source tree. Copy `.env.example` only if overrides are needed. Leave executable overrides unset to use automatic discovery.
 
+One backend owns a data directory at a time. Movo acquires a system file lock before opening SQLite or recovering jobs; a second backend receives a clear error even when using another port. The lock is released on shutdown or process termination. The empty `instance.lock` file remains in the data directory and must not be deleted while Movo runs. Independent data directories can be used by separate backends.
+
 ## Media tools
 
 Open **Media tools** in the library to check FFprobe and FFmpeg. Discovery tries an explicit executable override, then Movo's managed installation, then absolute directories on `PATH`. Broken explicit overrides are reported instead of silently replaced. Imports require only FFprobe and check it before uploading or storing the file.
