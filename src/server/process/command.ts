@@ -14,11 +14,13 @@ export function runCommand(
     cwd,
     environment,
     onLine,
+    ipc = false,
   }: {
     timeoutMs: number;
     cwd?: string;
     environment?: NodeJS.ProcessEnv;
     onLine?: (line: string) => void;
+    ipc?: boolean;
   },
 ) {
   return Effect.acquireUseRelease(
@@ -28,7 +30,7 @@ export function runCommand(
         env: environment,
         windowsHide: true,
         detached: process.platform !== "win32",
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "pipe", ipc ? "ipc" : "ignore"],
       });
       let closed = false;
       let stdout = "";
@@ -122,10 +124,10 @@ export function runCommand(
           });
         }
       };
-      child.stdout.setEncoding("utf8");
-      child.stdout.on("data", (chunk: string) => consume("stdout", chunk));
-      child.stderr.setEncoding("utf8");
-      child.stderr.on("data", (chunk: string) => consume("stderr", chunk));
+      child.stdout?.setEncoding("utf8");
+      child.stdout?.on("data", (chunk: string) => consume("stdout", chunk));
+      child.stderr?.setEncoding("utf8");
+      child.stderr?.on("data", (chunk: string) => consume("stderr", chunk));
       const timer = setTimeout(() => {
         timedOut = true;
         void stop().catch((error: unknown) => {

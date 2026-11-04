@@ -2,13 +2,20 @@ import { useState } from "react";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import { mediaFileUrl } from "../lib/api.ts";
 
-export function MediaPlayer({ item }: { item: MediaItem }) {
+export function MediaPlayer({
+  item,
+  playerRef,
+}: {
+  item: MediaItem;
+  playerRef?: (element: HTMLMediaElement | null) => void;
+}) {
   const [failed, setFailed] = useState(false);
   return (
     <div className="space-y-3">
       {item.kind === "video" ? (
         <div className="overflow-hidden rounded-xl bg-black">
           <video
+            ref={playerRef}
             className="mx-auto max-h-[65svh] w-full"
             src={mediaFileUrl(item.id)}
             controls
@@ -20,6 +27,7 @@ export function MediaPlayer({ item }: { item: MediaItem }) {
       ) : (
         <div className="rounded-xl border bg-muted/40 px-4 py-8 sm:px-8">
           <audio
+            ref={playerRef}
             className="w-full"
             src={mediaFileUrl(item.id)}
             controls

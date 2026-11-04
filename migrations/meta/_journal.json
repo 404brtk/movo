@@ -29,6 +29,13 @@
       "when": 1793823425654,
       "tag": "0003_download_cleanup_errors",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793831019389,
+      "tag": "0004_local_transcriptions",
+      "breakpoints": true
     }
   ]
 }

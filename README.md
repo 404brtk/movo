@@ -1,6 +1,6 @@
 # movo
 
-A local media workspace. Import audio and video or download a public YouTube video into a persistent library, then play saved copies. Downloads run in the background while you browse other recordings. You can install and verify a local transcription model; transcription itself has not been implemented yet.
+A local media workspace. Import audio and video or download a public YouTube video into a persistent library, play saved copies and generate local transcripts with timestamped passages. Downloads and transcription run in the background while you browse other recordings. Model installation is optional and explicit.
 
 ## Requirements
 
@@ -78,6 +78,14 @@ Open **Models** from the header. The initial catalog contains **Parakeet Ultra Q
 Movo reuses the pinned weights from your shared Hugging Face cache, including files downloaded by Handy, without another copy or an installation manifest. It verifies size, SHA-256 and GGUF metadata on discovery and remembers the result in memory while the file is unchanged. The cache defaults to `~/.cache/huggingface/hub`; `HF_HUB_CACHE`, `HF_HOME` and `XDG_CACHE_HOME` can override it.
 
 New downloads use unique temporary files and publish verified weights without overwriting existing shared files. They continue while you browse or reload, provided the backend remains running, and support cancellation and retry. Damaged shared files require explicit repair through your cache-management tool. Model setup checks the artifact without loading it into the native engine; runtime compatibility is checked when the engine is used. See [model setup](docs/models.md) for storage, provenance and validation limits.
+
+## Transcribe a recording
+
+Open a saved recording and choose **Transcribe**. Movo uses Parakeet Ultra locally on the CPU, preparing audio with FFmpeg. If either is missing, use **Models** or **Media tools** in the transcription panel to complete setup. Transcribing never downloads a model automatically.
+
+One transcription runs at a time; other recordings wait in the persistent queue. You can navigate away or reload while it runs. Choose **Cancel transcription** to stop it, or **Retry transcription** after failure, cancellation or interruption. A recording has one saved transcript. Click a passage's timestamp to seek its player. A successful recording without recognized speech shows an explicit empty result.
+
+Completed transcripts survive restarts. Queued work resumes; an active operation interrupted by shutdown needs an explicit retry. Temporary audio is separate from saved media and shared model weights. Long recordings need additional disk space and memory for decoded audio. See [local transcription](docs/transcriptions.md) for storage, resource use and HTTP endpoints.
 
 ## Verification
 

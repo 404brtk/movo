@@ -10,6 +10,8 @@ import { createMediaTools } from "./media-tools/tools.ts";
 import { createDownloads } from "./downloads/jobs.ts";
 import { createModels } from "./models/models.ts";
 import { acquireDataDirectory } from "./instance.ts";
+import { createTranscriptions } from "./transcriptions/jobs.ts";
+import { createTranscriptionEngine } from "./transcriptions/engine.ts";
 
 const program = Effect.gen(function* () {
   const config = yield* Effect.try(() => readServerConfig(process.env));
@@ -30,8 +32,20 @@ const program = Effect.gen(function* () {
     Effect.sync(() => createModels()),
     (manager) => manager.close(),
   );
-  const worker = yield* downloads.start();
-  const app = createApp(database, config, staticDirectory, { tools, downloads, models });
+  const transcriptions = createTranscriptions(
+    database,
+    config,
+    tools,
+    createTranscriptionEngine(tools, models),
+  );
+  const downloadWorker = yield* downloads.start();
+  const transcriptionWorker = yield* transcriptions.start();
+  const app = createApp(database, config, staticDirectory, {
+    tools,
+    downloads,
+    models,
+    transcriptions,
+  });
   yield* Effect.acquireRelease(
     Effect.sync(() => serve({ fetch: app.fetch, hostname: "127.0.0.1", port: config.port })),
     (server) =>
@@ -46,7 +60,9 @@ const program = Effect.gen(function* () {
       ),
   );
   yield* Effect.log(`Local service listening on http://127.0.0.1:${config.port}`);
-  return yield* Fiber.join(worker);
+  return yield* Effect.all([Fiber.join(downloadWorker), Fiber.join(transcriptionWorker)], {
+    concurrency: "unbounded",
+  });
 });
 
 NodeRuntime.runMain(Effect.scoped(program));

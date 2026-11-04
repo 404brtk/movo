@@ -3,11 +3,70 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { Effect, Fiber } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { runCommand } from "./command.ts";
 import { MediaError } from "../media/error.ts";
+import { spawn } from "node:child_process";
 
 describe("owned background processes", () => {
+  it("stops an IPC worker after abrupt termination of its owner", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "movo-process-owner-"));
+    const started = join(directory, "started");
+    const childCode = `const fs = require('node:fs'); process.once('disconnect', () => process.exit(0)); fs.writeFileSync(${JSON.stringify(started)}, JSON.stringify({pid: process.pid, connected: process.connected, parent: process.ppid})); setInterval(() => {}, 1000)`;
+    const source = `import { Effect } from 'effect'; import { runCommand } from ${JSON.stringify(new URL("./command.ts", import.meta.url).href)}; await Effect.runPromise(runCommand(process.execPath, ['-e', ${JSON.stringify(childCode)}], { timeoutMs: 10000, ipc: true }));`;
+    const owner = spawn(process.execPath, ["--input-type=module", "-e", source], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
+    const exited = new Promise<void>((resolve, reject) => {
+      owner.once("error", reject);
+      owner.once("close", () => resolve());
+    });
+    let workerPid: number | undefined;
+    onTestFinished(async () => {
+      if (owner.exitCode === null && owner.signalCode === null) owner.kill("SIGKILL");
+      await exited;
+      if (!workerPid) {
+        const info: { pid?: number } = JSON.parse(
+          await readFile(started, "utf8").catch(() => "{}"),
+        );
+        workerPid = info.pid;
+      }
+      if (workerPid && workerPid > 0) {
+        try {
+          process.kill(workerPid, "SIGKILL");
+        } catch (cause) {
+          if (!(cause instanceof Error && "code" in cause && cause.code === "ESRCH")) throw cause;
+        }
+      }
+      await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    });
+    await expect
+      .poll(async () => Boolean(await stat(started).catch(() => null)), { timeout: 5000 })
+      .toBe(true);
+    const info: { pid: number; connected: boolean; parent: number } = JSON.parse(
+      await readFile(started, "utf8"),
+    );
+    workerPid = info.pid;
+    expect(info.pid).toBeGreaterThan(0);
+    expect(info.connected).toBe(true);
+    expect(info.parent).toBe(owner.pid);
+    owner.kill("SIGKILL");
+    await exited;
+    await expect
+      .poll(
+        () => {
+          try {
+            process.kill(info.pid, 0);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 3000 },
+      )
+      .toBe(false);
+  });
   it("delivers separate complete lines from stdout and stderr, including split and unterminated lines", async () => {
     const lines: string[] = [];
     await Effect.runPromise(

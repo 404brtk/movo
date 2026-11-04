@@ -26,6 +26,29 @@ import { createModels, type Models } from "./models.ts";
 import { validateModel } from "./validation.ts";
 
 const execute = promisify(execFile);
+
+it("resolves only verified cached weights without starting a download", async () => {
+  await withModels(async ({ create, path, requests }) => {
+    const models = create();
+    await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
+      /Download/u,
+    );
+    expect(requests()).toBe(0);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, weights);
+    expect(await Effect.runPromise(models.resolve(transcriptionModel.id))).toBe(path);
+    await writeFile(path, Buffer.alloc(weights.length, 1));
+    await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
+      /integrity/u,
+    );
+    expect(requests()).toBe(0);
+    await Effect.runPromise(models.close());
+    await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
+      /shutting down/u,
+    );
+  });
+});
+
 function ggufString(value: string) {
   const bytes = Buffer.from(value);
   const size = Buffer.alloc(8);

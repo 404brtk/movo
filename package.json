@@ -21,6 +21,7 @@
     "test:tools:real": "node node_modules/vitest/vitest.mjs run --config vitest.real.config.ts tests/real/media-tools.test.ts",
     "test:downloads:real": "node node_modules/vitest/vitest.mjs run --config vitest.real.config.ts tests/real/youtube-download.test.ts",
     "test:models:real": "node node_modules/vitest/vitest.mjs run --config vitest.real.config.ts tests/real/models.test.ts",
+    "test:transcriptions:real": "node node_modules/vitest/vitest.mjs run --config vitest.real.config.ts tests/real/transcriptions.test.ts",
     "test:e2e": "node tooling/test-e2e.ts",
     "test:e2e:install": "node node_modules/@playwright/test/cli.js install chromium",
     "check": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",

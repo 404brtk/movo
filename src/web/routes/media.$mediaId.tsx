@@ -2,7 +2,9 @@ import { ArrowLeft02Icon, Download04Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useCallback, useRef } from "react";
 import { MediaPlayer } from "../components/media-player.tsx";
+import { TranscriptionPanel } from "../components/transcription-panel.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
 import { ApiError, mediaFileUrl, mediaItemOptions } from "../lib/api.ts";
 import { formatBytes, formatDuration, formatImportDate } from "../lib/format.ts";
@@ -13,6 +15,10 @@ function MediaDetail() {
   const { mediaId } = Route.useParams();
   const media = useQuery(mediaItemOptions(mediaId));
   const item = media.data;
+  const player = useRef<HTMLMediaElement | null>(null);
+  const playerRef = useCallback((element: HTMLMediaElement | null) => {
+    player.current = element;
+  }, []);
   return (
     <main className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
       <Link
@@ -66,7 +72,14 @@ function MediaDetail() {
               Save a copy
             </a>
           </div>
-          <MediaPlayer key={item.id} item={item} />
+          <MediaPlayer key={item.id} item={item} playerRef={playerRef} />
+          <TranscriptionPanel
+            key={item.id}
+            mediaId={item.id}
+            onSeek={(seconds) => {
+              if (player.current) player.current.currentTime = seconds;
+            }}
+          />
           {item.sourceUrl ? (
             <a
               href={item.sourceUrl}

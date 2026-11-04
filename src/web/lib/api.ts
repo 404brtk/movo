@@ -11,6 +11,7 @@ import {
 import { activeInstallationPhases, MediaToolsStatus } from "../../shared/contracts/media-tools.ts";
 import { DownloadJob, DownloadJobList, DownloadPreview } from "../../shared/contracts/downloads.ts";
 import { activeModelPhases, ModelList, ModelStatus } from "../../shared/contracts/models.ts";
+import { TranscriptionJob, TranscriptionStatus } from "../../shared/contracts/transcriptions.ts";
 
 const client = hc<AppType>("/");
 
@@ -180,3 +181,28 @@ export const cancelDownload = (id: string) =>
   readResponse(client.api.downloads[":id"].cancel.$post({ param: { id } }), DownloadJob);
 export const retryDownload = (id: string) =>
   readResponse(client.api.downloads[":id"].retry.$post({ param: { id } }), DownloadJob);
+
+export const transcriptionOptions = (id: string) =>
+  queryOptions({
+    queryKey: ["transcription", id],
+    queryFn: ({ signal }) =>
+      readResponse(
+        client.api.media[":id"].transcription.$get({ param: { id } }, { init: { signal } }),
+        TranscriptionStatus,
+      ),
+    refetchInterval: (query) =>
+      ["queued", "running"].includes(query.state.data?.status ?? "") ? 1000 : false,
+    retry: false,
+  });
+export const enqueueTranscription = (id: string) =>
+  readResponse(client.api.media[":id"].transcription.$post({ param: { id } }), TranscriptionJob);
+export const cancelTranscription = (id: string) =>
+  readResponse(
+    client.api.media[":id"].transcription.cancel.$post({ param: { id } }),
+    TranscriptionStatus,
+  );
+export const retryTranscription = (id: string) =>
+  readResponse(
+    client.api.media[":id"].transcription.retry.$post({ param: { id } }),
+    TranscriptionJob,
+  );
