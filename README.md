@@ -5,7 +5,7 @@ A local media workspace. Import audio and video or download a public YouTube vid
 ## Requirements
 
 - Node **26.13.0**, pinned in `.node-version` and `.nvmrc`.
-- Bun **1.4.4**, pinned in `package.json`.
+- Bun for installing dependencies and running project scripts.
 - FFprobe for imports. Movo detects existing tools and offers an explicit download of FFmpeg and FFprobe when needed. The app starts without either tool or any model weights.
 - Native model loading uses the bundled `transcribe-cpp` Node binding and its optional platform-native package. Keep optional dependencies enabled when installing the app. On Windows x64, native loading requires [Microsoft Visual C++ 2015–2022 Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) version 14.40 or newer. Cache discovery and model downloads do not load the native engine.
 - For YouTube downloads, both FFmpeg and FFprobe plus the [official yt-dlp standalone executable](https://github.com/yt-dlp/yt-dlp#installation). Install yt-dlp yourself and add it to `PATH`, or set `YTDLP_PATH` to its absolute executable path, then restart Movo. Movo does not download yt-dlp automatically. Its bundled JavaScript components use Movo's Node executable.

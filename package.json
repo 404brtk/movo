@@ -78,8 +78,6 @@
     "vitest": "5.1.0"
   },
   "engines": {
-    "bun": ">=1.4.4 <2",
     "node": ">=26.13.0 <27"
-  },
-  "packageManager": "bun@1.4.4"
+  }
 }

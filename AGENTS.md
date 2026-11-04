@@ -4,7 +4,7 @@ A local browser application for managing media and optional local transcription.
 
 ## Project constraints
 
-- Node runs the application and tooling; Bun manages packages and invokes scripts. Read the pinned versions from `.node-version` and `package.json`; keep one Bun lockfile.
+- Node runs the application and tooling; Bun manages packages and invokes scripts. Keep one Bun lockfile.
 - Browser code belongs in `src/web`, server code in `src/server`, and browser-safe contracts in `src/shared`. Browser imports of server definitions must be type-only.
 - Hono owns HTTP, Effect owns backend orchestration and shared schemas, and Drizzle owns SQLite. Validate external inputs and process output with Effect Schema.
 - TanStack Query owns cached backend data, Router owns navigable URL state, and React owns temporary UI state. Keep each value in one owner.
