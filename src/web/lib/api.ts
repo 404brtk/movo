@@ -6,6 +6,7 @@ import {
   ApiErrorResponse,
   maxImportBytes,
   MediaItem,
+  MediaDeletion,
   MediaList,
 } from "../../shared/contracts/media.ts";
 import { activeInstallationPhases, MediaToolsStatus } from "../../shared/contracts/media-tools.ts";
@@ -135,7 +136,7 @@ export const renameMedia = (id: string, title: string) =>
     MediaItem,
   );
 export const deleteMedia = (id: string) =>
-  readResponse(client.api.media[":id"].$delete({ param: { id } }), MediaItem);
+  readResponse(client.api.media[":id"].$delete({ param: { id } }), MediaDeletion);
 export const transcriptionExportUrl = (id: string, format: TranscriptExportFormat) =>
   `/api/media/${encodeURIComponent(id)}/transcription/export/${format}`;
 

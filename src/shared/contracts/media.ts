@@ -46,5 +46,10 @@ export const MediaItem = Schema.Struct({
   sourceUrl: Schema.NullOr(Schema.String),
 });
 export type MediaItem = typeof MediaItem.Type;
+export const MediaDeletion = Schema.Struct({
+  ...MediaItem.fields,
+  cleanupError: Schema.optional(Schema.String),
+});
+export type MediaDeletion = typeof MediaDeletion.Type;
 export const MediaList = Schema.Array(MediaItem);
 export const ApiErrorResponse = Schema.Struct({ error: Schema.String });

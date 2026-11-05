@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -204,6 +205,114 @@ describe("managed media library", () => {
       database.run(sql`drop trigger reject_delete`);
       await Effect.runPromise(library.remove(item.id));
       expect(await Effect.runPromise(library.list())).toEqual([]);
+    });
+  });
+
+  it("restores the saved copy and related rows when SQLite rejects the commit", async () => {
+    await withLibrary(async (library, database) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      database
+        .insert(transcriptionJobs)
+        .values({
+          mediaId: item.id,
+          modelId: transcriptionModel.id,
+          status: "completed",
+          phase: "finished",
+          transcript: { language: null, segments: [] },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+      database.$client.exec(
+        "CREATE TABLE commit_guard (media_id TEXT REFERENCES media_items(id) DEFERRABLE INITIALLY DEFERRED)",
+      );
+      database.$client.prepare("INSERT INTO commit_guard (media_id) VALUES (?)").run(item.id);
+      const removed = await Effect.runPromise(Effect.result(library.remove(item.id)));
+      expect(removed).toMatchObject({
+        _tag: "Failure",
+        failure: { cause: { code: "SQLITE_CONSTRAINT_FOREIGNKEY" } },
+      });
+      expect(await Effect.runPromise(library.get(item.id))).toEqual(item);
+      expect(database.select().from(transcriptionJobs).get()?.transcript).toEqual({
+        language: null,
+        segments: [],
+      });
+      const stored = await Effect.runPromise(library.file(item.id));
+      expect(readFileSync(stored.path)).toEqual(wave);
+      expect(readdirSync(join(stored.path, ".."))).toEqual([`${item.id}.wav`]);
+      database.$client.exec("DROP TABLE commit_guard");
+      await Effect.runPromise(library.remove(item.id));
+      expect(await Effect.runPromise(library.list())).toEqual([]);
+    });
+  });
+
+  it("recovers pending deletions after reopening SQLite without overwriting existing files", async () => {
+    await withLibrary(async (library, _database, directory) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      const { path } = await Effect.runPromise(library.file(item.id));
+      renameSync(path, `${path}.deleting`);
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const database = yield* openDatabase(join(directory, "test.sqlite"));
+            const reopened = createMediaLibrary(database, directory, resolveProbe);
+            yield* reopened.recoverDeletions();
+            expect(readFileSync((yield* reopened.file(item.id)).path)).toEqual(wave);
+          }),
+        ),
+      );
+      expect(existsSync(`${path}.deleting`)).toBe(false);
+      writeFileSync(`${path}.deleting`, wave);
+      writeFileSync(path, "A different copy must not be overwritten");
+      await expect(Effect.runPromise(library.recoverDeletions())).rejects.toThrow(
+        "without overwriting",
+      );
+      expect(readFileSync(path, "utf8")).toBe("A different copy must not be overwritten");
+      expect(readFileSync(`${path}.deleting`)).toEqual(wave);
+      rmSync(path);
+      await Effect.runPromise(library.recoverDeletions());
+      expect(readFileSync(path)).toEqual(wave);
+    });
+  });
+
+  it("reports committed cleanup failure and removes the pending copy after repair", async () => {
+    await withLibrary(async (library, database) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      const { path } = await Effect.runPromise(library.file(item.id));
+      const pending = `${path}.deleting`;
+      const held = `${path}.held`;
+      database.$client.function("block_pending_cleanup", () => {
+        renameSync(pending, held);
+        mkdirSync(pending);
+        return null;
+      });
+      database.$client.exec(
+        "CREATE TRIGGER block_pending_cleanup AFTER DELETE ON media_items BEGIN SELECT block_pending_cleanup(); END",
+      );
+      const deleted = await Effect.runPromise(library.remove(item.id));
+      expect(deleted).toMatchObject({
+        id: item.id,
+        cleanupError: expect.stringContaining("restart Movo"),
+      });
+      expect(await Effect.runPromise(library.list())).toEqual([]);
+      expect(readFileSync(held)).toEqual(wave);
+      expect(existsSync(path)).toBe(false);
+      rmSync(pending, { recursive: true });
+      renameSync(held, pending);
+      await Effect.runPromise(library.recoverDeletions());
+      expect(existsSync(pending)).toBe(false);
+    });
+  });
+
+  it("preserves unrecognized pending files instead of deleting them during recovery", async () => {
+    await withLibrary(async (library, _database, directory) => {
+      mkdirSync(join(directory, "media"));
+      const invalid = join(directory, "media", "original.wav.deleting");
+      writeFileSync(invalid, wave);
+      await expect(Effect.runPromise(library.recoverDeletions())).rejects.toThrow(
+        "manual recovery",
+      );
+      expect(readFileSync(invalid)).toEqual(wave);
     });
   });
 
