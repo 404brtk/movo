@@ -76,6 +76,7 @@ function MediaDetail() {
           <TranscriptionPanel
             key={item.id}
             mediaId={item.id}
+            title={item.title}
             onSeek={(seconds) => {
               if (player.current) player.current.currentTime = seconds;
             }}

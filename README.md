@@ -85,6 +85,8 @@ Open a saved recording and choose **Transcribe**. Movo uses Parakeet Ultra local
 
 One transcription runs at a time; other recordings wait in the persistent queue. You can navigate away or reload while it runs. Choose **Cancel transcription** to stop it, or **Retry transcription** after failure, cancellation or interruption. A recording has one saved transcript. Click a passage's timestamp to seek its player. A successful recording without recognized speech shows an explicit empty result.
 
+Completed transcripts with speech offer **Copy text**, **Download TXT**, **Download SRT** and **Download VTT** above the passages. TXT and copying contain plain text; SRT and VTT contain timestamped subtitles. Downloads use UTF-8 and the recording title as the suggested filename. Clipboard failures show guidance and leave TXT available. Exporting reuses the saved result without running the model again.
+
 Completed transcripts survive restarts. Queued work resumes; an active operation interrupted by shutdown needs an explicit retry. Temporary audio is separate from saved media and shared model weights. Long recordings need additional disk space and memory for decoded audio. See [local transcription](docs/transcriptions.md) for storage, resource use and HTTP endpoints.
 
 ## Verification

@@ -45,6 +45,9 @@ export const Transcript = Schema.Struct({
   ),
 );
 export type Transcript = typeof Transcript.Type;
+export const transcriptExportFormats = ["txt", "srt", "vtt"] as const;
+export const TranscriptExportFormat = Schema.Literals(transcriptExportFormats);
+export type TranscriptExportFormat = typeof TranscriptExportFormat.Type;
 export const TranscriptionJob = Schema.Struct({
   mediaId: MediaId,
   modelId: ModelId,

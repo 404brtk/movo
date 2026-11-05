@@ -11,7 +11,11 @@ import {
 import { activeInstallationPhases, MediaToolsStatus } from "../../shared/contracts/media-tools.ts";
 import { DownloadJob, DownloadJobList, DownloadPreview } from "../../shared/contracts/downloads.ts";
 import { activeModelPhases, ModelList, ModelStatus } from "../../shared/contracts/models.ts";
-import { TranscriptionJob, TranscriptionStatus } from "../../shared/contracts/transcriptions.ts";
+import {
+  TranscriptionJob,
+  TranscriptionStatus,
+  type TranscriptExportFormat,
+} from "../../shared/contracts/transcriptions.ts";
 
 const client = hc<AppType>("/");
 
@@ -120,6 +124,8 @@ export async function importMedia(file: File) {
 }
 
 export const mediaFileUrl = (id: string) => `/api/media/${encodeURIComponent(id)}/file`;
+export const transcriptionExportUrl = (id: string, format: TranscriptExportFormat) =>
+  `/api/media/${encodeURIComponent(id)}/transcription/export/${format}`;
 
 export const modelsOptions = queryOptions({
   queryKey: ["models"],

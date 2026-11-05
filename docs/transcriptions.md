@@ -22,17 +22,28 @@ Jobs move through queued, running, completed, failed, cancelled or interrupted s
 
 Startup marks persisted running jobs interrupted and clears terminal staging directories. Queued jobs continue automatically. Interrupted jobs require an explicit retry. Cleanup failures are saved separately on the affected job and do not stop other recordings or discard a completed transcript. Retrying requires successful cleanup. Restart attempts cleanup again.
 
+## Copy and export
+
+Completed, nonempty transcripts show **Copy text**, **Download TXT**, **Download SRT** and **Download VTT** above the passages. Copying and TXT use the same plain text, with a blank line between passages and no timestamps. Downloads use UTF-8 and suggest the recording title with the selected extension as the filename.
+
+SRT and WebVTT export one subtitle cue per passage with millisecond timestamps. Subtitle text collapses whitespace into spaces so blank lines cannot split a cue, and escapes `&`, `<` and `>` so recognized text remains literal. Existing overlaps are preserved. A zero-duration passage receives a one-millisecond cue so its text is retained with a valid end time. See the [SubRip description](https://www.loc.gov/preservation/digital/formats/fdd/fdd000569.shtml) and [WebVTT specification](https://www.w3.org/TR/webvtt1/).
+
+Exports read the saved result on demand. They do not start inference, require an installed model, write additional managed files or modify the stored transcript. The empty-speech message has no copy/download actions; the API can still export that completed empty result.
+
+Copying runs only after an explicit action using the browser's Clipboard API. A denied or unavailable clipboard produces an error with permission guidance and the TXT alternative; it never reports success before the write finishes. Browser API reference: [Clipboard.writeText](https://developer.mozilla.org/en-US/docs/Web/API/Clipboard/writeText).
+
 ## Resource use
 
 Decoded float32 mono audio uses 64,000 bytes per second, approximately 230 MB per hour on disk. The isolated worker reads that prepared audio into memory, in addition to the model and inference workspace. Longer recordings therefore need proportionally more free memory and disk space. Preparation has a 30-minute timeout and inference a six-hour timeout. Memory allocation or native runtime errors fail the job; they do not silently publish partial text.
 
-The initial implementation keeps native long-form segmentation and does not add a custom streaming decoder. Native GPU selection, speaker labels, multiple transcript versions, editing and exports are outside this implementation.
+The initial implementation keeps native long-form segmentation and does not add a custom streaming decoder. Native GPU selection, speaker labels, multiple transcript versions and editing are outside this implementation.
 
 ## HTTP interface
 
 All commands use the existing local-origin checks. They operate on a saved media ID and take no JSON options.
 
 - `GET /api/media/:id/transcription` returns the job or `null` when the media exists without a transcription. Responses use `Cache-Control: no-store`.
+- `GET /api/media/:id/transcription/export/:format` downloads a completed result as `txt`, `srt` or `vtt`. Responses use the corresponding content type, `Content-Disposition: attachment`, `Cache-Control: private, no-store` and `X-Content-Type-Options: nosniff`. Unsupported formats and unfinished/missing results return HTTP 400. No transcription is enqueued by this request.
 - `POST /api/media/:id/transcription` returns HTTP 202 with the existing or newly queued job.
 - `POST /api/media/:id/transcription/cancel` returns the current job after stopping active work, or `null` when none exists.
 - `POST /api/media/:id/transcription/retry` returns HTTP 202 after retrying a failed, cancelled or interrupted job. Other states are rejected.
@@ -42,5 +53,7 @@ An invalid or missing media ID returns HTTP 404. Model/tool unavailability retur
 ## Verification
 
 Normal tests use real temporary SQLite and filesystem storage, real local FFmpeg conversion and controlled substitutes only at inference/process boundaries. Browser tests verify explicit initiation, setup errors, navigation during work, cancellation/retry, saved passages, reload, empty output and seeking. They never download weights or inspect the user's model cache.
+
+Export tests cover literal text, Unicode, millisecond/hour boundaries, overlaps, zero-duration cues and empty results. HTTP tests exercise real saved transcripts and reject exports before completion. Browser export tests use an isolated real backend and database with a controlled inference result, save all three formats, parse the exported WebVTT with Chromium, and verify keyboard actions, narrow layout and clipboard failures. Clipboard tests replace the browser API without changing the system clipboard.
 
 `bun run test:transcriptions:real` is an opt-in test requiring FFmpeg, FFprobe and the pinned model already installed in the configured Hugging Face cache. It never downloads or modifies weights. It transcribes a small synthetic speech fixture, repeats it locally to exercise native long-form segmentation beyond 30 seconds, checks recognized words and timestamp offsets, and removes its isolated library and prepared audio. Existing `HF_HUB_CACHE`, `HF_HOME` and `XDG_CACHE_HOME` settings select the cache as usual.
