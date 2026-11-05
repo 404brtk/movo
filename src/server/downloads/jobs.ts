@@ -3,7 +3,12 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { and, asc, desc, eq, notInArray, sql } from "drizzle-orm";
 import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
-import { DownloadJob, DownloadJobList } from "../../shared/contracts/downloads.ts";
+import {
+  defaultDownloadPreset,
+  DownloadJob,
+  DownloadJobList,
+  DownloadPreset,
+} from "../../shared/contracts/downloads.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError } from "../media/error.ts";
@@ -128,11 +133,16 @@ export function createDownloads(
             yield* databaseOperation(() => markCompleted(job.id, existing));
             return;
           }
-          const result = yield* downloader.download(job.url, directory, (change) => {
-            if (getRow(job.id).status !== "running")
-              throw new MediaError("invalid", "The download was cancelled.");
-            update(job.id, change);
-          });
+          const result = yield* downloader.download(
+            job.url,
+            directory,
+            (change) => {
+              if (getRow(job.id).status !== "running")
+                throw new MediaError("invalid", "The download was cancelled.");
+              update(job.id, change);
+            },
+            job.preset,
+          );
           yield* Effect.uninterruptible(
             Effect.gen(function* () {
               yield* databaseOperation(() => {
@@ -230,8 +240,10 @@ export function createDownloads(
             .all(),
         ),
       ),
-    enqueue: (input: string) =>
+    enqueue: (input: string, preset: DownloadPreset = defaultDownloadPreset) =>
       databaseOperation(() => {
+        if (!Schema.is(DownloadPreset)(preset))
+          throw new MediaError("invalid", "Choose a supported download option.");
         const url = youtubeUrl(input);
         const now = Date.now();
         database
@@ -239,15 +251,20 @@ export function createDownloads(
           .values({
             id: randomUUID(),
             url,
+            preset,
             status: "queued",
             phase: "queued",
             createdAt: now,
             updatedAt: now,
           })
-          .onConflictDoNothing({ target: downloadJobs.url })
+          .onConflictDoNothing({ target: [downloadJobs.url, downloadJobs.preset] })
           .run();
         return Schema.decodeUnknownSync(DownloadJob)(
-          database.select().from(downloadJobs).where(eq(downloadJobs.url, url)).get(),
+          database
+            .select()
+            .from(downloadJobs)
+            .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
+            .get(),
         );
       }),
     cancel: (id: string) =>

@@ -63,11 +63,17 @@ The local API provides `GET /api/media`, `POST /api/media`, `GET /api/media/:id`
 
 ## Download from YouTube
 
-Paste a YouTube link in the library and choose **Check link**. Movo asks yt-dlp for the video's title and duration; an unavailable duration is shown explicitly. Choose **Download** to queue it, then open **Downloads** from any page to see progress, cancel or retry. You can open another recording while a download runs, close the tab or reload it. Keep the local Node server running.
+Paste a YouTube link in the library and choose **Check link**. Movo asks yt-dlp for the video's title and duration; an unavailable duration is shown explicitly. Choose **Save as: Video** or **Audio**, then **Download** to queue it. Open **Downloads** from any page to see the selected option, progress, cancel or retry. You can open another recording while a download runs, close the tab or reload it. Keep the local Node server running.
 
-The initial defaults are one active download, a maximum of 1080p and a 10 GiB size limit. Movo prefers H.264/AAC and requests MP4 merging without transcoding. Actual codecs depend on the source, so browser playback is not guaranteed for every file. Downloads support single, public, completed YouTube videos. Playlists, live/upcoming streams, sign-in/cookies, X and Spotify are outside this implementation. A video link containing a playlist parameter downloads only that video.
+The defaults are one active download, video up to 1080p and a 10 GiB size limit. **Video quality** offers up to 480p, 720p, 1080p or **Best available**. Limits apply to frame height: lower-resolution sources remain lower, nothing is upscaled, and a source without a format within the limit fails instead of exceeding it. **Best available** removes the height cap. Movo prioritizes resolution and frame rate, then prefers H.264/AAC and requests MP4 merging without transcoding.
 
-Jobs and source URLs persist in SQLite. The same normalized video URL returns its existing job; use **Retry** for a failed, cancelled or interrupted job. Retry starts from the beginning and goes to the end of the queue. Queued jobs start automatically after a restart; an active download interrupted by shutdown needs an explicit retry. If the media was already published before an interrupted job could record completion, startup reconciles it with the library. Run one Movo backend per data directory.
+**Audio** downloads the best available audio-only stream in its source container, without downloading video or converting to MP3. FFprobe inspects the result before it is saved; FFmpeg is required for video merging. Actual codecs depend on the source, so browser playback is not guaranteed for every file. The same 10 GiB size limit applies to both modes. Format selection uses [yt-dlp's documented filters and sorting](https://github.com/yt-dlp/yt-dlp#format-selection).
+
+Downloads support single, public, completed YouTube videos. Playlists, live/upcoming streams, sign-in/cookies, X and Spotify are outside this implementation. A video link containing a playlist parameter downloads only that video.
+
+Jobs, source URLs and selected download options persist in SQLite. The same normalized URL and option return their existing job; different qualities or audio create independent jobs and library entries. Use **Retry** for a failed, cancelled or interrupted job. Retry preserves its selected option, starts from the beginning and goes to the end of the queue. Queued jobs start automatically after a restart; an active download interrupted by shutdown needs an explicit retry. If the media was already published before an interrupted job could record completion, startup reconciles it with the library. Run one Movo backend per data directory.
+
+Existing jobs migrate to the previous default, video up to 1080p, without changing IDs, saved media references, results or cleanup warnings.
 
 Concurrent retry requests are serialized so a second request cannot remove files from a newly started attempt. Retrying a job already requeued or running is rejected. Once accepted, a retry finishes cleanup and requeueing before interruption can release its lock.
 
@@ -75,7 +81,7 @@ Partial files and private source metadata stay in `MOVO_DATA_DIR/downloads/<job-
 
 If temporary files cannot be removed, Movo records a separate cleanup warning on that job and continues serving the library and other downloads. Saved media stays available. Retrying a failed, cancelled or interrupted job first requires successful cleanup; restarting Movo also attempts cleanup again without discarding the original download error.
 
-The API provides `POST /api/downloads/preview` and `POST /api/downloads` with a JSON `{ "url": "https://www.youtube.com/watch?v=…" }` body, plus `GET /api/downloads`, `GET /api/downloads/:id`, `POST /api/downloads/:id/cancel` and `POST /api/downloads/:id/retry`. Enqueue and retry return HTTP 202 immediately; the worker owns the download independently of the request. Contracts live in `src/shared/contracts/downloads.ts`.
+The API provides `POST /api/downloads/preview` with a JSON `{ "url": "https://www.youtube.com/watch?v=…" }` body. `POST /api/downloads` accepts the same body with an optional `preset`: `video-480p`, `video-720p`, `video-1080p`, `video-best` or `audio`. Omitting it preserves the `video-1080p` default. Job responses include the selected `preset`. Other endpoints are `GET /api/downloads`, `GET /api/downloads/:id`, `POST /api/downloads/:id/cancel` and `POST /api/downloads/:id/retry`. Enqueue and retry return HTTP 202 immediately; the worker owns the download independently of the request. Contracts live in `src/shared/contracts/downloads.ts`.
 
 ## Install a transcription model
 

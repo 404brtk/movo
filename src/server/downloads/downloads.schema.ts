@@ -1,13 +1,26 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { downloadStates } from "../../shared/contracts/downloads.ts";
+import {
+  check,
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
+import {
+  defaultDownloadPreset,
+  downloadStates,
+  type DownloadPreset,
+} from "../../shared/contracts/downloads.ts";
 import { mediaItems } from "../media/media.schema.ts";
 
 export const downloadJobs = sqliteTable(
   "download_jobs",
   {
     id: text("id").primaryKey(),
-    url: text("url").notNull().unique(),
+    url: text("url").notNull(),
+    preset: text("preset").$type<DownloadPreset>().notNull().default(defaultDownloadPreset),
     title: text("title"),
     durationSeconds: real("duration_seconds"),
     status: text("status", { enum: downloadStates }).notNull(),
@@ -23,6 +36,7 @@ export const downloadJobs = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [
+    uniqueIndex("download_jobs_url_preset_unique").on(table.url, table.preset),
     index("download_queue_order").on(table.status, table.updatedAt),
     check("download_nonnegative_bytes", sql`${table.downloadedBytes} >= 0`),
   ],

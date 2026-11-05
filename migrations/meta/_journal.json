@@ -36,6 +36,13 @@
       "when": 1793831019389,
       "tag": "0004_local_transcriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793881324128,
+      "tag": "0005_download_options",
+      "breakpoints": true
     }
   ]
 }

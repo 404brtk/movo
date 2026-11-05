@@ -10,7 +10,12 @@ import {
   MediaList,
 } from "../../shared/contracts/media.ts";
 import { activeInstallationPhases, MediaToolsStatus } from "../../shared/contracts/media-tools.ts";
-import { DownloadJob, DownloadJobList, DownloadPreview } from "../../shared/contracts/downloads.ts";
+import {
+  DownloadJob,
+  DownloadJobList,
+  DownloadPreview,
+  type DownloadRequest,
+} from "../../shared/contracts/downloads.ts";
 import { activeModelPhases, ModelList, ModelStatus } from "../../shared/contracts/models.ts";
 import {
   TranscriptionJob,
@@ -188,11 +193,11 @@ export const previewOptions = (url: string) =>
     retry: false,
   });
 
-export const enqueueDownload = (url: string) =>
+export const enqueueDownload = (request: DownloadRequest) =>
   readResponse(
     client.api.downloads.$post(
       {},
-      { init: { body: JSON.stringify({ url }), headers: { "content-type": "application/json" } } },
+      { init: { body: JSON.stringify(request), headers: { "content-type": "application/json" } } },
     ),
     DownloadJob,
   );
