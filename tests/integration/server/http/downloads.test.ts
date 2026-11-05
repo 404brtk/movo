@@ -74,6 +74,23 @@ it("validates HTTP input, queues independently of its request and exposes cancel
             expect(audio).toMatchObject({ preset: "audio" });
             expect(smaller).toMatchObject({ preset: "video-720p" });
             expect(new Set([job.id, audio.id, smaller.id]).size).toBe(3);
+            const xResponse = await app.request(
+              base,
+              json({
+                url: "https://twitter.com/example/status/123?s=20",
+                preset: "audio",
+              }),
+            );
+            expect(xResponse.status).toBe(202);
+            const xJob = Schema.decodeUnknownSync(DownloadJob)(await xResponse.json());
+            expect(xJob).toMatchObject({
+              url: "https://x.com/i/web/status/123",
+              preset: "audio",
+            });
+            expect(
+              (await app.request(base, json({ url: "https://x.com/example/status/123/video/2" })))
+                .status,
+            ).toBe(400);
             expect((await app.request(`${base}/${job.id}/cancel`, { method: "POST" })).status).toBe(
               200,
             );

@@ -68,7 +68,7 @@ for (const choice of [
     });
     await page.setViewportSize({ width: 320, height: 760 });
     await page.goto("/");
-    await page.getByRole("textbox", { name: "YouTube link" }).fill(url);
+    await page.getByRole("textbox", { name: "Video link" }).fill(url);
     await page.getByRole("button", { name: "Check link", exact: true }).click();
     await expect(page.getByLabel("Save as", { exact: true })).toHaveValue("video");
     await expect(page.getByLabel("Video quality", { exact: true })).toHaveValue("video-1080p");
@@ -88,11 +88,12 @@ for (const choice of [
   });
 }
 
-test("previews a link, recovers from a source error and keeps polling while another recording is open", async ({
+test("previews an X post, recovers from a source error and keeps polling while another recording is open", async ({
   page,
   request,
 }) => {
-  const inputUrl = "https://youtu.be/aaaaaaaaaaa?si=sharing";
+  const inputUrl = "https://twitter.com/example/status/123?s=20";
+  const sourceUrl = "https://x.com/i/web/status/123";
   const title = `While downloading ${randomUUID()}`;
   const imported = await request.post("/api/media", {
     headers: { "x-file-name": `${title}.wav` },
@@ -100,12 +101,12 @@ test("previews a link, recovers from a source error and keeps polling while anot
   });
   expect(imported.status()).toBe(201);
   const item = Schema.decodeUnknownSync(MediaItem)(await imported.json());
-  let job = jobFixture();
+  let job = { ...jobFixture(), url: sourceUrl };
   let queued = false;
   let previewAttempts = 0;
   await page.route("**/api/downloads", async (route) => {
     if (route.request().method() === "POST") {
-      expect(route.request().postDataJSON()).toEqual({ url, preset: "video-1080p" });
+      expect(route.request().postDataJSON()).toEqual({ url: sourceUrl, preset: "video-1080p" });
       queued = true;
       await route.fulfill({ status: 202, json: job });
     } else {
@@ -119,14 +120,23 @@ test("previews a link, recovers from a source error and keeps polling while anot
     previewAttempts++;
     await route.fulfill(
       previewAttempts === 1
-        ? { status: 503, json: { error: "The source is temporarily unavailable." } }
-        : { json: { url, title: job.title, durationSeconds: null } },
+        ? {
+            status: 503,
+            json: {
+              error:
+                "This X video is unavailable to Movo. Use a public post that opens without signing in, or try again later.",
+            },
+          }
+        : { json: { url: sourceUrl, title: job.title, durationSeconds: null } },
     );
   });
   await page.goto("/");
-  await page.getByRole("textbox", { name: "YouTube link" }).fill(inputUrl);
+  await page.getByRole("textbox", { name: "Video link" }).fill(inputUrl);
   await page.getByRole("button", { name: "Check link", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("The source is temporarily unavailable.");
+  await expect(page.getByRole("alert")).toContainText(
+    "Use a public post that opens without signing in",
+  );
+  await expect(page.getByRole("button", { name: "Download", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Check link", exact: true }).click();
   await expect(page.getByText("Duration unknown", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Download", exact: true }).click();

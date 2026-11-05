@@ -60,7 +60,7 @@ function Downloads() {
       ) : null}
       {jobs.data?.length === 0 ? (
         <p className="rounded-xl border border-dashed p-8 text-sm text-muted-foreground">
-          No downloads yet. Add a YouTube link in your library to get started.
+          No downloads yet. Add a YouTube or X link in your library to get started.
         </p>
       ) : null}
       {jobs.data && jobs.data.length > 0 ? (

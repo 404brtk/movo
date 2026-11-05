@@ -18,7 +18,7 @@ The `transcription_jobs` table in `MOVO_DATA_DIR/app.sqlite` stores one job per 
 
 Work files live in `MOVO_DATA_DIR/transcriptions/<media-id>/`. Stored library media and shared Hugging Face weights are read-only during transcription. Results become visible through one database update; partial inference is not published as a completed transcript.
 
-Jobs move through queued, running, completed, failed, cancelled or interrupted states. A single worker runs one transcription at a time, independently of YouTube downloads and browser requests. Duplicate enqueue requests return the existing job. Cancel and retry operations are serialized so concurrent requests cannot clean files belonging to a new attempt.
+Jobs move through queued, running, completed, failed, cancelled or interrupted states. A single worker runs one transcription at a time, independently of media downloads and browser requests. Duplicate enqueue requests return the existing job. Cancel and retry operations are serialized so concurrent requests cannot clean files belonging to a new attempt.
 
 Startup marks persisted running jobs interrupted and clears terminal staging directories. Queued jobs continue automatically. Interrupted jobs require an explicit retry. Cleanup failures are saved separately on the affected job and do not stop other recordings or discard a completed transcript. Retrying requires successful cleanup. Restart attempts cleanup again.
 
