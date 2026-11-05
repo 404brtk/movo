@@ -23,6 +23,42 @@ const metadata = {
 afterEach(() => vi.resetAllMocks());
 
 describe("YouTube downloader protocol", () => {
+  it.each([
+    ["video-480p", "bv*[height<=480]+ba/b[height<=480]"],
+    ["video-720p", "bv*[height<=720]+ba/b[height<=720]"],
+    ["video-1080p", "bv*[height<=1080]+ba/b[height<=1080]"],
+    ["video-best", "bv*+ba/b"],
+    ["audio", "ba"],
+  ] as const)("requests %s without converting the source streams", async (preset, selector) => {
+    const directory = await mkdtemp(join(tmpdir(), "movo-ytdlp-preset-"));
+    const tools = createMediaTools({ dataDirectory: directory });
+    try {
+      command.mockReturnValueOnce(Effect.succeed(JSON.stringify(metadata)));
+      command.mockImplementationOnce((_file, args, options) =>
+        Effect.promise(async () => {
+          expect(args[args.indexOf("--format") + 1]).toBe(selector);
+          expect(args).not.toContain("--extract-audio");
+          expect(args).not.toContain("--audio-format");
+          expect(args).not.toContain("--recode-video");
+          const path = join(directory, "media.webm");
+          await writeFile(path, "completed source stream");
+          options.onLine?.(`MOVO_FILE:${JSON.stringify(path)}`);
+          return "";
+        }),
+      );
+      await Effect.runPromise(
+        createYoutubeDownloader("yt-dlp", tools).download(url, directory, () => undefined, preset),
+      );
+      const args = command.mock.calls[1]?.[1] ?? [];
+      expect(args.includes("--merge-output-format")).toBe(preset !== "audio");
+      expect(args.includes("--ffmpeg-location")).toBe(preset !== "audio");
+      expect(args.includes("res,fps,vcodec:h264,acodec:aac")).toBe(preset !== "audio");
+    } finally {
+      await Effect.runPromise(tools.close());
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("explains how to configure yt-dlp when the executable is missing", async () => {
     const cause = Object.assign(new Error("Missing executable"), { code: "ENOENT" });
     command.mockReturnValue(

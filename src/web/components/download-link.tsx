@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { Schema } from "effect";
+import {
+  defaultDownloadPreset,
+  downloadPresets,
+  DownloadPreset,
+  getDownloadPreset,
+} from "../../shared/contracts/downloads.ts";
 import { downloadsOptions, enqueueDownload, previewOptions } from "../lib/api.ts";
 import { formatDuration } from "../lib/format.ts";
 import { Button } from "./ui/button.tsx";
@@ -8,6 +15,8 @@ import { Button } from "./ui/button.tsx";
 export function DownloadLink() {
   const [url, setUrl] = useState("");
   const [checkedUrl, setCheckedUrl] = useState("");
+  const [preset, setPreset] = useState<DownloadPreset>(defaultDownloadPreset);
+  const selected = getDownloadPreset(preset);
   const preview = useQuery(previewOptions(checkedUrl));
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -20,7 +29,7 @@ export function DownloadLink() {
   });
   const error = preview.error ?? download.error;
   return (
-    <section aria-label="Download a YouTube video" className="mb-8 rounded-xl border p-5 sm:p-6">
+    <section aria-label="Download from YouTube" className="mb-8 rounded-xl border p-5 sm:p-6">
       <form
         className="space-y-3"
         onSubmit={(event) => {
@@ -61,7 +70,7 @@ export function DownloadLink() {
           </Button>
         </div>
         <p id="download-link-help" className="text-xs text-muted-foreground">
-          One public video at a time, up to 1080p. No model download needed.
+          One public video link at a time. Choose video quality or audio after checking the link.
         </p>
       </form>
       <output className="block text-sm text-muted-foreground">
@@ -72,7 +81,7 @@ export function DownloadLink() {
             : ""}
       </output>
       {checkedUrl && preview.data && !preview.isError ? (
-        <div className="mt-5 flex flex-col justify-between gap-4 border-t pt-5 sm:flex-row sm:items-center">
+        <div className="mt-5 space-y-4 border-t pt-5">
           <div className="min-w-0 space-y-1">
             <p className="font-medium wrap-anywhere">{preview.data.title}</p>
             <p className="text-sm text-muted-foreground">
@@ -81,13 +90,67 @@ export function DownloadLink() {
                 : formatDuration(preview.data.durationSeconds)}
             </p>
           </div>
-          <Button
-            className="h-11 px-4 text-sm"
-            disabled={download.isPending || preview.isFetching}
-            onClick={() => download.mutate(preview.data.url)}
-          >
-            Download
-          </Button>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-40 flex-1 space-y-2">
+              <label htmlFor="download-mode" className="block text-sm font-medium">
+                Save as
+              </label>
+              <select
+                id="download-mode"
+                value={selected.kind}
+                disabled={download.isPending}
+                onChange={(event) => {
+                  setPreset(
+                    event.currentTarget.value === "audio" ? "audio" : defaultDownloadPreset,
+                  );
+                  download.reset();
+                }}
+                className="h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                <option value="video">Video</option>
+                <option value="audio">Audio</option>
+              </select>
+            </div>
+            {selected.kind === "video" ? (
+              <div className="min-w-40 flex-1 space-y-2">
+                <label htmlFor="download-quality" className="block text-sm font-medium">
+                  Video quality
+                </label>
+                <select
+                  id="download-quality"
+                  value={preset}
+                  disabled={download.isPending}
+                  onChange={(event) => {
+                    setPreset(Schema.decodeUnknownSync(DownloadPreset)(event.currentTarget.value));
+                    download.reset();
+                  }}
+                  className="h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                  {downloadPresets
+                    .filter((option) => option.kind === "video")
+                    .map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            ) : null}
+            <Button
+              className="h-11 px-4 text-sm"
+              disabled={download.isPending || preview.isFetching}
+              onClick={() => download.mutate({ url: preview.data.url, preset })}
+            >
+              Download
+            </Button>
+          </div>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {selected.kind === "audio"
+              ? "Downloads the best available audio stream in its original format, without video."
+              : selected.maxHeight === null
+                ? "Uses the highest available resolution. Playback depends on the source codecs."
+                : "Limits the video height without upscaling lower-resolution sources. Playback depends on the source codecs."}
+          </p>
         </div>
       ) : null}
       {error ? (

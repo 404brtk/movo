@@ -33,11 +33,15 @@ async function runMedia<A>(operation: Effect.Effect<A, MediaError>, signal?: Abo
   return result.success;
 }
 
-async function readDownloadUrl(payload: Promise<unknown>) {
+async function readDownloadRequest(payload: Promise<unknown>) {
   try {
-    return Schema.decodeUnknownSync(DownloadRequest)(await payload).url;
+    return Schema.decodeUnknownSync(DownloadRequest)(await payload);
   } catch (cause) {
-    throw new MediaError("invalid", "Provide a valid JSON object with a video URL.", cause);
+    throw new MediaError(
+      "invalid",
+      "Provide a valid JSON object with a video URL and supported download options.",
+      cause,
+    );
   }
 }
 
@@ -115,17 +119,15 @@ export function createApp(
     .post("/downloads/preview", async (context) =>
       context.json(
         await runMedia(
-          downloads.preview(await readDownloadUrl(context.req.json())),
+          downloads.preview((await readDownloadRequest(context.req.json())).url),
           context.req.raw.signal,
         ),
       ),
     )
-    .post("/downloads", async (context) =>
-      context.json(
-        await runMedia(downloads.enqueue(await readDownloadUrl(context.req.json()))),
-        202,
-      ),
-    )
+    .post("/downloads", async (context) => {
+      const request = await readDownloadRequest(context.req.json());
+      return context.json(await runMedia(downloads.enqueue(request.url, request.preset)), 202);
+    })
     .get("/downloads/:id", async (context) =>
       context.json(await runMedia(downloads.get(context.req.param("id")))),
     )

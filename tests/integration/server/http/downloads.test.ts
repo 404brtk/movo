@@ -52,6 +52,7 @@ it("validates HTTP input, queues independently of its request and exposes cancel
             const response = await app.request(base, json({ url }));
             expect(response.status).toBe(202);
             const job = Schema.decodeUnknownSync(DownloadJob)(await response.json());
+            expect(job.preset).toBe("video-1080p");
             await expect
               .poll(async () => (await Effect.runPromise(downloads.get(job.id))).status)
               .toBe("running");
@@ -60,6 +61,19 @@ it("validates HTTP input, queues independently of its request and exposes cancel
             expect(
               Schema.decodeUnknownSync(DownloadJobList)(await list.json()).map((item) => item.id),
             ).toEqual([job.id]);
+            expect((await app.request(base, json({ url, preset: "video-2160p" }))).status).toBe(
+              400,
+            );
+            expect((await app.request(base, json({ url, preset: 720 }))).status).toBe(400);
+            const audio = Schema.decodeUnknownSync(DownloadJob)(
+              await (await app.request(base, json({ url, preset: "audio" }))).json(),
+            );
+            const smaller = Schema.decodeUnknownSync(DownloadJob)(
+              await (await app.request(base, json({ url, preset: "video-720p" }))).json(),
+            );
+            expect(audio).toMatchObject({ preset: "audio" });
+            expect(smaller).toMatchObject({ preset: "video-720p" });
+            expect(new Set([job.id, audio.id, smaller.id]).size).toBe(3);
             expect((await app.request(`${base}/${job.id}/cancel`, { method: "POST" })).status).toBe(
               200,
             );

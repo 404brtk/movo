@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { getDownloadPreset } from "../../shared/contracts/downloads.ts";
 import { cancelDownload, downloadsOptions, retryDownload } from "../lib/api.ts";
 import { formatBytes } from "../lib/format.ts";
 import { Button } from "../components/ui/button.tsx";
@@ -8,9 +9,9 @@ export const Route = createFileRoute("/downloads")({ component: Downloads });
 
 const phaseLabels = {
   queued: "Waiting",
-  checking: "Checking video",
+  checking: "Checking source",
   downloading: "Downloading",
-  processing: "Combining audio and video",
+  processing: "Processing media",
   saving: "Saving to library",
   finished: "Finished",
 };
@@ -64,77 +65,83 @@ function Downloads() {
       ) : null}
       {jobs.data && jobs.data.length > 0 ? (
         <ul aria-label="Download jobs" className="divide-y rounded-xl border px-5">
-          {jobs.data.map((job) => (
-            <li
-              key={job.id}
-              className="flex flex-col justify-between gap-4 py-5 sm:flex-row sm:items-center"
-            >
-              <div className="min-w-0 space-y-2">
-                <p className="font-medium wrap-anywhere">{job.title ?? job.url}</p>
-                <p className="text-sm text-muted-foreground">
-                  {job.status === "running"
-                    ? phaseLabels[job.phase]
-                    : job.status === "queued"
-                      ? "Waiting in queue"
-                      : job.status === "completed"
-                        ? "Saved to library"
-                        : job.status === "cancelled"
-                          ? "Cancelled"
-                          : job.status === "interrupted"
-                            ? "Interrupted"
-                            : "Download failed"}
-                  {job.downloadedBytes > 0 ? ` · ${formatBytes(job.downloadedBytes)}` : ""}
-                </p>
-                {job.error ? (
-                  <p className="max-w-xl text-sm wrap-anywhere text-destructive">{job.error}</p>
-                ) : null}
-                {job.cleanupError && job.cleanupError !== job.error ? (
-                  <p className="max-w-xl text-sm wrap-anywhere text-destructive">
-                    {job.cleanupError}
+          {jobs.data.map((job) => {
+            const selected = getDownloadPreset(job.preset);
+            return (
+              <li
+                key={job.id}
+                className="flex flex-col justify-between gap-4 py-5 sm:flex-row sm:items-center"
+              >
+                <div className="min-w-0 space-y-2">
+                  <p className="font-medium wrap-anywhere">{job.title ?? job.url}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {selected.kind === "audio" ? "Audio" : "Video"} · {selected.label}
                   </p>
-                ) : null}
-                <a
-                  href={job.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex min-h-8 items-center text-xs text-muted-foreground underline underline-offset-4"
-                >
-                  View source
-                </a>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                {job.status === "completed" && job.mediaId ? (
-                  <Link
-                    to="/media/$mediaId"
-                    params={{ mediaId: job.mediaId }}
-                    className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm"
+                  <p className="text-sm text-muted-foreground">
+                    {job.status === "running"
+                      ? phaseLabels[job.phase]
+                      : job.status === "queued"
+                        ? "Waiting in queue"
+                        : job.status === "completed"
+                          ? "Saved to library"
+                          : job.status === "cancelled"
+                            ? "Cancelled"
+                            : job.status === "interrupted"
+                              ? "Interrupted"
+                              : "Download failed"}
+                    {job.downloadedBytes > 0 ? ` · ${formatBytes(job.downloadedBytes)}` : ""}
+                  </p>
+                  {job.error ? (
+                    <p className="max-w-xl text-sm wrap-anywhere text-destructive">{job.error}</p>
+                  ) : null}
+                  {job.cleanupError && job.cleanupError !== job.error ? (
+                    <p className="max-w-xl text-sm wrap-anywhere text-destructive">
+                      {job.cleanupError}
+                    </p>
+                  ) : null}
+                  <a
+                    href={job.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-8 items-center text-xs text-muted-foreground underline underline-offset-4"
                   >
-                    Open media
-                  </Link>
-                ) : null}
-                {["queued", "running"].includes(job.status) ? (
-                  <Button
-                    className="h-11 px-4"
-                    variant="outline"
-                    disabled={action.isPending || job.phase === "saving"}
-                    onClick={() => action.mutate({ id: job.id, retry: false })}
-                  >
-                    Cancel
-                  </Button>
-                ) : null}
-                {["failed", "cancelled", "interrupted"].includes(job.status) ? (
-                  <Button
-                    className="h-11 px-4"
-                    variant="outline"
-                    disabled={action.isPending}
-                    onClick={() => action.mutate({ id: job.id, retry: true })}
-                  >
-                    Retry
-                  </Button>
-                ) : null}
-              </div>
-            </li>
-          ))}
+                    View source
+                  </a>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  {job.status === "completed" && job.mediaId ? (
+                    <Link
+                      to="/media/$mediaId"
+                      params={{ mediaId: job.mediaId }}
+                      className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm"
+                    >
+                      Open media
+                    </Link>
+                  ) : null}
+                  {["queued", "running"].includes(job.status) ? (
+                    <Button
+                      className="h-11 px-4"
+                      variant="outline"
+                      disabled={action.isPending || job.phase === "saving"}
+                      onClick={() => action.mutate({ id: job.id, retry: false })}
+                    >
+                      Cancel
+                    </Button>
+                  ) : null}
+                  {["failed", "cancelled", "interrupted"].includes(job.status) ? (
+                    <Button
+                      className="h-11 px-4"
+                      variant="outline"
+                      disabled={action.isPending}
+                      onClick={() => action.mutate({ id: job.id, retry: true })}
+                    >
+                      Retry
+                    </Button>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </main>
