@@ -99,3 +99,133 @@ test("shows a useful missing-item page for a direct link", async ({ page }) => {
   await page.getByRole("link", { name: "Back to library" }).click();
   await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
 });
+
+test("renames a recording, recovers from a rejected save and retains the title after reload", async ({
+  page,
+}) => {
+  const title = `Rename ${randomUUID()}`;
+  const renamed = `Rozmowa 🎙️ ${randomUUID()}`;
+  await page.goto("/");
+  await page
+    .getByLabel("Choose media file")
+    .setInputFiles({ name: `${title}.wav`, mimeType: "audio/wav", buffer: wave });
+  await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
+  await page.getByRole("button", { name: "Rename", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Title", exact: true })).toBeFocused();
+  await page.getByRole("textbox", { name: "Title", exact: true }).fill("unsaved");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Rename", exact: true })).toBeFocused();
+  await page.getByRole("button", { name: "Rename", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Title", exact: true })).toHaveValue(title);
+  await page.getByRole("textbox", { name: "Title", exact: true }).fill("   ");
+  await expect(page.getByRole("button", { name: "Save title", exact: true })).toBeDisabled();
+  await page.getByRole("textbox", { name: "Title", exact: true }).fill(`  ${renamed}  `);
+  const endpoint = `**/api${new URL(page.url()).pathname}`;
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() !== "PATCH") return route.continue();
+    expect(route.request().postDataJSON()).toEqual({ title: renamed });
+    await route.fulfill({ status: 500, json: { error: "Could not save this title." } });
+  });
+  await page.getByRole("button", { name: "Save title", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Could not save this title.");
+  await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+  await page.unroute(endpoint);
+  await page.getByRole("button", { name: "Save title", exact: true }).click();
+  await expect(page.getByRole("heading", { name: renamed, exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Rename", exact: true })).toBeFocused();
+  await expectFixturePlayback(page.locator("audio"));
+  await expect(page.getByRole("link", { name: "Save a copy" })).toHaveAttribute(
+    "download",
+    `${title}.wav`,
+  );
+  await page.reload();
+  await expect(page.getByRole("heading", { name: renamed, exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Back to library" }).click();
+  await expect(page.getByRole("link", { name: `Open ${renamed}`, exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toHaveCount(0);
+});
+
+test("confirms deletion, preserves the recording after failure and removes it after retry", async ({
+  page,
+}) => {
+  const title = `Delete ${randomUUID()}`;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page
+    .getByLabel("Choose media file")
+    .setInputFiles({ name: `${title}.wav`, mimeType: "audio/wav", buffer: wave });
+  await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
+  const detailUrl = page.url();
+  const apiPath = `/api${new URL(detailUrl).pathname}`;
+  const trigger = page.getByRole("button", { name: "Delete recording", exact: true });
+  await trigger.click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("Your original imported file stays where it is.");
+  await expect(dialog.getByRole("button", { name: "Keep recording" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await dialog.getByRole("button", { name: "Keep recording" }).click();
+  await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+  await page.route(`**${apiPath}`, async (route) => {
+    if (route.request().method() !== "DELETE") return route.continue();
+    await route.fulfill({
+      status: 409,
+      json: { error: "Cancel the transcription before deleting this recording." },
+    });
+  });
+  await trigger.click();
+  await dialog.getByRole("button", { name: "Delete permanently" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "Cancel the transcription before deleting this recording.",
+  );
+  expect((await page.request.get(apiPath)).status()).toBe(200);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.unroute(`**${apiPath}`);
+  await dialog.getByRole("button", { name: "Delete permanently" }).click();
+  await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toHaveCount(0);
+  expect((await page.request.get(`${apiPath}/file`)).status()).toBe(404);
+  await page.reload();
+  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toHaveCount(0);
+  await page.goto(detailUrl);
+  await expect(page.getByRole("heading", { name: "Media not found", exact: true })).toBeVisible();
+});
+
+test("shows a committed deletion cleanup warning and returns to the library without offering another deletion", async ({
+  page,
+}) => {
+  const title = `Cleanup warning ${randomUUID()}`;
+  await page.goto("/");
+  await page
+    .getByLabel("Choose media file")
+    .setInputFiles({ name: `${title}.wav`, mimeType: "audio/wav", buffer: wave });
+  await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
+  const apiPath = `/api${new URL(page.url()).pathname}`;
+  const cleanupError =
+    "The recording was removed from the library, but its saved copy could not be cleaned up. Close apps using it or check folder permissions, then restart Movo to retry cleanup.";
+  await page.route(`**${apiPath}`, async (route) => {
+    if (route.request().method() !== "DELETE") return route.continue();
+    const response = await route.fetch();
+    expect(response.status()).toBe(200);
+    await route.fulfill({ response, json: { ...(await response.json()), cleanupError } });
+  });
+  await page.getByRole("button", { name: "Delete recording", exact: true }).click();
+  const dialog = page.getByRole("alertdialog");
+  await dialog.getByRole("button", { name: "Delete permanently" }).click();
+  await expect(
+    dialog.getByRole("heading", { name: "Recording deleted", exact: true }),
+  ).toBeVisible();
+  await expect(dialog).toContainText(cleanupError);
+  await expect(dialog.getByRole("button", { name: "Delete permanently" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Keep recording" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Back to library" })).toBeFocused();
+  expect((await page.request.get(apiPath)).status()).toBe(404);
+  await dialog.getByRole("button", { name: "Back to library" }).click();
+  await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toHaveCount(0);
+});

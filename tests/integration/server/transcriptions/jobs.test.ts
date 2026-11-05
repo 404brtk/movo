@@ -67,6 +67,53 @@ const waitFor = (jobs: Transcriptions, id: string, status: string) =>
       .toBe(status);
   });
 
+it("waits for concurrent cancellation to stop inference before deleting a recording", async ({
+  signal,
+}) => {
+  await withRecording(signal, (database, directory, tools, library, media) =>
+    Effect.gen(function* () {
+      const began = yield* Deferred.make<void>();
+      const stopping = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
+        check: () => Effect.void,
+        transcribe: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(began, undefined);
+            return yield* Effect.never;
+          }).pipe(
+            Effect.ensuring(
+              Effect.gen(function* () {
+                yield* Deferred.succeed(stopping, undefined);
+                yield* Deferred.await(release);
+              }),
+            ),
+          ),
+      });
+      yield* jobs.enqueue(media.id);
+      expect(Result.isFailure(yield* Effect.result(jobs.removeMedia(media.id)))).toBe(true);
+      const worker = yield* jobs.start();
+      yield* Deferred.await(began);
+      const cancelling = yield* Effect.forkChild(jobs.cancel(media.id));
+      yield* Deferred.await(stopping);
+      const removing = yield* Effect.forkChild(jobs.removeMedia(media.id));
+      yield* Effect.yieldNow;
+      expect(yield* library.get(media.id)).toEqual(media);
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(cancelling);
+      expect(yield* Fiber.join(removing)).toEqual(media);
+      expect(yield* library.list()).toEqual([]);
+      expect(database.select().from(transcriptionJobs).all()).toEqual([]);
+      expect(
+        yield* Effect.promise(() =>
+          stat(join(directory, "transcriptions", media.id)).catch(() => null),
+        ),
+      ).toBeNull();
+      yield* Fiber.interrupt(worker);
+    }),
+  );
+});
+
 it("queues once per recording, saves timestamped passages and preserves the media bytes", async ({
   signal,
 }) => {

@@ -42,6 +42,74 @@ async function importWave(app: ReturnType<typeof createApp>) {
 }
 
 describe("media HTTP interface", () => {
+  it("renames and deletes a saved recording through the HTTP interface", async () => {
+    await withApp(async (app) => {
+      const item = await importWave(app);
+      const url = `${base}/${item.id}`;
+      const renamed = await app.request(url, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "  Nowy tytuł 🎙️  " }),
+      });
+      expect(renamed.status).toBe(200);
+      expect(await renamed.json()).toEqual({ ...item, title: "Nowy tytuł 🎙️" });
+      expect(await (await app.request(base)).json()).toEqual([{ ...item, title: "Nowy tytuł 🎙️" }]);
+      for (const method of ["PATCH", "DELETE"]) {
+        const forbidden = await app.request(url, {
+          method,
+          headers: { origin: "https://foreign.example" },
+          body: method === "PATCH" ? "{}" : null,
+        });
+        expect(forbidden.status).toBe(403);
+      }
+      const removed = await app.request(url, { method: "DELETE" });
+      expect(removed.status).toBe(200);
+      expect(await removed.json()).toEqual({ ...item, title: "Nowy tytuł 🎙️" });
+      expect(await (await app.request(base)).json()).toEqual([]);
+      for (const suffix of ["", "/file", "/transcription", "/transcription/export/txt"]) {
+        expect((await app.request(`${url}${suffix}`)).status).toBe(404);
+      }
+      expect((await app.request(url, { method: "DELETE" })).status).toBe(404);
+    });
+  });
+
+  it("rejects malformed, invalid and oversized title requests without changing media", async () => {
+    await withApp(async (app) => {
+      const item = await importWave(app);
+      for (const body of [
+        "{",
+        "null",
+        "{}",
+        '{"title":42}',
+        ...["", " ", "bad\nname", "a".repeat(513)].map((title) => JSON.stringify({ title })),
+      ]) {
+        const response = await app.request(`${base}/${item.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body,
+        });
+        expect(response.status).toBe(400);
+      }
+      const large = await app.request(`${base}/${item.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: "a".repeat(4096) }),
+      });
+      expect(large.status).toBe(413);
+      expect(await (await app.request(`${base}/${item.id}`)).json()).toEqual(item);
+      for (const id of ["invalid", "00000000-0000-4000-8000-000000000000"]) {
+        expect((await app.request(`${base}/${id}`, { method: "DELETE" })).status).toBe(404);
+        expect(
+          (
+            await app.request(`${base}/${id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ title: "Valid" }),
+            })
+          ).status,
+        ).toBe(404);
+      }
+    });
+  });
+
   it("imports audio using its real format and lists saved metadata", async () => {
     await withApp(async (app) => {
       const imported = await importWave(app);

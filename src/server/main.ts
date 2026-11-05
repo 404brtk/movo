@@ -12,6 +12,7 @@ import { createModels } from "./models/models.ts";
 import { acquireDataDirectory } from "./instance.ts";
 import { createTranscriptions } from "./transcriptions/jobs.ts";
 import { createTranscriptionEngine } from "./transcriptions/engine.ts";
+import { createMediaLibrary } from "./media/library.ts";
 
 const program = Effect.gen(function* () {
   const config = yield* Effect.try(() => readServerConfig(process.env));
@@ -27,6 +28,9 @@ const program = Effect.gen(function* () {
     Effect.sync(() => createMediaTools(config)),
     (managedTools) => managedTools.close(),
   );
+  yield* createMediaLibrary(database, config.dataDirectory, () =>
+    tools.resolve("ffprobe"),
+  ).recoverDeletions();
   const downloads = createDownloads(database, config, tools);
   const models = yield* Effect.acquireRelease(
     Effect.sync(() => createModels()),
@@ -47,7 +51,17 @@ const program = Effect.gen(function* () {
     transcriptions,
   });
   yield* Effect.acquireRelease(
-    Effect.sync(() => serve({ fetch: app.fetch, hostname: "127.0.0.1", port: config.port })),
+    Effect.tryPromise(
+      () =>
+        new Promise<ReturnType<typeof serve>>((resolveServer, rejectServer) => {
+          const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: config.port });
+          server.once("error", rejectServer);
+          server.once("listening", () => {
+            server.off("error", rejectServer);
+            resolveServer(server);
+          });
+        }),
+    ),
     (server) =>
       Effect.promise(
         () =>

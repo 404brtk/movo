@@ -1,12 +1,15 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 import { expect, it, onTestFinished } from "vitest";
 import { acquireDataDirectory } from "../../../src/server/instance.ts";
+import { openDatabase } from "../../../src/server/db/database.ts";
+import { mediaItems } from "../../../src/server/media/media.schema.ts";
 
 it("holds ownership until scope exit and allows independent data directories", async () => {
   const directory = await mkdtemp(join(tmpdir(), "movo-instance-scope-"));
@@ -88,6 +91,63 @@ function backend(directory: string, port: number) {
   });
   return { child, ready, finished };
 }
+
+it("recovers interrupted deletions before serving media and cleans up committed deletions", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "movo-deletion-recovery-"));
+  let instance: ReturnType<typeof backend> | undefined;
+  onTestFinished(async () => {
+    if (instance) {
+      if (instance.child.exitCode === null) instance.child.kill("SIGKILL");
+      await instance.finished;
+    }
+    await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  });
+  const audio = await readFile(new URL("../../fixtures/tone.wav", import.meta.url));
+  const id = randomUUID();
+  const originalName = "recording.wav";
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const database = yield* openDatabase(join(directory, "app.sqlite"));
+        database
+          .insert(mediaItems)
+          .values({
+            id,
+            title: "Pending deletion",
+            originalName,
+            kind: "audio",
+            contentType: "audio/wav",
+            byteSize: audio.length,
+            durationSeconds: 2,
+            importedAt: Date.now(),
+            sourceUrl: null,
+          })
+          .run();
+      }),
+    ),
+  );
+  await mkdir(join(directory, "media"));
+  const pending = join(directory, "media", `${id}.wav.deleting`);
+  const committed = join(directory, "media", `${randomUUID()}.wav.deleting`);
+  const original = join(directory, originalName);
+  await writeFile(pending, audio);
+  await writeFile(committed, audio);
+  await writeFile(original, audio);
+  const port = await freePort();
+  instance = backend(directory, port);
+  await Promise.race([
+    instance.ready,
+    instance.finished.then((exit) => {
+      throw new Error(exit.output);
+    }),
+  ]);
+  const response = await fetch(`http://127.0.0.1:${port}/api/media/${id}/file`);
+  expect(response.status).toBe(200);
+  expect(Buffer.from(await response.arrayBuffer())).toEqual(audio);
+  await expect(access(pending)).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(access(committed)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await readFile(original)).toEqual(audio);
+});
 
 it("rejects a second backend for the same data directory and releases ownership after a crash", async () => {
   const directory = await mkdtemp(join(tmpdir(), "movo-instance-"));

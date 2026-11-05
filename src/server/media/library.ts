@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, lstatSync, readdirSync, renameSync, rmSync, unlinkSync } from "node:fs";
 import { lstat, mkdir, realpath, rename, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, parse, relative } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, or } from "drizzle-orm";
 import { Effect, Result, Schema } from "effect";
 import {
   maxImportBytes,
@@ -12,8 +12,12 @@ import {
   MediaId,
   MediaItem,
   MediaList,
+  MediaTitle,
+  type MediaDeletion,
 } from "../../shared/contracts/media.ts";
 import type { AppDatabase } from "../db/database.ts";
+import { downloadJobs } from "../downloads/downloads.schema.ts";
+import { transcriptionJobs } from "../transcriptions/transcriptions.schema.ts";
 import { MediaError } from "./error.ts";
 import { mediaItems } from "./media.schema.ts";
 import { probeMedia } from "./probe.ts";
@@ -78,16 +82,29 @@ export function createMediaLibrary(
   const mediaDirectory = join(dataDirectory, "media");
   const filePath = (item: MediaItem) =>
     join(mediaDirectory, `${item.id}.${extensions[item.contentType]}`);
+  const pendingPath = (item: MediaItem) => `${filePath(item)}.deleting`;
+  const restorePending = (item: MediaItem) => {
+    const pending = pendingPath(item);
+    const stored = lstatSync(pending, { throwIfNoEntry: false });
+    if (!stored) return;
+    if (!stored.isFile() || lstatSync(filePath(item), { throwIfNoEntry: false }))
+      throw new MediaError(
+        "storage",
+        "Could not restore a pending media deletion without overwriting an existing file.",
+      );
+    renameSync(pending, filePath(item));
+  };
 
+  const read = (id: string) => {
+    if (Result.isFailure(Schema.decodeUnknownResult(MediaId)(id)))
+      throw new MediaError("notFound", "Media not found.");
+    const item = database.select().from(mediaItems).where(eq(mediaItems.id, id)).get();
+    if (!item) throw new MediaError("notFound", "Media not found.");
+    return Schema.decodeUnknownSync(MediaItem)(item);
+  };
   const get = (id: string) =>
     Effect.try({
-      try: () => {
-        if (Result.isFailure(Schema.decodeUnknownResult(MediaId)(id)))
-          throw new MediaError("notFound", "Media not found.");
-        const item = database.select().from(mediaItems).where(eq(mediaItems.id, id)).get();
-        if (!item) throw new MediaError("notFound", "Media not found.");
-        return Schema.decodeUnknownSync(MediaItem)(item);
-      },
+      try: () => read(id),
       catch: storageError,
     });
 
@@ -144,6 +161,39 @@ export function createMediaLibrary(
     });
 
   return {
+    recoverDeletions: () =>
+      Effect.try({
+        try: () => {
+          if (!lstatSync(mediaDirectory, { throwIfNoEntry: false })) return;
+          for (const entry of readdirSync(mediaDirectory, { withFileTypes: true })) {
+            if (!entry.name.endsWith(".deleting")) continue;
+            const originalName = entry.name.slice(0, -".deleting".length);
+            const { name: id, ext } = parse(originalName);
+            if (
+              !entry.isFile() ||
+              !Schema.is(MediaId)(id) ||
+              !Object.values(extensions).includes(ext.slice(1))
+            )
+              throw new MediaError(
+                "storage",
+                "An invalid pending media deletion needs manual recovery.",
+              );
+            const row = database.select().from(mediaItems).where(eq(mediaItems.id, id)).get();
+            if (row) {
+              const item = Schema.decodeUnknownSync(MediaItem)(row);
+              if (basename(filePath(item)) !== originalName)
+                throw new MediaError(
+                  "storage",
+                  "A pending media deletion does not match its saved metadata.",
+                );
+              restorePending(item);
+            } else {
+              unlinkSync(join(mediaDirectory, entry.name));
+            }
+          }
+        },
+        catch: storageError,
+      }),
     adoptDownload: (path: string, title: string, sourceUrl: string, id: string) =>
       Effect.gen(function* () {
         yield* Effect.try({
@@ -188,6 +238,100 @@ export function createMediaLibrary(
         catch: storageError,
       }),
     get,
+    rename: (id: string, title: string) =>
+      Effect.try({
+        try: () => {
+          const item = read(id);
+          const trimmed = title.trim();
+          if (!Schema.is(MediaTitle)(trimmed))
+            throw new MediaError(
+              "invalid",
+              "Use a title of 1–512 characters without control characters.",
+            );
+          database.update(mediaItems).set({ title: trimmed }).where(eq(mediaItems.id, id)).run();
+          return { ...item, title: trimmed };
+        },
+        catch: storageError,
+      }),
+    remove: (id: string): Effect.Effect<MediaDeletion, MediaError> =>
+      Effect.try({
+        try: () => {
+          const item = read(id);
+          restorePending(item);
+          let moved = false;
+          try {
+            database.transaction((transaction) => {
+              const transcription = transaction
+                .select()
+                .from(transcriptionJobs)
+                .where(eq(transcriptionJobs.mediaId, id))
+                .get();
+              const downloads = transaction
+                .select()
+                .from(downloadJobs)
+                .where(or(eq(downloadJobs.mediaId, id), eq(downloadJobs.id, id)))
+                .all();
+              if (transcription && ["queued", "running"].includes(transcription.status))
+                throw new MediaError(
+                  "conflict",
+                  "Cancel the transcription before deleting this recording.",
+                );
+              if (downloads.some((job) => ["queued", "running"].includes(job.status)))
+                throw new MediaError(
+                  "conflict",
+                  "Wait for the download to finish before deleting this recording.",
+                );
+              const directories = [
+                join(dataDirectory, "transcriptions", id),
+                ...downloads.map((job) =>
+                  join(dataDirectory, "downloads", Schema.decodeUnknownSync(MediaId)(job.id)),
+                ),
+              ];
+              for (const directory of directories)
+                rmSync(directory, { recursive: true, force: true });
+              const stored = lstatSync(filePath(item), { throwIfNoEntry: false });
+              if (stored) {
+                if (!stored.isFile())
+                  throw new MediaError("storage", "Could not access the stored media copy.");
+                renameSync(filePath(item), pendingPath(item));
+                moved = true;
+              }
+              transaction.delete(transcriptionJobs).where(eq(transcriptionJobs.mediaId, id)).run();
+              transaction
+                .delete(downloadJobs)
+                .where(or(eq(downloadJobs.mediaId, id), eq(downloadJobs.id, id)))
+                .run();
+              transaction.delete(mediaItems).where(eq(mediaItems.id, id)).run();
+            });
+          } catch (cause) {
+            if (moved) {
+              try {
+                restorePending(item);
+              } catch (restoreCause) {
+                throw new MediaError(
+                  "storage",
+                  "The deletion failed and its saved copy could not be restored. Close apps using it, check folder permissions, then restart Movo to recover it.",
+                  new AggregateError([cause, restoreCause]),
+                );
+              }
+            }
+            throw cause;
+          }
+          if (moved) {
+            try {
+              unlinkSync(pendingPath(item));
+            } catch {
+              return {
+                ...item,
+                cleanupError:
+                  "The recording was removed from the library, but its saved copy could not be cleaned up. Close apps using it or check folder permissions, then restart Movo to retry cleanup.",
+              };
+            }
+          }
+          return item;
+        },
+        catch: storageError,
+      }),
     file: (id: string) =>
       Effect.gen(function* () {
         const item = yield* get(id);

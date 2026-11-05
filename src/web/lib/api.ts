@@ -6,6 +6,7 @@ import {
   ApiErrorResponse,
   maxImportBytes,
   MediaItem,
+  MediaDeletion,
   MediaList,
 } from "../../shared/contracts/media.ts";
 import { activeInstallationPhases, MediaToolsStatus } from "../../shared/contracts/media-tools.ts";
@@ -129,6 +130,18 @@ export async function importMedia(file: File) {
 }
 
 export const mediaFileUrl = (id: string) => `/api/media/${encodeURIComponent(id)}/file`;
+export const renameMedia = (id: string, title: string) =>
+  readResponse(
+    client.api.media[":id"].$patch(
+      { param: { id } },
+      {
+        init: { body: JSON.stringify({ title }), headers: { "content-type": "application/json" } },
+      },
+    ),
+    MediaItem,
+  );
+export const deleteMedia = (id: string) =>
+  readResponse(client.api.media[":id"].$delete({ param: { id } }), MediaDeletion);
 export const transcriptionExportUrl = (id: string, format: TranscriptExportFormat) =>
   `/api/media/${encodeURIComponent(id)}/transcription/export/${format}`;
 
