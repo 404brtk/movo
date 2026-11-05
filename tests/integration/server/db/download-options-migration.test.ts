@@ -68,6 +68,7 @@ it("preserves legacy jobs and media while allowing new variants of their URL", a
               id,
               url,
               preset: "video-1080p",
+              transcribe: false,
               status: "completed",
               mediaId: id,
               title: "Saved media",
@@ -79,7 +80,10 @@ it("preserves legacy jobs and media while allowing new variants of their URL", a
               status: "queued",
             });
             expect((yield* jobs.enqueue(url)).id).toBe(id);
-            const audio = yield* jobs.enqueue(url, "audio");
+            expect((yield* jobs.list()).find((job) => job.preset === "audio")?.transcribe).toBe(
+              attempt === 0 ? undefined : true,
+            );
+            const audio = yield* jobs.enqueue(url, "audio", true);
             expect(audio.id).not.toBe(id);
             expect(audio.preset).toBe("audio");
             expect(yield* jobs.list()).toHaveLength(3);

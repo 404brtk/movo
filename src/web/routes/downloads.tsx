@@ -77,6 +77,13 @@ function Downloads() {
                   <p className="text-xs text-muted-foreground">
                     {selected.kind === "audio" ? "Audio" : "Video"} · {selected.label}
                   </p>
+                  {job.transcribe ? (
+                    <p className="text-xs text-muted-foreground">
+                      {job.status === "completed"
+                        ? "Transcription requested. Open media to view its progress."
+                        : "Transcription will be queued after download."}
+                    </p>
+                  ) : null}
                   <p className="text-sm text-muted-foreground">
                     {job.status === "running"
                       ? phaseLabels[job.phase]

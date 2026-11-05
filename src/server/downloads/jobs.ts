@@ -18,6 +18,7 @@ import type { MediaTools, MediaToolsConfig } from "../media-tools/tools.ts";
 import { downloadJobs } from "./downloads.schema.ts";
 import { downloadSource } from "./url.ts";
 import { createMediaDownloader } from "./ytdlp.ts";
+import { queueTranscription } from "../transcriptions/queue.ts";
 
 export interface DownloadsConfig extends MediaToolsConfig {
   ytdlpPath?: string | undefined;
@@ -64,15 +65,25 @@ export function createDownloads(
       .run();
   };
   const markCompleted = (id: string, media: typeof mediaItems.$inferSelect) =>
-    update(id, {
-      status: "completed",
-      phase: "finished",
-      mediaId: media.id,
-      title: media.title,
-      durationSeconds: media.durationSeconds,
-      downloadedBytes: media.byteSize,
-      error: null,
-      ownerPid: null,
+    database.transaction((transaction) => {
+      const job = transaction.select().from(downloadJobs).where(eq(downloadJobs.id, id)).get();
+      if (!job || job.status !== "running") return;
+      transaction
+        .update(downloadJobs)
+        .set({
+          status: "completed",
+          phase: "finished",
+          mediaId: media.id,
+          title: media.title,
+          durationSeconds: media.durationSeconds,
+          downloadedBytes: media.byteSize,
+          error: null,
+          ownerPid: null,
+          updatedAt: Date.now(),
+        })
+        .where(and(eq(downloadJobs.id, id), eq(downloadJobs.status, "running")))
+        .run();
+      if (job.transcribe) queueTranscription(transaction, media.id);
     });
   const markInterrupted = (id: string) =>
     update(id, {
@@ -240,33 +251,47 @@ export function createDownloads(
             .all(),
         ),
       ),
-    enqueue: (input: string, preset: DownloadPreset = defaultDownloadPreset) =>
-      databaseOperation(() => {
-        if (!Schema.is(DownloadPreset)(preset))
-          throw new MediaError("invalid", "Choose a supported download option.");
-        const { url } = downloadSource(input);
-        const now = Date.now();
-        database
-          .insert(downloadJobs)
-          .values({
-            id: randomUUID(),
-            url,
-            preset,
-            status: "queued",
-            phase: "queued",
-            createdAt: now,
-            updatedAt: now,
-          })
-          .onConflictDoNothing({ target: [downloadJobs.url, downloadJobs.preset] })
-          .run();
-        return Schema.decodeUnknownSync(DownloadJob)(
-          database
-            .select()
-            .from(downloadJobs)
-            .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
-            .get(),
-        );
-      }),
+    enqueue: (input: string, preset: DownloadPreset = defaultDownloadPreset, transcribe = false) =>
+      databaseOperation(() =>
+        database.transaction((transaction) => {
+          if (!Schema.is(DownloadPreset)(preset))
+            throw new MediaError("invalid", "Choose a supported download option.");
+          if (!Schema.is(Schema.Boolean)(transcribe))
+            throw new MediaError("invalid", "Choose whether to transcribe after downloading.");
+          const { url } = downloadSource(input);
+          const now = Date.now();
+          transaction
+            .insert(downloadJobs)
+            .values({
+              id: randomUUID(),
+              url,
+              preset,
+              transcribe,
+              status: "queued",
+              phase: "queued",
+              createdAt: now,
+              updatedAt: now,
+            })
+            .onConflictDoNothing({ target: [downloadJobs.url, downloadJobs.preset] })
+            .run();
+          if (transcribe)
+            transaction
+              .update(downloadJobs)
+              .set({ transcribe: true })
+              .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
+              .run();
+          const job = Schema.decodeUnknownSync(DownloadJob)(
+            transaction
+              .select()
+              .from(downloadJobs)
+              .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
+              .get(),
+          );
+          if (job.status === "completed" && job.transcribe && job.mediaId)
+            queueTranscription(transaction, job.mediaId);
+          return job;
+        }),
+      ),
     cancel: (id: string) =>
       Effect.gen(function* () {
         const job = yield* get(id);

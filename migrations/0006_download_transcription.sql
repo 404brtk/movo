@@ -1,0 +1,1 @@
+ALTER TABLE `download_jobs` ADD `transcribe` integer DEFAULT false NOT NULL;

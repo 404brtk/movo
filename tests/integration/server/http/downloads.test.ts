@@ -8,6 +8,8 @@ import { openDatabase } from "../../../../src/server/db/database.ts";
 import { createDownloads } from "../../../../src/server/downloads/jobs.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { createApp } from "../../../../src/server/http/app.ts";
+import { createTranscriptions } from "../../../../src/server/transcriptions/jobs.ts";
+import { MediaError } from "../../../../src/server/media/error.ts";
 
 const base = "http://127.0.0.1:4310/api/downloads";
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
@@ -15,6 +17,61 @@ const json = (body: unknown) => ({
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify(body),
+});
+
+it("checks transcription prerequisites before accepting or upgrading a combined request", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "movo-download-transcription-http-"));
+  try {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const database = yield* openDatabase(join(directory, "app.sqlite"));
+          const config = { dataDirectory: directory };
+          const tools = createMediaTools(config);
+          let ready = false;
+          const transcriptions = createTranscriptions(database, config, tools, {
+            check: () =>
+              ready
+                ? Effect.void
+                : Effect.fail(
+                    new MediaError("unavailable", "Install the transcription model first."),
+                  ),
+            transcribe: () => Effect.never,
+          });
+          const downloads = createDownloads(database, config, tools, {
+            preview: (value) =>
+              Effect.succeed({ url: value, title: "A source", durationSeconds: 2 }),
+            download: () => Effect.never,
+          });
+          const app = createApp(database, config, undefined, { tools, downloads, transcriptions });
+          yield* Effect.promise(async () => {
+            const blocked = await app.request(base, json({ url, transcribe: true }));
+            expect(blocked.status).toBe(503);
+            expect(await blocked.json()).toEqual({
+              error: "Install the transcription model first.",
+            });
+            expect(await Effect.runPromise(downloads.list())).toEqual([]);
+            expect((await app.request(base, json({ url, transcribe: "true" }))).status).toBe(400);
+            const plain = Schema.decodeUnknownSync(DownloadJob)(
+              await (await app.request(base, json({ url }))).json(),
+            );
+            expect(plain.transcribe).toBe(false);
+            expect((await app.request(base, json({ url, transcribe: true }))).status).toBe(503);
+            expect((await Effect.runPromise(downloads.get(plain.id))).transcribe).toBe(false);
+            ready = true;
+            const accepted = await app.request(base, json({ url, transcribe: true }));
+            expect(accepted.status).toBe(202);
+            expect(Schema.decodeUnknownSync(DownloadJob)(await accepted.json())).toMatchObject({
+              id: plain.id,
+              transcribe: true,
+            });
+          });
+        }),
+      ),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
 });
 
 it("validates HTTP input, queues independently of its request and exposes cancellation and retry", async () => {

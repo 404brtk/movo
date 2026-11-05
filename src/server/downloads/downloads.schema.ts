@@ -21,6 +21,7 @@ export const downloadJobs = sqliteTable(
     id: text("id").primaryKey(),
     url: text("url").notNull(),
     preset: text("preset").$type<DownloadPreset>().notNull().default(defaultDownloadPreset),
+    transcribe: integer("transcribe", { mode: "boolean" }).notNull().default(false),
     title: text("title"),
     durationSeconds: real("duration_seconds"),
     status: text("status", { enum: downloadStates }).notNull(),

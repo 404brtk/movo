@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Schema } from "effect";
 import {
   defaultDownloadPreset,
@@ -16,6 +16,7 @@ export function DownloadLink() {
   const [url, setUrl] = useState("");
   const [checkedUrl, setCheckedUrl] = useState("");
   const [preset, setPreset] = useState<DownloadPreset>(defaultDownloadPreset);
+  const [transcribe, setTranscribe] = useState(false);
   const selected = getDownloadPreset(preset);
   const preview = useQuery(previewOptions(checkedUrl));
   const queryClient = useQueryClient();
@@ -137,13 +138,6 @@ export function DownloadLink() {
                 </select>
               </div>
             ) : null}
-            <Button
-              className="h-11 px-4 text-sm"
-              disabled={download.isPending || preview.isFetching}
-              onClick={() => download.mutate({ url: preview.data.url, preset })}
-            >
-              Download
-            </Button>
           </div>
           <p className="text-xs leading-5 text-muted-foreground">
             {selected.kind === "audio"
@@ -152,6 +146,38 @@ export function DownloadLink() {
                 ? "Uses the highest available resolution. Playback depends on the source codecs."
                 : "Limits the video height without upscaling lower-resolution sources. Playback depends on the source codecs."}
           </p>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <label className="flex min-h-10 items-center gap-3 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={transcribe}
+                  disabled={download.isPending}
+                  onChange={(event) => {
+                    setTranscribe(event.currentTarget.checked);
+                    download.reset();
+                  }}
+                  aria-describedby="download-transcribe-help"
+                  className="size-4 shrink-0 accent-primary"
+                />
+                Transcribe after download
+              </label>
+              <Button
+                className="h-11 px-4 text-sm"
+                disabled={download.isPending || preview.isFetching}
+                onClick={() => download.mutate({ url: preview.data.url, preset, transcribe })}
+              >
+                {transcribe ? "Download and transcribe" : "Download"}
+              </Button>
+            </div>
+            <p id="download-transcribe-help" className="text-xs leading-5 text-muted-foreground">
+              Uses Parakeet Ultra on this computer. Install the model in{" "}
+              <Link to="/models" className="underline underline-offset-4">
+                Models
+              </Link>{" "}
+              and set up FFmpeg before starting.
+            </p>
+          </div>
         </div>
       ) : null}
       {error ? (
