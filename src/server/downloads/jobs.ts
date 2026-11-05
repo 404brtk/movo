@@ -16,8 +16,8 @@ import { createMediaLibrary } from "../media/library.ts";
 import { mediaItems } from "../media/media.schema.ts";
 import type { MediaTools, MediaToolsConfig } from "../media-tools/tools.ts";
 import { downloadJobs } from "./downloads.schema.ts";
-import { youtubeUrl } from "./url.ts";
-import { createYoutubeDownloader } from "./ytdlp.ts";
+import { downloadSource } from "./url.ts";
+import { createMediaDownloader } from "./ytdlp.ts";
 
 export interface DownloadsConfig extends MediaToolsConfig {
   ytdlpPath?: string | undefined;
@@ -40,7 +40,7 @@ export function createDownloads(
   database: AppDatabase,
   config: DownloadsConfig,
   tools: MediaTools,
-  downloader = createYoutubeDownloader(config.ytdlpPath ?? "yt-dlp", tools),
+  downloader = createMediaDownloader(config.ytdlpPath ?? "yt-dlp", tools),
 ) {
   const retryLock = Semaphore.makeUnsafe(1);
   const library = createMediaLibrary(database, config.dataDirectory, () =>
@@ -244,7 +244,7 @@ export function createDownloads(
       databaseOperation(() => {
         if (!Schema.is(DownloadPreset)(preset))
           throw new MediaError("invalid", "Choose a supported download option.");
-        const url = youtubeUrl(input);
+        const { url } = downloadSource(input);
         const now = Date.now();
         database
           .insert(downloadJobs)

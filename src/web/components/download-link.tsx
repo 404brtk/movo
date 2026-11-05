@@ -29,7 +29,7 @@ export function DownloadLink() {
   });
   const error = preview.error ?? download.error;
   return (
-    <section aria-label="Download from YouTube" className="mb-8 rounded-xl border p-5 sm:p-6">
+    <section aria-label="Download from a link" className="mb-8 rounded-xl border p-5 sm:p-6">
       <form
         className="space-y-3"
         onSubmit={(event) => {
@@ -39,12 +39,12 @@ export function DownloadLink() {
           else setCheckedUrl(url.trim());
         }}
       >
-        <label htmlFor="youtube-url" className="block text-sm font-medium">
-          YouTube link
+        <label htmlFor="download-url" className="block text-sm font-medium">
+          Video link
         </label>
         <div className="flex flex-col gap-3 sm:flex-row">
           <input
-            id="youtube-url"
+            id="download-url"
             name="url"
             type="url"
             required
@@ -58,7 +58,7 @@ export function DownloadLink() {
             }}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? "download-link-error" : "download-link-help"}
-            placeholder="https://www.youtube.com/watch?v=…"
+            placeholder="Paste a YouTube or X link"
             className="h-11 min-w-0 flex-1 rounded-md border bg-transparent px-3 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
           <Button
@@ -70,7 +70,8 @@ export function DownloadLink() {
           </Button>
         </div>
         <p id="download-link-help" className="text-xs text-muted-foreground">
-          One public video link at a time. Choose video quality or audio after checking the link.
+          Public YouTube videos and X posts with one video. Choose video quality or audio after
+          checking the link. Sign-in is not supported.
         </p>
       </form>
       <output className="block text-sm text-muted-foreground">
@@ -146,7 +147,7 @@ export function DownloadLink() {
           </div>
           <p className="text-xs leading-5 text-muted-foreground">
             {selected.kind === "audio"
-              ? "Downloads the best available audio stream in its original format, without video."
+              ? "Saves the best available audio without keeping video."
               : selected.maxHeight === null
                 ? "Uses the highest available resolution. Playback depends on the source codecs."
                 : "Limits the video height without upscaling lower-resolution sources. Playback depends on the source codecs."}

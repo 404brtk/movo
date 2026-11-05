@@ -10,7 +10,7 @@ import { MediaError } from "../../../../src/server/media/error.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { createDownloads, type Downloads } from "../../../../src/server/downloads/jobs.ts";
 import { downloadJobs } from "../../../../src/server/downloads/downloads.schema.ts";
-import type { YoutubeDownloader } from "../../../../src/server/downloads/ytdlp.ts";
+import type { MediaDownloader } from "../../../../src/server/downloads/ytdlp.ts";
 import { blockCleanup } from "../../../helpers/block-cleanup.ts";
 
 const firstUrl = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
@@ -18,7 +18,7 @@ const secondUrl = "https://www.youtube.com/watch?v=bbbbbbbbbbb";
 const wavePath = new URL("../../../fixtures/tone.wav", import.meta.url);
 const preview = (url: string) =>
   Effect.succeed({ url, title: "A controlled source recording", durationSeconds: 2 });
-const fixtureDownload: YoutubeDownloader["download"] = (url, directory, update) =>
+const fixtureDownload: MediaDownloader["download"] = (url, directory, update) =>
   Effect.gen(function* () {
     const path = join(directory, "media.wav");
     yield* Effect.promise(() => copyFile(wavePath, path));
@@ -60,6 +60,34 @@ const waitFor = (jobs: Downloads, id: string, status: string) =>
   });
 
 describe("persistent download jobs", () => {
+  it("deduplicates X aliases and saves the normalized source URL in the library", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
+      Effect.gen(function* () {
+        const tools = createMediaTools({ dataDirectory: directory });
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download: fixtureDownload,
+        });
+        const job = yield* jobs.enqueue("https://twitter.com/example/status/123?s=20", "audio");
+        const duplicate = yield* jobs.enqueue("https://x.com/another_name/status/123", "audio");
+        expect(duplicate.id).toBe(job.id);
+        expect(job.url).toBe("https://x.com/i/web/status/123");
+        yield* jobs.cancel(job.id);
+        expect((yield* jobs.retry(job.id)).url).toBe(job.url);
+        const worker = yield* jobs.start();
+        yield* waitFor(jobs, job.id, "completed");
+        const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+        const item = yield* library.get(job.id);
+        expect(item.sourceUrl).toBe(job.url);
+        expect(item.kind).toBe("audio");
+        yield* Fiber.interrupt(worker);
+        expect(yield* Effect.promise(() => readdir(join(directory, "downloads")))).toEqual([]);
+      }),
+    );
+  });
+
   it("deduplicates each preset independently and retains it through cancellation and retry", async ({
     signal,
   }) => {
@@ -277,7 +305,7 @@ describe("persistent download jobs", () => {
         let maximum = 0;
         let cleaned = false;
         const tools = createMediaTools({ dataDirectory: directory });
-        const download: YoutubeDownloader["download"] = (url, path, update) =>
+        const download: MediaDownloader["download"] = (url, path, update) =>
           Effect.gen(function* () {
             active++;
             maximum = Math.max(maximum, active);
@@ -318,7 +346,7 @@ describe("persistent download jobs", () => {
       Effect.gen(function* () {
         let attempts = 0;
         const tools = createMediaTools({ dataDirectory: directory });
-        const download: YoutubeDownloader["download"] = (url, path, update) =>
+        const download: MediaDownloader["download"] = (url, path, update) =>
           ++attempts === 1
             ? Effect.gen(function* () {
                 yield* Effect.promise(() =>

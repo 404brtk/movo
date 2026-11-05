@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { youtubeUrl } from "../../../../src/server/downloads/url.ts";
+import { downloadSource } from "../../../../src/server/downloads/url.ts";
 
 describe("single public YouTube URLs", () => {
   it.each([
@@ -9,7 +9,11 @@ describe("single public YouTube URLs", () => {
     "https://youtube.com/shorts/J7DzL2_Na80",
     "https://www.youtube.com/embed/J7DzL2_Na80",
   ])("normalizes %s to a video identity", (input) => {
-    expect(youtubeUrl(input)).toBe("https://www.youtube.com/watch?v=J7DzL2_Na80");
+    expect(downloadSource(input)).toEqual({
+      site: "youtube",
+      id: "J7DzL2_Na80",
+      url: "https://www.youtube.com/watch?v=J7DzL2_Na80",
+    });
   });
   it.each([
     "file:///etc/passwd",
@@ -23,6 +27,47 @@ describe("single public YouTube URLs", () => {
     "https://youtu.be/../etc",
     "not a url",
   ])("rejects unsupported input %s", (input) => {
-    expect(() => youtubeUrl(input)).toThrow("single YouTube video");
+    expect(() => downloadSource(input)).toThrow("YouTube video or X post");
+  });
+});
+
+describe("single X post URLs", () => {
+  it.each([
+    "https://x.com/movo_test/status/123?s=20",
+    "https://twitter.com/another_name/status/123#tracking",
+    "https://www.x.com/i/web/status/123/",
+    "https://mobile.twitter.com/example/status/123",
+    "https://m.x.com/example/status/123",
+    " https://x.com/i/status/123 ",
+  ])("normalizes %s to the same post identity", (input) => {
+    expect(downloadSource(input)).toEqual({
+      site: "x",
+      id: "123",
+      url: "https://x.com/i/web/status/123",
+    });
+  });
+
+  it("preserves a large synthetic post ID without number rounding", () => {
+    expect(downloadSource("https://x.com/movo_test/status/9999999999999999999").id).toBe(
+      "9999999999999999999",
+    );
+  });
+
+  it.each([
+    "http://x.com/example/status/123",
+    "https://x.com.evil.example/example/status/123",
+    "https://user:pass@x.com/example/status/123",
+    "https://x.com:444/example/status/123",
+    "https://x.com/example/status/123/video/2",
+    "https://x.com/example/status/123/photo/1",
+    "https://x.com/example/status/not-a-number",
+    "https://x.com/example/status/0123",
+    "https://x.com/example/status/123456789012345678901",
+    "https://x.com/example",
+    "https://x.com/i/spaces/abc",
+    "https://t.co/shortened",
+    "https://www.reddit.com/comments/example",
+  ])("rejects unsupported input %s", (input) => {
+    expect(() => downloadSource(input)).toThrow("YouTube video or X post");
   });
 });
