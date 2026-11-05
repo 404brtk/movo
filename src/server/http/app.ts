@@ -4,6 +4,8 @@ import { Effect, Result, Schema } from "effect";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { DownloadRequest } from "../../shared/contracts/downloads.ts";
+import { TranscriptExportFormat } from "../../shared/contracts/transcriptions.ts";
+import { exportTranscript } from "../../shared/transcript-export.ts";
 import { createDownloads, type Downloads, type DownloadsConfig } from "../downloads/jobs.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError, type MediaErrorReason } from "../media/error.ts";
@@ -12,6 +14,7 @@ import { createMediaTools, type MediaTools } from "../media-tools/tools.ts";
 import { createModels, type Models } from "../models/models.ts";
 import { createTranscriptions, type Transcriptions } from "../transcriptions/jobs.ts";
 import { createTranscriptionEngine } from "../transcriptions/engine.ts";
+import { attachmentDisposition } from "./attachment.ts";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -139,6 +142,31 @@ export function createApp(
     .get("/media/:id/transcription", async (context) => {
       context.header("Cache-Control", "no-store");
       return context.json(await runMedia(transcriptions.get(context.req.param("id"))));
+    })
+    .get("/media/:id/transcription/export/:format", async (context) => {
+      let format: TranscriptExportFormat;
+      try {
+        format = Schema.decodeUnknownSync(TranscriptExportFormat)(context.req.param("format"));
+      } catch (cause) {
+        throw new MediaError("invalid", "Choose TXT, SRT or VTT for the transcript export.", cause);
+      }
+      const job = await runMedia(transcriptions.get(context.req.param("id")));
+      if (job?.status !== "completed" || !job.transcript)
+        throw new MediaError("invalid", "Complete the transcription before downloading it.");
+      const item = await runMedia(library.get(job.mediaId));
+      const contentTypes = {
+        txt: "text/plain; charset=utf-8",
+        srt: "application/x-subrip; charset=utf-8",
+        vtt: "text/vtt; charset=utf-8",
+      };
+      return new Response(exportTranscript(job.transcript, format), {
+        headers: {
+          "Content-Type": contentTypes[format],
+          "Content-Disposition": attachmentDisposition(`${item.title}.${format}`),
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
     })
     .post("/media/:id/transcription", async (context) =>
       context.json(await runMedia(transcriptions.enqueue(context.req.param("id"))), 202),

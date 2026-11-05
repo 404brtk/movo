@@ -45,12 +45,15 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   await page.goto(`/media/${media.id}`);
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
   await expect(panel.getByRole("button", { name: "Transcribe", exact: true })).toBeEnabled();
+  await expect(panel.getByRole("button", { name: "Copy text", exact: true })).toHaveCount(0);
+  await expect(panel.getByRole("link", { name: /^Download /u })).toHaveCount(0);
   expect(attempts).toBe(0);
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("alert")).toContainText("Download Parakeet Ultra");
   await expect(panel.getByRole("link", { name: "Models", exact: true })).toBeVisible();
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Transcribing");
+  await expect(panel.getByRole("link", { name: /^Download /u })).toHaveCount(0);
   await page.getByRole("link", { name: "Back to library", exact: true }).click();
   job = {
     mediaId: media.id,
@@ -145,6 +148,8 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
     panel.getByText("No speech was detected in this recording.", { exact: true }),
   ).toBeVisible();
   await expect(panel.getByRole("alert")).toContainText("temporary transcription files");
+  await expect(panel.getByRole("button", { name: "Copy text", exact: true })).toHaveCount(0);
+  await expect(panel.getByRole("link", { name: /^Download /u })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Retry transcription", exact: true })).toHaveCount(
     0,
   );
