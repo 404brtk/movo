@@ -22,11 +22,9 @@ const phaseLabels = {
 
 export function TranscriptionPanel({
   mediaId,
-  title,
   onSeek,
 }: {
   mediaId: string;
-  title: string;
   onSeek: (seconds: number) => void;
 }) {
   const options = transcriptionOptions(mediaId);
@@ -124,7 +122,7 @@ export function TranscriptionPanel({
           <p className="text-sm text-muted-foreground">No speech was detected in this recording.</p>
         ) : (
           <>
-            <TranscriptActions mediaId={mediaId} title={title} transcript={job.transcript} />
+            <TranscriptActions mediaId={mediaId} transcript={job.transcript} />
             <ol aria-label="Timestamped passages" className="divide-y rounded-xl border px-5">
               {job.transcript.segments.map((segment, index) => (
                 <li key={index} className="flex gap-4 py-4 sm:gap-6">

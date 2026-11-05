@@ -159,7 +159,9 @@ it("downloads completed transcripts as UTF-8 attachments without starting anothe
               const response = await app.request(`${base}/export/${exported.format}`);
               expect(response.status).toBe(200);
               expect(response.headers.get("content-type")).toBe(exported.type);
-              expect(response.headers.get("content-disposition")).toBe("attachment");
+              expect(response.headers.get("content-disposition")).toBe(
+                `attachment; filename="recording.${exported.format}"; filename*=UTF-8''recording.${exported.format}`,
+              );
               expect(response.headers.get("cache-control")).toBe("private, no-store");
               expect(response.headers.get("x-content-type-options")).toBe("nosniff");
               expect(await response.text()).toBe(exported.text);

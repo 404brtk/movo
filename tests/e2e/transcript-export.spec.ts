@@ -181,6 +181,22 @@ test("copies plain text and downloads UTF-8 transcripts with keyboard-accessible
   );
 });
 
+test("keeps the recording title when downloading the export URL directly", async ({
+  page,
+  recording,
+}, testInfo) => {
+  const url = await page
+    .getByRole("link", { name: "Download VTT", exact: true })
+    .evaluate((link: HTMLAnchorElement) => link.href);
+  const downloadPromise = page.waitForEvent("download");
+  await expect(page.goto(url)).rejects.toThrow(/Download is starting|net::ERR_ABORTED/u);
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(`${recording.title}.vtt`);
+  const path = testInfo.outputPath("direct-export.vtt");
+  await download.saveAs(path);
+  expect(readFileSync(path, "utf8")).toBe(exports[2]?.text);
+});
+
 test("reports denied or unavailable clipboard access and allows retrying after reload", async ({
   page,
 }) => {

@@ -14,6 +14,7 @@ import { createMediaTools, type MediaTools } from "../media-tools/tools.ts";
 import { createModels, type Models } from "../models/models.ts";
 import { createTranscriptions, type Transcriptions } from "../transcriptions/jobs.ts";
 import { createTranscriptionEngine } from "../transcriptions/engine.ts";
+import { attachmentDisposition } from "./attachment.ts";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -152,6 +153,7 @@ export function createApp(
       const job = await runMedia(transcriptions.get(context.req.param("id")));
       if (job?.status !== "completed" || !job.transcript)
         throw new MediaError("invalid", "Complete the transcription before downloading it.");
+      const item = await runMedia(library.get(job.mediaId));
       const contentTypes = {
         txt: "text/plain; charset=utf-8",
         srt: "application/x-subrip; charset=utf-8",
@@ -160,7 +162,7 @@ export function createApp(
       return new Response(exportTranscript(job.transcript, format), {
         headers: {
           "Content-Type": contentTypes[format],
-          "Content-Disposition": "attachment",
+          "Content-Disposition": attachmentDisposition(`${item.title}.${format}`),
           "Cache-Control": "private, no-store",
           "X-Content-Type-Options": "nosniff",
         },

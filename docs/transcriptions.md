@@ -24,7 +24,7 @@ Startup marks persisted running jobs interrupted and clears terminal staging dir
 
 ## Copy and export
 
-Completed, nonempty transcripts show **Copy text**, **Download TXT**, **Download SRT** and **Download VTT** above the passages. Copying and TXT use the same plain text, with a blank line between passages and no timestamps. Downloads use UTF-8 and suggest the recording title with the selected extension as the filename.
+Completed, nonempty transcripts show **Copy text**, **Download TXT**, **Download SRT** and **Download VTT** above the passages. Copying and TXT use the same plain text, with a blank line between passages and no timestamps. Downloads use UTF-8. The server supplies the recording title with the selected extension in `Content-Disposition`, so normal links and direct export URLs use the same filename. The header includes an ASCII `filename` fallback and UTF-8 `filename*`; path separators and control characters are replaced with underscores.
 
 SRT and WebVTT export one subtitle cue per passage with millisecond timestamps. Subtitle text collapses whitespace into spaces so blank lines cannot split a cue, and escapes `&`, `<` and `>` so recognized text remains literal. Existing overlaps are preserved. A zero-duration passage receives a one-millisecond cue so its text is retained with a valid end time. See the [SubRip description](https://www.loc.gov/preservation/digital/formats/fdd/fdd000569.shtml) and [WebVTT specification](https://www.w3.org/TR/webvtt1/).
 
@@ -43,7 +43,7 @@ The initial implementation keeps native long-form segmentation and does not add 
 All commands use the existing local-origin checks. They operate on a saved media ID and take no JSON options.
 
 - `GET /api/media/:id/transcription` returns the job or `null` when the media exists without a transcription. Responses use `Cache-Control: no-store`.
-- `GET /api/media/:id/transcription/export/:format` downloads a completed result as `txt`, `srt` or `vtt`. Responses use the corresponding content type, `Content-Disposition: attachment`, `Cache-Control: private, no-store` and `X-Content-Type-Options: nosniff`. Unsupported formats and unfinished/missing results return HTTP 400. No transcription is enqueued by this request.
+- `GET /api/media/:id/transcription/export/:format` downloads a completed result as `txt`, `srt` or `vtt`. Responses use the corresponding content type, `Content-Disposition: attachment` with the filename parameters above, `Cache-Control: private, no-store` and `X-Content-Type-Options: nosniff`. Unsupported formats and unfinished/missing results return HTTP 400. No transcription is enqueued by this request.
 - `POST /api/media/:id/transcription` returns HTTP 202 with the existing or newly queued job.
 - `POST /api/media/:id/transcription/cancel` returns the current job after stopping active work, or `null` when none exists.
 - `POST /api/media/:id/transcription/retry` returns HTTP 202 after retrying a failed, cancelled or interrupted job. Other states are rejected.

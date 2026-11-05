@@ -6,11 +6,9 @@ import { Button, buttonVariants } from "./ui/button.tsx";
 
 export function TranscriptActions({
   mediaId,
-  title,
   transcript,
 }: {
   mediaId: string;
-  title: string;
   transcript: Transcript;
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "failed">("idle");
@@ -42,7 +40,7 @@ export function TranscriptActions({
           <a
             key={format}
             href={transcriptionExportUrl(mediaId, format)}
-            download={`${title}.${format}`}
+            download
             className={buttonVariants({ variant: "outline", className: "h-10 px-3 text-sm" })}
           >
             Download {format.toUpperCase()}
