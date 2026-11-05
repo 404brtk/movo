@@ -43,6 +43,13 @@
       "when": 1793881324128,
       "tag": "0005_download_options",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793909389825,
+      "tag": "0006_download_transcription",
+      "breakpoints": true
     }
   ]
 }

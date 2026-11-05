@@ -11,6 +11,7 @@ const jobFixture = (): DownloadJob => ({
   id: randomUUID(),
   url,
   preset: "video-1080p",
+  transcribe: false,
   title: "A queued video",
   durationSeconds: null,
   status: "running",
@@ -59,7 +60,11 @@ for (const choice of [
     });
     await page.route("**/api/downloads", (route) => {
       if (route.request().method() === "POST") {
-        expect(route.request().postDataJSON()).toEqual({ url, preset: choice.preset });
+        expect(route.request().postDataJSON()).toEqual({
+          url,
+          preset: choice.preset,
+          transcribe: false,
+        });
         queued = true;
         return route.fulfill({ status: 202, json: job });
       }
@@ -106,7 +111,11 @@ test("previews an X post, recovers from a source error and keeps polling while a
   let previewAttempts = 0;
   await page.route("**/api/downloads", async (route) => {
     if (route.request().method() === "POST") {
-      expect(route.request().postDataJSON()).toEqual({ url: sourceUrl, preset: "video-1080p" });
+      expect(route.request().postDataJSON()).toEqual({
+        url: sourceUrl,
+        preset: "video-1080p",
+        transcribe: false,
+      });
       queued = true;
       await route.fulfill({ status: 202, json: job });
     } else {

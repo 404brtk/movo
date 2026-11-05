@@ -29,6 +29,7 @@ export const downloadStates = [
 export const DownloadRequest = Schema.Struct({
   url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)),
   preset: Schema.optional(DownloadPreset),
+  transcribe: Schema.optional(Schema.Boolean),
 });
 export type DownloadRequest = typeof DownloadRequest.Type;
 export const DownloadPreview = Schema.Struct({
@@ -41,6 +42,7 @@ export const DownloadJob = Schema.Struct({
   id: MediaId,
   url: Schema.String,
   preset: DownloadPreset,
+  transcribe: Schema.Boolean,
   title: Schema.NullOr(Schema.String),
   durationSeconds: Schema.NullOr(Schema.Number),
   status: Schema.Literals(downloadStates),

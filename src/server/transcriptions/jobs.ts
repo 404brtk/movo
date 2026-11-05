@@ -12,7 +12,7 @@ import type { AppDatabase } from "../db/database.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
-import { transcriptionModel } from "../models/catalog.ts";
+import { queueTranscription } from "./queue.ts";
 import { transcriptionJobs } from "./transcriptions.schema.ts";
 
 export interface TranscriptionEngine {
@@ -206,6 +206,7 @@ export function createTranscriptions(
       return yield* read(id);
     });
   return {
+    check: engine.check,
     get,
     removeMedia: (id: string) =>
       Effect.gen(function* () {
@@ -221,19 +222,7 @@ export function createTranscriptions(
         if (existing) return existing;
         yield* engine.check();
         return yield* storage(() => {
-          const now = Date.now();
-          database
-            .insert(transcriptionJobs)
-            .values({
-              mediaId: id,
-              modelId: transcriptionModel.id,
-              status: "queued",
-              phase: "queued",
-              createdAt: now,
-              updatedAt: now,
-            })
-            .onConflictDoNothing()
-            .run();
+          queueTranscription(database, id);
           return Schema.decodeUnknownSync(TranscriptionJob)(row(id));
         });
       }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),

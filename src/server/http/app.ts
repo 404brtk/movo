@@ -128,7 +128,15 @@ export function createApp(
     )
     .post("/downloads", async (context) => {
       const request = await readDownloadRequest(context.req.json());
-      return context.json(await runMedia(downloads.enqueue(request.url, request.preset)), 202);
+      return context.json(
+        await runMedia(
+          Effect.gen(function* () {
+            if (request.transcribe) yield* transcriptions.check();
+            return yield* downloads.enqueue(request.url, request.preset, request.transcribe);
+          }),
+        ),
+        202,
+      );
     })
     .get("/downloads/:id", async (context) =>
       context.json(await runMedia(downloads.get(context.req.param("id")))),
