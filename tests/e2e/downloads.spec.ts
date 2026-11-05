@@ -10,6 +10,7 @@ const wave = readFileSync(new URL("../fixtures/tone.wav", import.meta.url));
 const jobFixture = (): DownloadJob => ({
   id: randomUUID(),
   url,
+  preset: "video-1080p",
   title: "A queued video",
   durationSeconds: null,
   status: "running",
@@ -42,6 +43,51 @@ test("keeps saved media available when temporary download cleanup fails", async 
   await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
 });
 
+for (const choice of [
+  { preset: "video-480p", label: "Video · Up to 480p" },
+  { preset: "video-720p", label: "Video · Up to 720p" },
+  { preset: "video-best", label: "Video · Best available" },
+  { preset: "audio", label: "Audio · Best available" },
+] as const) {
+  test(`queues ${choice.preset} and shows the selected option after reload`, async ({ page }) => {
+    let queued = false;
+    const job = { ...jobFixture(), preset: choice.preset };
+    await page.route("**/api/downloads/preview", (route) => {
+      expect(route.request().method()).toBe("POST");
+      expect(route.request().postDataJSON()).toEqual({ url });
+      return route.fulfill({ json: { url, title: "A source recording", durationSeconds: 2 } });
+    });
+    await page.route("**/api/downloads", (route) => {
+      if (route.request().method() === "POST") {
+        expect(route.request().postDataJSON()).toEqual({ url, preset: choice.preset });
+        queued = true;
+        return route.fulfill({ status: 202, json: job });
+      }
+      expect(route.request().method()).toBe("GET");
+      return route.fulfill({ json: queued ? [job] : [] });
+    });
+    await page.setViewportSize({ width: 320, height: 760 });
+    await page.goto("/");
+    await page.getByRole("textbox", { name: "YouTube link" }).fill(url);
+    await page.getByRole("button", { name: "Check link", exact: true }).click();
+    await expect(page.getByLabel("Save as", { exact: true })).toHaveValue("video");
+    await expect(page.getByLabel("Video quality", { exact: true })).toHaveValue("video-1080p");
+    if (choice.preset === "audio") {
+      await page.getByLabel("Save as", { exact: true }).selectOption("audio");
+    } else {
+      await page.getByLabel("Video quality", { exact: true }).selectOption(choice.preset);
+    }
+    await page.getByRole("button", { name: "Download", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Downloads", exact: true })).toBeVisible();
+    await expect(page.getByText(choice.label, { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByText(choice.label, { exact: true })).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+  });
+}
+
 test("previews a link, recovers from a source error and keeps polling while another recording is open", async ({
   page,
   request,
@@ -59,7 +105,7 @@ test("previews a link, recovers from a source error and keeps polling while anot
   let previewAttempts = 0;
   await page.route("**/api/downloads", async (route) => {
     if (route.request().method() === "POST") {
-      expect(route.request().postDataJSON()).toEqual({ url });
+      expect(route.request().postDataJSON()).toEqual({ url, preset: "video-1080p" });
       queued = true;
       await route.fulfill({ status: 202, json: job });
     } else {
@@ -125,7 +171,7 @@ test("retries and cancels a download, retains its state after reload and fits a 
   await page.goto("/downloads");
   await expect(page.getByText("The connection was interrupted.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Retry", exact: true }).click();
-  await expect(page.getByText("Checking video", { exact: false })).toBeVisible();
+  await expect(page.getByText("Checking source", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByText("Cancelled", { exact: false })).toBeVisible();
   await page.reload();

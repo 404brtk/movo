@@ -60,6 +60,45 @@ const waitFor = (jobs: Downloads, id: string, status: string) =>
   });
 
 describe("persistent download jobs", () => {
+  it("deduplicates each preset independently and retains it through cancellation and retry", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
+      Effect.gen(function* () {
+        const tools = createMediaTools({ dataDirectory: directory });
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download: fixtureDownload,
+        });
+        const standard = yield* jobs.enqueue(firstUrl);
+        const smaller = yield* jobs.enqueue(firstUrl, "video-480p");
+        const audio = yield* jobs.enqueue(firstUrl, "audio");
+        expect(new Set([standard.id, smaller.id, audio.id]).size).toBe(3);
+        expect((yield* jobs.enqueue("https://youtu.be/aaaaaaaaaaa?t=10", "audio")).id).toBe(
+          audio.id,
+        );
+        expect((yield* jobs.enqueue(firstUrl, "video-480p")).id).toBe(smaller.id);
+        expect(standard.preset).toBe("video-1080p");
+        yield* jobs.cancel(audio.id);
+        expect((yield* jobs.retry(audio.id)).preset).toBe("audio");
+        const received: string[] = [];
+        const restarted = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download: (url, path, update, preset) => {
+            received.push(preset ?? "missing");
+            return fixtureDownload(url, path, update, preset);
+          },
+        });
+        const worker = yield* restarted.start();
+        yield* waitFor(restarted, audio.id, "completed");
+        expect(received).toEqual(["video-1080p", "video-480p", "audio"]);
+        expect((yield* restarted.get(smaller.id)).preset).toBe("video-480p");
+        expect((yield* restarted.get(audio.id)).preset).toBe("audio");
+        yield* Fiber.interrupt(worker);
+      }),
+    );
+  });
+
   it("recovers a persisted running job even when its saved PID belongs to a live process", async ({
     signal,
   }) => {
@@ -393,7 +432,7 @@ describe("persistent download jobs", () => {
               preview,
               download: fixtureDownload,
             });
-            const record = yield* jobs.enqueue(firstUrl);
+            const record = yield* jobs.enqueue(firstUrl, "video-720p");
             database
               .update(downloadJobs)
               .set({ status: "running", ownerPid: null })
@@ -417,10 +456,14 @@ describe("persistent download jobs", () => {
             const tools = createMediaTools({ dataDirectory: directory });
             const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
               preview,
-              download: fixtureDownload,
+              download: (url, path, update, preset) => {
+                expect(preset).toBe("video-720p");
+                return fixtureDownload(url, path, update, preset);
+              },
             });
             const worker = yield* jobs.start();
             expect((yield* jobs.get(job.id)).status).toBe("interrupted");
+            expect((yield* jobs.get(job.id)).preset).toBe("video-720p");
             expect(
               yield* Effect.promise(() =>
                 stat(join(directory, "downloads", job.id)).catch(() => null),

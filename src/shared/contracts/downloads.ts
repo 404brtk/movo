@@ -1,6 +1,23 @@
 import { Schema } from "effect";
 import { MediaId } from "./media.ts";
 
+export const downloadPresets = [
+  { id: "video-480p", kind: "video", maxHeight: 480, label: "Up to 480p" },
+  { id: "video-720p", kind: "video", maxHeight: 720, label: "Up to 720p" },
+  { id: "video-1080p", kind: "video", maxHeight: 1080, label: "Up to 1080p" },
+  { id: "video-best", kind: "video", maxHeight: null, label: "Best available" },
+  { id: "audio", kind: "audio", maxHeight: null, label: "Best available" },
+] as const;
+export const DownloadPreset = Schema.Literals(downloadPresets.map((preset) => preset.id));
+export type DownloadPreset = typeof DownloadPreset.Type;
+export const defaultDownloadPreset: DownloadPreset = "video-1080p";
+
+export function getDownloadPreset(id: DownloadPreset) {
+  const preset = downloadPresets.find((option) => option.id === id);
+  if (!preset) throw new Error("Unknown download preset.");
+  return preset;
+}
+
 export const downloadStates = [
   "queued",
   "running",
@@ -11,7 +28,9 @@ export const downloadStates = [
 ] as const;
 export const DownloadRequest = Schema.Struct({
   url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)),
+  preset: Schema.optional(DownloadPreset),
 });
+export type DownloadRequest = typeof DownloadRequest.Type;
 export const DownloadPreview = Schema.Struct({
   url: Schema.String,
   title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
@@ -21,6 +40,7 @@ export type DownloadPreview = typeof DownloadPreview.Type;
 export const DownloadJob = Schema.Struct({
   id: MediaId,
   url: Schema.String,
+  preset: DownloadPreset,
   title: Schema.NullOr(Schema.String),
   durationSeconds: Schema.NullOr(Schema.Number),
   status: Schema.Literals(downloadStates),

@@ -1,7 +1,12 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { Effect, Schema } from "effect";
-import { DownloadPreview } from "../../shared/contracts/downloads.ts";
+import {
+  defaultDownloadPreset,
+  DownloadPreview,
+  getDownloadPreset,
+  type DownloadPreset,
+} from "../../shared/contracts/downloads.ts";
 import { maxImportBytes } from "../../shared/contracts/media.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
@@ -113,10 +118,13 @@ export function createYoutubeDownloader(ytdlpPath: string, tools: MediaTools) {
         downloadedBytes?: number;
         phase?: "downloading" | "processing";
       }) => void,
+      preset: DownloadPreset = defaultDownloadPreset,
     ) =>
       Effect.gen(function* () {
-        const ffmpeg = yield* tools.resolve("ffmpeg");
+        const selected = getDownloadPreset(preset);
+        const ffmpeg = selected.kind === "video" ? yield* tools.resolve("ffmpeg") : undefined;
         const ffprobe = yield* tools.resolve("ffprobe");
+        const limit = selected.maxHeight === null ? "" : `[height<=${selected.maxHeight}]`;
         const { preview, raw } = yield* inspect(url);
         yield* Effect.tryPromise({
           try: async () => {
@@ -148,15 +156,19 @@ export function createYoutubeDownloader(ytdlpPath: string, tools: MediaTools) {
             join(directory, "source.info.json"),
             "--no-simulate",
             "--format",
-            "bv*[height<=1080]+ba/b[height<=1080]",
-            "--format-sort",
-            "vcodec:h264,acodec:aac",
-            "--merge-output-format",
-            "mp4",
+            selected.kind === "audio" ? "ba" : `bv*${limit}+ba/b${limit}`,
+            ...(ffmpeg
+              ? [
+                  "--format-sort",
+                  "res,fps,vcodec:h264,acodec:aac",
+                  "--merge-output-format",
+                  "mp4",
+                  "--ffmpeg-location",
+                  ffmpeg,
+                ]
+              : []),
             "--max-filesize",
             String(maxImportBytes),
-            "--ffmpeg-location",
-            ffmpeg,
             "--paths",
             directory,
             "--output",
@@ -177,7 +189,11 @@ export function createYoutubeDownloader(ytdlpPath: string, tools: MediaTools) {
             cwd: directory,
             environment: {
               ...process.env,
-              PATH: [dirname(ffmpeg), dirname(ffprobe), process.env.PATH ?? ""].join(delimiter),
+              PATH: [
+                ...(ffmpeg ? [dirname(ffmpeg)] : []),
+                dirname(ffprobe),
+                process.env.PATH ?? "",
+              ].join(delimiter),
             },
             onLine: (line) => {
               if (line.startsWith("MOVO_PROGRESS:")) {
