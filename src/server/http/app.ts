@@ -4,6 +4,7 @@ import { Effect, Result, Schema } from "effect";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { DownloadRequest } from "../../shared/contracts/downloads.ts";
+import { RenameMediaRequest } from "../../shared/contracts/media.ts";
 import { TranscriptExportFormat } from "../../shared/contracts/transcriptions.ts";
 import { exportTranscript } from "../../shared/transcript-export.ts";
 import { createDownloads, type Downloads, type DownloadsConfig } from "../downloads/jobs.ts";
@@ -23,6 +24,7 @@ const errorStatuses = {
   tooLarge: 413,
   unsupported: 415,
   notFound: 404,
+  conflict: 409,
   unavailable: 503,
   storage: 500,
 } as const satisfies Record<MediaErrorReason, number>;
@@ -138,6 +140,30 @@ export function createApp(
     .get("/media", async (context) => context.json(await runMedia(library.list())))
     .get("/media/:id", async (context) =>
       context.json(await runMedia(library.get(context.req.param("id")))),
+    )
+    .patch(
+      "/media/:id",
+      bodyLimit({
+        maxSize: 4096,
+        onError: (context) =>
+          context.json({ error: "Title requests must be 4 KiB or smaller." }, 413),
+      }),
+      async (context) => {
+        let request: typeof RenameMediaRequest.Type;
+        try {
+          request = Schema.decodeUnknownSync(RenameMediaRequest)(await context.req.json());
+        } catch (cause) {
+          throw new MediaError(
+            "invalid",
+            "Provide a JSON object with a title of 1–512 characters without control characters.",
+            cause,
+          );
+        }
+        return context.json(await runMedia(library.rename(context.req.param("id"), request.title)));
+      },
+    )
+    .delete("/media/:id", async (context) =>
+      context.json(await runMedia(transcriptions.removeMedia(context.req.param("id")))),
     )
     .get("/media/:id/transcription", async (context) => {
       context.header("Cache-Control", "no-store");

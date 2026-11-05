@@ -49,11 +49,15 @@ Choose **Import a file** in the library. Imports are streamed to managed storage
 
 Open an item to play or seek through its saved copy. **Save a copy** downloads the original imported bytes. Browser playback depends on the file's codecs; no automatic transcoding is performed. Supported containers include MP4/MOV/M4A, WebM/Matroska, MP3, WAV, Ogg, FLAC and AAC. No model weights are required.
 
+Choose **Rename** on a recording to change its library title. The original filename and saved bytes stay unchanged; transcript downloads use the updated title. Titles accept 1–512 characters without control characters, with surrounding whitespace removed.
+
+**Delete recording** asks for confirmation before permanently removing Movo's saved copy, its transcript, temporary files and linked download history. Imported originals and shared models stay untouched. Cancel a queued or running transcription first; a download still publishing its recording must finish. Removing a downloaded recording also allows its source URL to be downloaded again. Missing saved copies can still be removed from the library. Storage failures leave the library entry available for another deletion attempt.
+
 To check the current workflow, import a small recording, open its library entry, play and seek, then refresh the page. Restart the app to verify that the entry remains. Use **Save a copy** to retrieve its stored bytes; the original file should remain in its original location.
 
 Metadata is stored in `MOVO_DATA_DIR/app.sqlite`; managed copies are stored in `MOVO_DATA_DIR/media/` under generated identifiers. Original source files are never moved, changed or deleted. Normal import failures remove their partial copies. An abruptly stopped app can leave unindexed files, which are not shown or served as completed imports; interrupted imports are not resumable.
 
-The local API provides `GET /api/media`, `POST /api/media`, `GET /api/media/:id` and `GET`/`HEAD /api/media/:id/file`. Import requests contain the raw file body and a URI-encoded filename in `X-File-Name`. Metadata responses follow the Effect schemas in `src/shared/contracts/media.ts`. Playback supports HTTP byte ranges.
+The local API provides `GET /api/media`, `POST /api/media`, `GET /api/media/:id`, `PATCH /api/media/:id`, `DELETE /api/media/:id` and `GET`/`HEAD /api/media/:id/file`. Rename requests use JSON `{ "title": "New title" }` with a 4 KiB body limit. Delete returns the removed metadata, or HTTP 409 while related work is queued or running. Import requests contain the raw file body and a URI-encoded filename in `X-File-Name`. Metadata responses follow the Effect schemas in `src/shared/contracts/media.ts`. Playback supports HTTP byte ranges.
 
 ## Download from YouTube
 

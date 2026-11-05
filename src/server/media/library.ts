@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, rmSync, unlinkSync } from "node:fs";
 import { lstat, mkdir, realpath, rename, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, parse, relative } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, or } from "drizzle-orm";
 import { Effect, Result, Schema } from "effect";
 import {
   maxImportBytes,
@@ -12,8 +12,11 @@ import {
   MediaId,
   MediaItem,
   MediaList,
+  MediaTitle,
 } from "../../shared/contracts/media.ts";
 import type { AppDatabase } from "../db/database.ts";
+import { downloadJobs } from "../downloads/downloads.schema.ts";
+import { transcriptionJobs } from "../transcriptions/transcriptions.schema.ts";
 import { MediaError } from "./error.ts";
 import { mediaItems } from "./media.schema.ts";
 import { probeMedia } from "./probe.ts";
@@ -79,15 +82,16 @@ export function createMediaLibrary(
   const filePath = (item: MediaItem) =>
     join(mediaDirectory, `${item.id}.${extensions[item.contentType]}`);
 
+  const read = (id: string) => {
+    if (Result.isFailure(Schema.decodeUnknownResult(MediaId)(id)))
+      throw new MediaError("notFound", "Media not found.");
+    const item = database.select().from(mediaItems).where(eq(mediaItems.id, id)).get();
+    if (!item) throw new MediaError("notFound", "Media not found.");
+    return Schema.decodeUnknownSync(MediaItem)(item);
+  };
   const get = (id: string) =>
     Effect.try({
-      try: () => {
-        if (Result.isFailure(Schema.decodeUnknownResult(MediaId)(id)))
-          throw new MediaError("notFound", "Media not found.");
-        const item = database.select().from(mediaItems).where(eq(mediaItems.id, id)).get();
-        if (!item) throw new MediaError("notFound", "Media not found.");
-        return Schema.decodeUnknownSync(MediaItem)(item);
-      },
+      try: () => read(id),
       catch: storageError,
     });
 
@@ -188,6 +192,70 @@ export function createMediaLibrary(
         catch: storageError,
       }),
     get,
+    rename: (id: string, title: string) =>
+      Effect.try({
+        try: () => {
+          const item = read(id);
+          const trimmed = title.trim();
+          if (!Schema.is(MediaTitle)(trimmed))
+            throw new MediaError(
+              "invalid",
+              "Use a title of 1–512 characters without control characters.",
+            );
+          database.update(mediaItems).set({ title: trimmed }).where(eq(mediaItems.id, id)).run();
+          return { ...item, title: trimmed };
+        },
+        catch: storageError,
+      }),
+    remove: (id: string) =>
+      Effect.try({
+        try: () =>
+          database.transaction((transaction) => {
+            const item = read(id);
+            const transcription = transaction
+              .select()
+              .from(transcriptionJobs)
+              .where(eq(transcriptionJobs.mediaId, id))
+              .get();
+            const downloads = transaction
+              .select()
+              .from(downloadJobs)
+              .where(or(eq(downloadJobs.mediaId, id), eq(downloadJobs.id, id)))
+              .all();
+            if (transcription && ["queued", "running"].includes(transcription.status))
+              throw new MediaError(
+                "conflict",
+                "Cancel the transcription before deleting this recording.",
+              );
+            if (downloads.some((job) => ["queued", "running"].includes(job.status)))
+              throw new MediaError(
+                "conflict",
+                "Wait for the download to finish before deleting this recording.",
+              );
+            transaction.delete(transcriptionJobs).where(eq(transcriptionJobs.mediaId, id)).run();
+            transaction
+              .delete(downloadJobs)
+              .where(or(eq(downloadJobs.mediaId, id), eq(downloadJobs.id, id)))
+              .run();
+            transaction.delete(mediaItems).where(eq(mediaItems.id, id)).run();
+            const directories = [
+              join(dataDirectory, "transcriptions", id),
+              ...downloads.map((job) =>
+                join(dataDirectory, "downloads", Schema.decodeUnknownSync(MediaId)(job.id)),
+              ),
+            ];
+            for (const directory of directories)
+              rmSync(directory, { recursive: true, force: true });
+            try {
+              unlinkSync(filePath(item));
+            } catch (cause) {
+              if (!(cause instanceof Error && "code" in cause && cause.code === "ENOENT"))
+                throw cause;
+            }
+            return item;
+          }),
+        catch: storageError,
+      }),
     file: (id: string) =>
       Effect.gen(function* () {
         const item = yield* get(id);

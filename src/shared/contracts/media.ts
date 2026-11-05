@@ -24,6 +24,13 @@ export const MediaFileName = Schema.String.check(
   Schema.isPattern(/^[^\p{Cc}/\\]+$/u),
 );
 export const MediaContentType = Schema.Literals(mediaContentTypes);
+export const MediaTitle = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(512),
+  Schema.isPattern(/\S/u),
+  Schema.isPattern(/^[^\p{Cc}]+$/u),
+);
+export const RenameMediaRequest = Schema.Struct({ title: MediaTitle });
 export const MediaItem = Schema.Struct({
   id: MediaId,
   title: Schema.String.check(Schema.isMinLength(1)),

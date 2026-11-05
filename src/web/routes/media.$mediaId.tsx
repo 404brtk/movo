@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useRef } from "react";
 import { MediaPlayer } from "../components/media-player.tsx";
+import { MediaActions } from "../components/media-actions.tsx";
 import { TranscriptionPanel } from "../components/transcription-panel.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
 import { ApiError, mediaFileUrl, mediaItemOptions } from "../lib/api.ts";
@@ -72,6 +73,7 @@ function MediaDetail() {
               Save a copy
             </a>
           </div>
+          <MediaActions key={item.id} item={item} />
           <MediaPlayer key={item.id} item={item} playerRef={playerRef} />
           <TranscriptionPanel
             key={item.id}

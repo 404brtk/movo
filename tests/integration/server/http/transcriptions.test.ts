@@ -54,6 +54,9 @@ it("runs transcription beyond the initiating request and exposes status, cancel 
               media.id,
             );
             controller.abort();
+            expect(
+              (await app.request(base.replace("/transcription", ""), { method: "DELETE" })).status,
+            ).toBe(409);
             await expect
               .poll(async () => (await Effect.runPromise(transcriptions.get(media.id)))?.status)
               .toBe("running");
@@ -177,6 +180,18 @@ it("downloads completed transcripts as UTF-8 attachments without starting anothe
               transcript,
             );
             expect(attempts).toBe(1);
+            const rename = await app.request(base.replace("/transcription", ""), {
+              method: "PATCH",
+              body: JSON.stringify({ title: "Renamed transcript" }),
+            });
+            expect(rename.status).toBe(200);
+            expect(
+              (await app.request(`${base}/export/txt`)).headers.get("content-disposition"),
+            ).toContain('filename="Renamed transcript.txt"');
+            expect(
+              (await app.request(base.replace("/transcription", ""), { method: "DELETE" })).status,
+            ).toBe(200);
+            expect((await app.request(`${base}/export/txt`)).status).toBe(404);
           });
           yield* Fiber.interrupt(worker);
         }),

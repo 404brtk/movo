@@ -3,6 +3,7 @@ export type MediaErrorReason =
   | "tooLarge"
   | "unsupported"
   | "notFound"
+  | "conflict"
   | "unavailable"
   | "storage";
 

@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
@@ -8,6 +16,11 @@ import { maxImportBytes } from "../../../../src/shared/contracts/media.ts";
 import { openDatabase, type AppDatabase } from "../../../../src/server/db/database.ts";
 import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { createDownloads } from "../../../../src/server/downloads/jobs.ts";
+import { downloadJobs } from "../../../../src/server/downloads/downloads.schema.ts";
+import { transcriptionJobs } from "../../../../src/server/transcriptions/transcriptions.schema.ts";
+import { transcriptionModel } from "../../../../src/server/models/catalog.ts";
+import { blockCleanup } from "../../../helpers/block-cleanup.ts";
 
 const wave = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
 const body = () => new Response(new Uint8Array(wave)).body;
@@ -39,6 +52,221 @@ async function withLibrary(
 }
 
 describe("managed media library", () => {
+  it("persists a trimmed Unicode title without changing the file or original name", async () => {
+    await withLibrary(async (library, _database, directory) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      const before = await Effect.runPromise(library.file(item.id));
+      const renamed = await Effect.runPromise(library.rename(item.id, "  Rozmowa — zażółć 🎙️  "));
+      expect(renamed).toEqual({ ...item, title: "Rozmowa — zażółć 🎙️" });
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const database = yield* openDatabase(join(directory, "test.sqlite"));
+            const reopened = createMediaLibrary(database, directory, resolveProbe);
+            expect(yield* reopened.get(item.id)).toEqual(renamed);
+            expect(yield* reopened.list()).toEqual([renamed]);
+            expect((yield* reopened.file(item.id)).path).toBe(before.path);
+            expect(readFileSync(before.path)).toEqual(wave);
+          }),
+        ),
+      );
+    });
+  });
+
+  it.each(["", "  ", "bad\nname", "bad\u0000name", "a".repeat(513)])(
+    "rejects invalid title %j",
+    async (title) => {
+      await withLibrary(async (library) => {
+        const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+        await expect(Effect.runPromise(library.rename(item.id, title))).rejects.toThrow(
+          "Use a title",
+        );
+        expect(await Effect.runPromise(library.get(item.id))).toEqual(item);
+      });
+    },
+  );
+
+  it("removes only the selected copy, its transcript, download history and temporary files", async () => {
+    await withLibrary(async (library, database, directory) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      const other = await Effect.runPromise(library.import(body(), "recording.wav"));
+      const original = join(directory, "recording.wav");
+      writeFileSync(original, wave);
+      database
+        .insert(transcriptionJobs)
+        .values({
+          mediaId: item.id,
+          modelId: transcriptionModel.id,
+          status: "completed",
+          phase: "finished",
+          transcript: {
+            language: "pl",
+            segments: [{ startMs: 0, endMs: 1000, text: "Saved speech." }],
+          },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+      database
+        .insert(downloadJobs)
+        .values({
+          id: item.id,
+          mediaId: item.id,
+          url: "https://www.youtube.com/watch?v=abcdefghijk",
+          status: "completed",
+          phase: "finished",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+      for (const folder of ["transcriptions", "downloads"]) {
+        const path = join(directory, folder, item.id);
+        mkdirSync(path, { recursive: true });
+        writeFileSync(join(path, "temporary"), "partial bytes");
+      }
+      const { path } = await Effect.runPromise(library.file(item.id));
+      expect(await Effect.runPromise(library.remove(item.id))).toEqual(item);
+      expect(await Effect.runPromise(library.list())).toEqual([other]);
+      expect(database.select().from(transcriptionJobs).all()).toEqual([]);
+      expect(database.select().from(downloadJobs).all()).toEqual([]);
+      expect(existsSync(path)).toBe(false);
+      expect(existsSync(join(directory, "transcriptions", item.id))).toBe(false);
+      expect(existsSync(join(directory, "downloads", item.id))).toBe(false);
+      expect(readFileSync(original)).toEqual(wave);
+      expect(readFileSync((await Effect.runPromise(library.file(other.id))).path)).toEqual(wave);
+      await expect(Effect.runPromise(library.remove(item.id))).rejects.toThrow("Media not found");
+      const config = { dataDirectory: directory };
+      const requeued = await Effect.runPromise(
+        createDownloads(database, config, createMediaTools(config)).enqueue(
+          "https://www.youtube.com/watch?v=abcdefghijk",
+        ),
+      );
+      expect(requeued.id).not.toBe(item.id);
+      expect(requeued.status).toBe("queued");
+    });
+  });
+
+  it.each(["queued", "running"] as const)(
+    "rejects removal during %s transcription",
+    async (status) => {
+      await withLibrary(async (library, database) => {
+        const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+        database
+          .insert(transcriptionJobs)
+          .values({
+            mediaId: item.id,
+            modelId: transcriptionModel.id,
+            status,
+            phase: "queued",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          })
+          .run();
+        await expect(Effect.runPromise(library.remove(item.id))).rejects.toThrow(
+          "Cancel the transcription",
+        );
+        expect(readFileSync((await Effect.runPromise(library.file(item.id))).path)).toEqual(wave);
+        expect(database.select().from(transcriptionJobs).get()?.status).toBe(status);
+      });
+    },
+  );
+
+  it("rejects removal while a download is still publishing the recording", async () => {
+    await withLibrary(async (library, database) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      database
+        .insert(downloadJobs)
+        .values({
+          id: item.id,
+          url: "https://www.youtube.com/watch?v=abcdefghijk",
+          status: "running",
+          phase: "saving",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+      await expect(Effect.runPromise(library.remove(item.id))).rejects.toThrow(
+        "Wait for the download",
+      );
+      expect(await Effect.runPromise(library.get(item.id))).toEqual(item);
+    });
+  });
+
+  it("keeps saved media and metadata when SQLite rejects deletion", async () => {
+    await withLibrary(async (library, database) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      database.run(
+        sql`create trigger reject_delete before delete on media_items begin select raise(fail, 'Deletion rejected'); end`,
+      );
+      await expect(Effect.runPromise(library.remove(item.id))).rejects.toThrow("Could not access");
+      expect(await Effect.runPromise(library.get(item.id))).toEqual(item);
+      expect(readFileSync((await Effect.runPromise(library.file(item.id))).path)).toEqual(wave);
+      database.run(sql`drop trigger reject_delete`);
+      await Effect.runPromise(library.remove(item.id));
+      expect(await Effect.runPromise(library.list())).toEqual([]);
+    });
+  });
+
+  it("rolls back metadata after a cleanup failure and allows another deletion attempt", async () => {
+    await withLibrary(async (library, database, directory) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      database
+        .insert(transcriptionJobs)
+        .values({
+          mediaId: item.id,
+          modelId: transcriptionModel.id,
+          status: "completed",
+          phase: "finished",
+          transcript: { language: null, segments: [] },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+      const temporary = join(directory, "transcriptions", item.id);
+      mkdirSync(temporary, { recursive: true });
+      const release = await blockCleanup(temporary);
+      try {
+        await expect(Effect.runPromise(library.remove(item.id))).rejects.toThrow(
+          "Could not access",
+        );
+        expect(await Effect.runPromise(library.get(item.id))).toEqual(item);
+        expect(database.select().from(transcriptionJobs).get()?.transcript).toEqual({
+          language: null,
+          segments: [],
+        });
+        expect(readFileSync((await Effect.runPromise(library.file(item.id))).path)).toEqual(wave);
+      } finally {
+        await release();
+      }
+      await Effect.runPromise(library.remove(item.id));
+      expect(await Effect.runPromise(library.list())).toEqual([]);
+    });
+  });
+
+  it("allows deleting metadata when its managed copy is already missing", async () => {
+    await withLibrary(async (library) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      rmSync((await Effect.runPromise(library.file(item.id))).path);
+      await Effect.runPromise(library.remove(item.id));
+      expect(await Effect.runPromise(library.list())).toEqual([]);
+    });
+  });
+
+  it("keeps metadata when the managed file cannot be unlinked and permits retry after repair", async () => {
+    await withLibrary(async (library) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      const { path } = await Effect.runPromise(library.file(item.id));
+      rmSync(path);
+      mkdirSync(path);
+      await expect(Effect.runPromise(library.remove(item.id))).rejects.toThrow("Could not access");
+      expect(await Effect.runPromise(library.get(item.id))).toEqual(item);
+      rmSync(path, { recursive: true });
+      writeFileSync(path, wave);
+      await Effect.runPromise(library.remove(item.id));
+      expect(await Effect.runPromise(library.list())).toEqual([]);
+    });
+  });
+
   it("copies local audio, preserves its original and survives reopening the database", async () => {
     const directory = mkdtempSync(join(tmpdir(), "movo-library-persistence-"));
     const databasePath = join(directory, "test.sqlite");

@@ -207,6 +207,13 @@ export function createTranscriptions(
     });
   return {
     get,
+    removeMedia: (id: string) =>
+      Effect.gen(function* () {
+        const job = yield* get(id);
+        if (job && !["queued", "running"].includes(job.status) && active?.mediaId === id)
+          yield* Fiber.interrupt(active.fiber);
+        return yield* library.remove(id);
+      }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
     enqueue: (id: string) =>
       Effect.gen(function* () {
         yield* library.file(id);
