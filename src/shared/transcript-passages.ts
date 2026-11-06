@@ -2,6 +2,7 @@ import type { TranscriptWord } from "./contracts/transcriptions.ts";
 
 export const maxPassageCharacters = 84;
 export const maxPassageMs = 7000;
+export const passageBreakSilenceMs = 3000;
 const closingMarks = String.raw`["'”’)\]]*$`;
 const sentenceEnding = new RegExp(`[.!?…]${closingMarks}`, "u");
 const clauseEnding = new RegExp(`[,;:]${closingMarks}`, "u");
@@ -95,8 +96,12 @@ function fittingPassages(words: readonly TranscriptWord[], firstWord: number): T
 export function transcriptPassages(words: readonly TranscriptWord[]) {
   const passages: TranscriptPassage[] = [];
   let firstWord = 0;
+  let latestEndMs = 0;
   words.forEach((word, index) => {
-    if (!endsSentence(word.text) && index < words.length - 1) return;
+    latestEndMs = Math.max(latestEndMs, word.endMs);
+    const next = words[index + 1];
+    if (next && !endsSentence(word.text) && next.startMs - latestEndMs < passageBreakSilenceMs)
+      return;
     passages.push(...fittingPassages(words.slice(firstWord, index + 1), firstWord));
     firstWord = index + 1;
   });

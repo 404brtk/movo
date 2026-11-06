@@ -4,6 +4,7 @@ import {
   currentWordIndex,
   maxPassageCharacters,
   maxPassageMs,
+  passageBreakSilenceMs,
   transcriptPassages,
 } from "../../../src/shared/transcript-passages.ts";
 
@@ -27,6 +28,26 @@ const longSentence = (clauseEnd: number) =>
 describe("transcript passages", () => {
   it("returns no passages without words", () => {
     expect(transcriptPassages([])).toEqual([]);
+  });
+
+  it("ends a passage at a long silence even without punctuation", () => {
+    const paused = [
+      { startMs: 0, endMs: 300, text: "First" },
+      { startMs: 300, endMs: 600, text: "part" },
+      { startMs: 600 + passageBreakSilenceMs, endMs: 3900, text: "Second" },
+      { startMs: 3900, endMs: 4200, text: "part" },
+      { startMs: 4200 + passageBreakSilenceMs - 1, endMs: 7500, text: "continues." },
+    ];
+    expect(texts(paused)).toEqual(["First part", "Second part continues."]);
+  });
+
+  it("measures a silence from the latest end of overlapping words", () => {
+    const overlapping = [
+      { startMs: 0, endMs: 2000, text: "Held" },
+      { startMs: 100, endMs: 300, text: "inside" },
+      { startMs: 3400, endMs: 3600, text: "after." },
+    ];
+    expect(texts(overlapping)).toEqual(["Held inside after."]);
   });
 
   it("ends a passage after each sentence, including closing quotes and brackets", () => {
