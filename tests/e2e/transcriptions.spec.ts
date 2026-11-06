@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import type { Route } from "@playwright/test";
 import type { TranscriptionJob } from "../../src/shared/contracts/transcriptions.ts";
+import { timedWords } from "../helpers/timed-words.ts";
 
 test("transcribes explicitly, keeps working across navigation and seeks from saved passages", async ({
   page,
@@ -63,9 +64,9 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
     phase: "finished",
     transcript: {
       language: "en",
-      segments: [
-        { startMs: 100, endMs: 800, text: "First saved passage." },
-        { startMs: 1000, endMs: 1800, text: "Second saved passage." },
+      words: [
+        ...timedWords(100, 800, "First saved passage."),
+        ...timedWords(1000, 1800, "Second saved passage."),
       ],
     },
     device: { backend: "vulkan", name: "Test GPU" },
@@ -79,10 +80,27 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   await expect(panel.getByText("Transcribed on Test GPU · Vulkan", { exact: true })).toBeVisible();
   await page.reload();
   await expect(panel.getByText("First saved passage.", { exact: true })).toBeVisible();
+  const passages = panel.getByRole("list", { name: "Timestamped passages" }).getByRole("listitem");
+  const currentPassage = panel.locator('[aria-current="time"]');
+  const currentWord = panel.locator("mark");
+  await expect(currentPassage).toHaveCount(0);
+  await expect(currentWord).toHaveCount(0);
   await panel.getByRole("button", { name: "Go to 0:01", exact: true }).click();
   await expect
     .poll(() => page.locator("audio").evaluate((element: HTMLMediaElement) => element.currentTime))
     .toBeCloseTo(1, 1);
+  await expect(passages.nth(1)).toHaveAttribute("aria-current", "time");
+  await expect(currentPassage).toHaveCount(1);
+  await expect(currentWord).toHaveText("Second");
+  await expect(passages.nth(1)).toHaveText(/Second saved passage\.$/u);
+  await page.locator("audio").evaluate((element: HTMLMediaElement) => {
+    element.currentTime = 1.6;
+  });
+  await expect(currentWord).toHaveText("passage.");
+  await panel.getByRole("button", { name: "Go to 0:00", exact: true }).click();
+  await expect(passages.nth(0)).toHaveAttribute("aria-current", "time");
+  await expect(currentWord).toHaveText("First");
+  await expect(currentPassage).toHaveCount(1);
   expect(attempts).toBe(2);
 });
 
@@ -144,7 +162,7 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
     ...job,
     status: "completed",
     phase: "finished",
-    transcript: { language: null, segments: [] },
+    transcript: { language: null, words: [] },
     cleanupError: "Could not remove temporary transcription files. Check folder permissions.",
   };
   await page.reload();
@@ -221,7 +239,7 @@ test("keeps retry progress when an older failed status arrives after retry succe
     phase: "finished",
     transcript: {
       language: "en",
-      segments: [{ startMs: 0, endMs: 1000, text: "The retried transcription completed." }],
+      words: [...timedWords(0, 1000, "The retried transcription completed.")],
     },
   };
   await staleRead.fulfill({ json: failed });
@@ -246,7 +264,7 @@ test("transcribes a completed recording again while keeping the previous transcr
   const media: { id: string } = await uploaded.json();
   const previous = {
     language: "en",
-    segments: [{ startMs: 0, endMs: 1000, text: "The previous transcript." }],
+    words: timedWords(0, 1000, "The previous transcript."),
   };
   let job: TranscriptionJob = {
     mediaId: media.id,
@@ -324,7 +342,7 @@ test("transcribes a completed recording again while keeping the previous transcr
     phase: "finished",
     transcript: {
       language: "en",
-      segments: [{ startMs: 0, endMs: 1000, text: "The replacement transcript." }],
+      words: timedWords(0, 1000, "The replacement transcript."),
     },
     device: { backend: "vulkan", name: "Test GPU" },
   };

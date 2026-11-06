@@ -24,7 +24,10 @@ it.for(["tone.wav", "sample.webm"])(
     await mkdir(staging);
     const expected = {
       language: null,
-      segments: [{ startMs: 50, endMs: 1500, text: "Prepared audio." }],
+      words: [
+        { startMs: 50, endMs: 700, text: "Prepared" },
+        { startMs: 700, endMs: 1500, text: "audio." },
+      ],
     };
     const phases: string[] = [];
     const devices: unknown[] = [];
@@ -69,7 +72,7 @@ it.for([
   {
     name: "a result without a reported device",
     reportsDevice: false,
-    payload: JSON.stringify({ language: null, segments: [] }),
+    payload: JSON.stringify({ language: null, words: [] }),
     cause: /did not report its device/u,
   },
   { name: "unreadable JSON", reportsDevice: true, payload: "{", cause: /JSON/u },
@@ -79,19 +82,28 @@ it.for([
     cause: /ends before it starts/u,
     payload: JSON.stringify({
       language: null,
-      segments: [{ startMs: 1000, endMs: 100, text: "Invalid" }],
+      words: [{ startMs: 1000, endMs: 100, text: "Invalid" }],
     }),
   },
   {
-    name: "unordered passages",
+    name: "unordered words",
     reportsDevice: true,
     cause: /not in time order/u,
     payload: JSON.stringify({
       language: null,
-      segments: [
+      words: [
         { startMs: 1000, endMs: 1500, text: "Later" },
         { startMs: 100, endMs: 500, text: "Earlier" },
       ],
+    }),
+  },
+  {
+    name: "a word containing whitespace",
+    reportsDevice: true,
+    cause: /\\S\+/u,
+    payload: JSON.stringify({
+      language: null,
+      words: [{ startMs: 0, endMs: 500, text: "two words" }],
     }),
   },
 ])("rejects $name from the worker", async ({ reportsDevice, payload, cause }) => {

@@ -1,15 +1,13 @@
-import Database from "better-sqlite3";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { join } from "node:path";
 import { Effect } from "effect";
 import { expect, it } from "vitest";
 import { openDatabase } from "../../../../src/server/db/database.ts";
 import { createDownloads } from "../../../../src/server/downloads/jobs.ts";
 import { createMediaDownloader } from "../../../../src/server/downloads/ytdlp.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { openLegacyDatabase } from "../../../helpers/legacy-database.ts";
 
 it("preserves legacy jobs and media while allowing new variants of their URL", async () => {
   const directory = mkdtempSync(join(tmpdir(), "movo-download-migration-"));
@@ -18,25 +16,8 @@ it("preserves legacy jobs and media while allowing new variants of their URL", a
   const queuedId = "22222222-2222-4222-8222-222222222222";
   const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
   try {
-    const journal: { entries: { idx: number; tag: string }[] } = JSON.parse(
-      readFileSync(resolve("migrations/meta/_journal.json"), "utf8"),
-    );
-    const entries = journal.entries.filter((entry) => entry.idx <= 4);
-    const legacyMigrations = join(directory, "legacy");
-    mkdirSync(join(legacyMigrations, "meta"), { recursive: true });
-    writeFileSync(
-      join(legacyMigrations, "meta/_journal.json"),
-      JSON.stringify({ ...journal, entries }),
-    );
-    for (const entry of entries)
-      copyFileSync(
-        resolve("migrations", entry.tag + ".sql"),
-        join(legacyMigrations, entry.tag + ".sql"),
-      );
-    const legacy = new Database(path);
+    const legacy = openLegacyDatabase(directory, path, 4);
     try {
-      legacy.pragma("foreign_keys = ON");
-      migrate(drizzle({ client: legacy }), { migrationsFolder: legacyMigrations });
       legacy
         .prepare(
           "insert into media_items (id, title, original_name, kind, content_type, byte_size, duration_seconds, imported_at) values (?, 'Saved media', 'original.wav', 'audio', 'audio/wav', 100, 2, 1)",

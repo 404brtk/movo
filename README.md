@@ -1,6 +1,6 @@
 # movo
 
-A local media workspace. Import audio and video or download public videos from YouTube and X into a persistent library, play saved copies and generate local transcripts with timestamped passages. Downloads and transcription run in the background while you browse other recordings. Model installation is optional and explicit.
+A local media workspace. Import audio and video or download public videos from YouTube and X into a persistent library, play saved copies and generate local transcripts with word-level timestamps. Downloads and transcription run in the background while you browse other recordings. Model installation is optional and explicit.
 
 ## Requirements
 
@@ -101,7 +101,7 @@ New downloads use unique temporary files and publish verified weights without ov
 
 Open a saved recording and choose **Transcribe**. Movo uses Parakeet Ultra locally on a supported GPU when one is available, otherwise on the CPU, and shows which device processed the recording. Audio is prepared with FFmpeg. If either is missing, use **Models** or **Media tools** in the transcription panel to complete setup. Transcribing never downloads a model automatically.
 
-One transcription runs at a time; other recordings wait in the persistent queue. You can navigate away or reload while it runs. Choose **Cancel transcription** to stop it, or **Retry transcription** after failure, cancellation or interruption. A recording has one saved transcript. Click a passage's timestamp to seek its player. A successful recording without recognized speech shows an explicit empty result.
+One transcription runs at a time; other recordings wait in the persistent queue. You can navigate away or reload while it runs. Choose **Cancel transcription** to stop it, or **Retry transcription** after failure, cancellation or interruption. A recording has one saved transcript. While the recording plays, the current passage and word are highlighted. Click a passage's timestamp to seek its player. A successful recording without recognized speech shows an explicit empty result.
 
 Completed transcripts with speech offer **Copy text**, **Download TXT**, **Download SRT** and **Download VTT** above the passages. TXT and copying contain plain text; SRT and VTT contain timestamped subtitles. Downloads use UTF-8 and the recording title as the suggested filename. Clipboard failures show guidance and leave TXT available. Exporting reuses the saved result without running the model again.
 

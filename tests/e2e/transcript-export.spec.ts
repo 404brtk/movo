@@ -13,8 +13,9 @@ import { createMediaTools } from "../../src/server/media-tools/tools.ts";
 import { createModels } from "../../src/server/models/models.ts";
 import { createTranscriptions } from "../../src/server/transcriptions/jobs.ts";
 import type { TranscriptionJob } from "../../src/shared/contracts/transcriptions.ts";
+import { timedWords } from "../helpers/timed-words.ts";
 
-const plainText = "Zażółć gęślą jaźń.\n\nA & <b>B</b>\n\nSecond line --> end.";
+const plainText = "Zażółć gęślą jaźń.\nA & <b>B</b> Second line --> end.";
 const exports = [
   { format: "txt", text: plainText },
   {
@@ -44,9 +45,9 @@ const test = base.extend<{ recording: { title: string; url: string } }>({
               transcribe: () =>
                 Effect.succeed({
                   language: "pl",
-                  segments: [
-                    { startMs: 125, endMs: 999, text: "Zażółć gęślą jaźń." },
-                    { startMs: 1000, endMs: 1800, text: "A & <b>B</b>\n\nSecond line --> end." },
+                  words: [
+                    ...timedWords(125, 999, "Zażółć gęślą jaźń."),
+                    ...timedWords(1000, 1800, "A & <b>B</b> Second line --> end."),
                   ],
                 }),
             });

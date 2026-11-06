@@ -131,13 +131,13 @@ export function createTranscriptions(
           yield* storage(() => {
             const transcript = Schema.decodeUnknownSync(Transcript)(result);
             if (
-              transcript.segments.some(
-                (segment) => segment.endMs > Math.ceil(item.durationSeconds * 1000) + 1000,
+              transcript.words.some(
+                (word) => word.endMs > Math.ceil(item.durationSeconds * 1000) + 1000,
               )
             )
               throw new MediaError(
                 "unsupported",
-                "The engine returned passages outside this recording.",
+                "The engine returned words outside this recording.",
               );
             updateRunning(job.mediaId, {
               status: "completed",

@@ -2,7 +2,8 @@ import { ArrowLeft02Icon, Download04Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
+import type { MediaItem } from "../../shared/contracts/media.ts";
 import { MediaPlayer } from "../components/media-player.tsx";
 import { MediaActions } from "../components/media-actions.tsx";
 import { TranscriptionPanel } from "../components/transcription-panel.tsx";
@@ -12,14 +13,27 @@ import { formatBytes, formatDuration, formatImportDate } from "../lib/format.ts"
 
 export const Route = createFileRoute("/media/$mediaId")({ component: MediaDetail });
 
+function PlaybackWithTranscript({ item }: { item: MediaItem }) {
+  const player = useRef<HTMLMediaElement | null>(null);
+  const [positionMs, setPositionMs] = useState(0);
+  const playerRef = useCallback((element: HTMLMediaElement | null) => {
+    player.current = element;
+  }, []);
+  const seek = useCallback((milliseconds: number) => {
+    if (player.current) player.current.currentTime = milliseconds / 1000;
+  }, []);
+  return (
+    <>
+      <MediaPlayer item={item} playerRef={playerRef} onPositionChange={setPositionMs} />
+      <TranscriptionPanel mediaId={item.id} positionMs={positionMs} onSeek={seek} />
+    </>
+  );
+}
+
 function MediaDetail() {
   const { mediaId } = Route.useParams();
   const media = useQuery(mediaItemOptions(mediaId));
   const item = media.data;
-  const player = useRef<HTMLMediaElement | null>(null);
-  const playerRef = useCallback((element: HTMLMediaElement | null) => {
-    player.current = element;
-  }, []);
   return (
     <main className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
       <Link
@@ -74,14 +88,7 @@ function MediaDetail() {
             </a>
           </div>
           <MediaActions key={item.id} item={item} />
-          <MediaPlayer key={item.id} item={item} playerRef={playerRef} />
-          <TranscriptionPanel
-            key={item.id}
-            mediaId={item.id}
-            onSeek={(seconds) => {
-              if (player.current) player.current.currentTime = seconds;
-            }}
-          />
+          <PlaybackWithTranscript key={item.id} item={item} />
           {item.sourceUrl ? (
             <a
               href={item.sourceUrl}
