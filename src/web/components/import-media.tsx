@@ -6,7 +6,7 @@ import {
   ApiError,
   importMedia,
   mediaItemOptions,
-  mediaListOptions,
+  mediaListKey,
   mediaToolsOptions,
 } from "../lib/api.ts";
 import { Button } from "./ui/button.tsx";
@@ -28,8 +28,7 @@ export function ImportMedia() {
     },
     onSuccess: async (item) => {
       queryClient.setQueryData(mediaItemOptions(item.id).queryKey, item);
-      queryClient.setQueryData(mediaListOptions.queryKey, (current) => [item, ...(current ?? [])]);
-      await queryClient.invalidateQueries({ queryKey: mediaListOptions.queryKey });
+      await queryClient.invalidateQueries({ queryKey: mediaListKey });
     },
   });
 

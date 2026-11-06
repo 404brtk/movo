@@ -4,8 +4,15 @@ import { lstat, mkdir, realpath, rename, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, parse, relative } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { desc, eq, or } from "drizzle-orm";
+import { and, eq, getTableColumns, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { Effect, Result, Schema } from "effect";
+import {
+  librarySort,
+  type LibraryItem,
+  type LibraryList,
+  type LibraryQuery,
+  type LibrarySort,
+} from "../../shared/contracts/library.ts";
 import {
   maxImportBytes,
   MediaFileName,
@@ -15,12 +22,22 @@ import {
   MediaTitle,
   type MediaDeletion,
 } from "../../shared/contracts/media.ts";
+import { searchTerms } from "../../shared/search-text.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { downloadJobs } from "../downloads/downloads.schema.ts";
 import { transcriptionJobs } from "../transcriptions/transcriptions.schema.ts";
 import { MediaError } from "./error.ts";
 import { mediaItems } from "./media.schema.ts";
 import { probeMedia } from "./probe.ts";
+import {
+  addSearchEntry,
+  describeMatch,
+  findPassageMatches,
+  rankSearchMatches,
+  removeSearchEntry,
+  setSearchTitle,
+  syncSearchIndex,
+} from "./search.ts";
 
 const extensions: Record<MediaItem["contentType"], string> = {
   "video/mp4": "mp4",
@@ -36,6 +53,23 @@ const extensions: Record<MediaItem["contentType"], string> = {
   "audio/flac": "flac",
   "audio/aac": "aac",
 };
+
+const titleOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+const newestFirst = (first: MediaItem, second: MediaItem) =>
+  second.importedAt - first.importedAt ||
+  (first.id < second.id ? 1 : first.id > second.id ? -1 : 0);
+
+function compareItems(sort: LibrarySort, ranks: ReadonlyMap<string, number> | null) {
+  const comparators: Record<LibrarySort, (first: MediaItem, second: MediaItem) => number> = {
+    relevance: (first, second) =>
+      (ranks?.get(first.id) ?? 0) - (ranks?.get(second.id) ?? 0) || newestFirst(first, second),
+    newest: newestFirst,
+    oldest: (first, second) => newestFirst(second, first),
+    title: (first, second) =>
+      titleOrder.compare(first.title, second.title) || newestFirst(first, second),
+  };
+  return comparators[sort];
+}
 
 const storageError = (cause: unknown) =>
   cause instanceof MediaError
@@ -215,7 +249,10 @@ export function createMediaLibrary(
         });
         yield* Effect.try({
           try: () => {
-            database.insert(mediaItems).values(item).run();
+            database.transaction((transaction) => {
+              transaction.insert(mediaItems).values(item).run();
+              addSearchEntry(transaction, item);
+            });
             committed = true;
           },
           catch: storageError,
@@ -229,6 +266,41 @@ export function createMediaLibrary(
         ),
       );
     });
+
+  const listItems = (query: LibraryQuery): LibraryItem[] => {
+    const terms = searchTerms(query.q ?? "");
+    const ranks = terms.length > 0 ? rankSearchMatches(database, terms) : null;
+    if (ranks?.size === 0) return [];
+    const items = Schema.decodeUnknownSync(MediaList)(
+      database
+        .select(getTableColumns(mediaItems))
+        .from(mediaItems)
+        .leftJoin(transcriptionJobs, eq(transcriptionJobs.mediaId, mediaItems.id))
+        .where(
+          and(
+            query.kind ? eq(mediaItems.kind, query.kind) : undefined,
+            query.transcript === "available"
+              ? isNotNull(transcriptionJobs.transcript)
+              : query.transcript === "missing"
+                ? isNull(transcriptionJobs.transcript)
+                : undefined,
+            ranks ? inArray(mediaItems.id, [...ranks.keys()]) : undefined,
+          ),
+        )
+        .all(),
+    );
+    const ordered = items.toSorted(compareItems(librarySort(query), ranks));
+    if (!ranks) return ordered;
+    const passages = findPassageMatches(
+      database,
+      terms,
+      ordered.map((item) => item.id),
+    );
+    return ordered.map((item) => ({
+      ...item,
+      match: describeMatch(item.title, passages.get(item.id), terms),
+    }));
+  };
 
   return {
     recoverDeletions: () =>
@@ -295,16 +367,22 @@ export function createMediaLibrary(
         });
         return yield* save(path, basename(path), title, sourceUrl, stored.size, id);
       }),
-    list: () =>
+    syncSearchIndex: () =>
+      Effect.try({ try: () => syncSearchIndex(database), catch: storageError }),
+    list: (query: LibraryQuery = {}) =>
+      Effect.try({ try: () => listItems(query), catch: storageError }),
+    browse: (query: LibraryQuery) =>
       Effect.try({
-        try: () =>
-          Schema.decodeUnknownSync(MediaList)(
+        try: (): LibraryList => ({
+          items: listItems(query),
+          transcribing:
             database
-              .select()
-              .from(mediaItems)
-              .orderBy(desc(mediaItems.importedAt), desc(mediaItems.id))
-              .all(),
-          ),
+              .select({ mediaId: transcriptionJobs.mediaId })
+              .from(transcriptionJobs)
+              .where(inArray(transcriptionJobs.status, ["queued", "running"]))
+              .limit(1)
+              .get() !== undefined,
+        }),
         catch: storageError,
       }),
     get,
@@ -318,7 +396,14 @@ export function createMediaLibrary(
               "invalid",
               "Use a title of 1–512 characters without control characters.",
             );
-          database.update(mediaItems).set({ title: trimmed }).where(eq(mediaItems.id, id)).run();
+          database.transaction((transaction) => {
+            transaction
+              .update(mediaItems)
+              .set({ title: trimmed })
+              .where(eq(mediaItems.id, id))
+              .run();
+            setSearchTitle(transaction, id, trimmed);
+          });
           return { ...item, title: trimmed };
         },
         catch: storageError,
@@ -343,6 +428,7 @@ export function createMediaLibrary(
                 .delete(downloadJobs)
                 .where(or(eq(downloadJobs.mediaId, id), eq(downloadJobs.id, id)))
                 .run();
+              removeSearchEntry(transaction, id);
               transaction.delete(mediaItems).where(eq(mediaItems.id, id)).run();
               return item;
             },

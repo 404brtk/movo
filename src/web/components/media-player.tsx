@@ -1,17 +1,22 @@
-import { useState } from "react";
+import { type SyntheticEvent, useState } from "react";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import { mediaFileUrl } from "../lib/api.ts";
 
 export function MediaPlayer({
   item,
   playerRef,
+  startMs,
   onPositionChange,
 }: {
   item: MediaItem;
   playerRef?: (element: HTMLMediaElement | null) => void;
+  startMs?: number | undefined;
   onPositionChange?: (milliseconds: number) => void;
 }) {
   const [failed, setFailed] = useState(false);
+  const seekToStart = (event: SyntheticEvent<HTMLMediaElement>) => {
+    if (startMs !== undefined) event.currentTarget.currentTime = startMs / 1000;
+  };
   return (
     <div className="space-y-3">
       {item.kind === "video" ? (
@@ -23,6 +28,7 @@ export function MediaPlayer({
             controls
             preload="metadata"
             aria-label={item.title}
+            onLoadedMetadata={seekToStart}
             onError={() => setFailed(true)}
             onTimeUpdate={(event) => onPositionChange?.(event.currentTarget.currentTime * 1000)}
           />
@@ -36,6 +42,7 @@ export function MediaPlayer({
             controls
             preload="metadata"
             aria-label={item.title}
+            onLoadedMetadata={seekToStart}
             onError={() => setFailed(true)}
             onTimeUpdate={(event) => onPositionChange?.(event.currentTarget.currentTime * 1000)}
           />

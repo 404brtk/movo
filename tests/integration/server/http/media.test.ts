@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { maxImportBytes, MediaItem, MediaList } from "../../../../src/shared/contracts/media.ts";
+import { LibraryList } from "../../../../src/shared/contracts/library.ts";
+import { maxImportBytes, MediaItem } from "../../../../src/shared/contracts/media.ts";
 import { openDatabase } from "../../../../src/server/db/database.ts";
 import { createApp } from "../../../../src/server/http/app.ts";
 
@@ -53,7 +54,10 @@ describe("media HTTP interface", () => {
       });
       expect(renamed.status).toBe(200);
       expect(await renamed.json()).toEqual({ ...item, title: "Nowy tytuł 🎙️" });
-      expect(await (await app.request(base)).json()).toEqual([{ ...item, title: "Nowy tytuł 🎙️" }]);
+      expect(await (await app.request(base)).json()).toEqual({
+        items: [{ ...item, title: "Nowy tytuł 🎙️" }],
+        transcribing: false,
+      });
       for (const method of ["PATCH", "DELETE"]) {
         const forbidden = await app.request(url, {
           method,
@@ -65,11 +69,42 @@ describe("media HTTP interface", () => {
       const removed = await app.request(url, { method: "DELETE" });
       expect(removed.status).toBe(200);
       expect(await removed.json()).toEqual({ ...item, title: "Nowy tytuł 🎙️" });
-      expect(await (await app.request(base)).json()).toEqual([]);
+      expect(await (await app.request(base)).json()).toEqual({ items: [], transcribing: false });
       for (const suffix of ["", "/file", "/transcription", "/transcription/export/txt"]) {
         expect((await app.request(`${url}${suffix}`)).status).toBe(404);
       }
       expect((await app.request(url, { method: "DELETE" })).status).toBe(404);
+    });
+  });
+
+  it("searches and filters the library through validated query parameters", async () => {
+    await withApp(async (app) => {
+      const item = await importWave(app);
+      const found = await app.request(`${base}?q=PROBKA&kind=audio&transcript=missing&sort=title`);
+      expect(found.status).toBe(200);
+      expect(await found.json()).toEqual({
+        items: [
+          { ...item, match: { title: [{ start: 0, end: 6 }], passages: [], passageCount: 0 } },
+        ],
+        transcribing: false,
+      });
+      expect(await (await app.request(`${base}?kind=video`)).json()).toEqual({
+        items: [],
+        transcribing: false,
+      });
+      for (const query of [
+        "kind=image",
+        "transcript=yes",
+        "sort=size",
+        "kind=audio&kind=video",
+        `q=${"a".repeat(201)}`,
+      ]) {
+        const rejected = await app.request(`${base}?${query}`);
+        expect(rejected.status).toBe(400);
+        expect(await rejected.json()).toEqual({
+          error: "Use a search of up to 200 characters and supported library filters.",
+        });
+      }
     });
   });
 
@@ -120,7 +155,10 @@ describe("media HTTP interface", () => {
         byteSize: wave.length,
       });
       const list = await app.request(base);
-      expect(Schema.decodeUnknownSync(MediaList)(await list.json())).toEqual([imported]);
+      expect(Schema.decodeUnknownSync(LibraryList)(await list.json())).toEqual({
+        items: [imported],
+        transcribing: false,
+      });
       const detail = await app.request(`${base}/${imported.id}`);
       expect(await detail.json()).toEqual(imported);
     });
@@ -200,7 +238,7 @@ describe("media HTTP interface", () => {
         body: new Uint8Array(wave),
       });
       expect(response.status).toBe(status);
-      expect(await (await app.request(base)).json()).toEqual([]);
+      expect(await (await app.request(base)).json()).toEqual({ items: [], transcribing: false });
     });
   });
 
@@ -218,7 +256,7 @@ describe("media HTTP interface", () => {
         body: new Uint8Array(wave),
       });
       expect(forbidden.status).toBe(403);
-      expect(await (await app.request(base)).json()).toEqual([]);
+      expect(await (await app.request(base)).json()).toEqual({ items: [], transcribing: false });
     });
   });
 });

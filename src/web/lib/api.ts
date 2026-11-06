@@ -1,13 +1,13 @@
 import { Result, Schema } from "effect";
 import { hc } from "hono/client";
-import { queryOptions } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import type { AppType } from "../../server/http/app.ts";
+import { LibraryList, type LibraryQuery } from "../../shared/contracts/library.ts";
 import {
   ApiErrorResponse,
   maxImportBytes,
   MediaItem,
   MediaDeletion,
-  MediaList,
 } from "../../shared/contracts/media.ts";
 import {
   activeInstallationPhases,
@@ -83,11 +83,17 @@ async function readResponse<S extends Schema.ConstraintDecoder<unknown>>(
   return result.success;
 }
 
-export const mediaListOptions = queryOptions({
-  queryKey: ["media"],
-  queryFn: ({ signal }) => readResponse(client.api.media.$get({}, { init: { signal } }), MediaList),
-  retry: false,
-});
+export const mediaListKey = ["media", "list"] as const;
+
+export const mediaListOptions = (query: LibraryQuery) =>
+  queryOptions({
+    queryKey: [...mediaListKey, query],
+    queryFn: ({ signal }) =>
+      readResponse(client.api.media.$get({ query }, { init: { signal } }), LibraryList),
+    placeholderData: keepPreviousData,
+    refetchInterval: (listing) => (listing.state.data?.transcribing ? 2000 : false),
+    retry: false,
+  });
 
 export const mediaItemOptions = (id: string) =>
   queryOptions({

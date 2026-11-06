@@ -7,12 +7,13 @@ import {
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
+import type { LibraryList } from "../../shared/contracts/library.ts";
 import type { MediaDeletion, MediaItem } from "../../shared/contracts/media.ts";
 import {
   deleteMedia,
   downloadsOptions,
   mediaItemOptions,
-  mediaListOptions,
+  mediaListKey,
   removeMediaFile,
   renameMedia,
   transcriptionOptions,
@@ -28,15 +29,12 @@ export function MediaActions({ item }: { item: MediaItem }) {
   const focusTitle = useCallback((input: HTMLInputElement | null) => input?.focus(), []);
   const rename = useMutation({
     mutationFn: () => renameMedia(item.id, title.trim()),
-    onMutate: () => client.cancelQueries({ queryKey: mediaListOptions.queryKey }),
+    onMutate: () => client.cancelQueries({ queryKey: mediaListKey }),
     onSuccess: async (updated) => {
       client.setQueryData(mediaItemOptions(item.id).queryKey, updated);
-      client.setQueryData(mediaListOptions.queryKey, (current) =>
-        current?.map((entry) => (entry.id === item.id ? updated : entry)),
-      );
       setEditing(false);
       renameTrigger.current?.focus();
-      await client.invalidateQueries({ queryKey: mediaListOptions.queryKey, exact: true });
+      await client.invalidateQueries({ queryKey: mediaListKey });
     },
   });
   const leaveRecording = async () => {
@@ -44,7 +42,7 @@ export function MediaActions({ item }: { item: MediaItem }) {
     client.removeQueries({ queryKey: mediaItemOptions(item.id).queryKey, exact: true });
     client.removeQueries({ queryKey: transcriptionOptions(item.id).queryKey, exact: true });
     await Promise.all([
-      client.invalidateQueries({ queryKey: mediaListOptions.queryKey, exact: true }),
+      client.invalidateQueries({ queryKey: mediaListKey }),
       client.invalidateQueries({ queryKey: downloadsOptions.queryKey }),
     ]);
   };
@@ -52,14 +50,19 @@ export function MediaActions({ item }: { item: MediaItem }) {
     mutationFn: () => deleteMedia(item.id),
     onMutate: async () => {
       await Promise.all([
-        client.cancelQueries({ queryKey: mediaListOptions.queryKey }),
+        client.cancelQueries({ queryKey: mediaListKey }),
         client.cancelQueries({ queryKey: transcriptionOptions(item.id).queryKey }),
         client.cancelQueries({ queryKey: downloadsOptions.queryKey }),
       ]);
     },
     onSuccess: async (deleted) => {
-      client.setQueryData(mediaListOptions.queryKey, (current) =>
-        current?.filter((entry) => entry.id !== item.id),
+      client.setQueriesData<LibraryList>(
+        { queryKey: mediaListKey },
+        (current) =>
+          current && {
+            ...current,
+            items: current.items.filter((entry) => entry.id !== item.id),
+          },
       );
       if (!deleted.cleanupError) await leaveRecording();
     },
@@ -71,14 +74,10 @@ export function MediaActions({ item }: { item: MediaItem }) {
     !["queued", "running"].includes(transcription.data.status);
   const removeFile = useMutation({
     mutationFn: () => removeMediaFile(item.id),
-    onMutate: () => client.cancelQueries({ queryKey: mediaListOptions.queryKey }),
+    onMutate: () => client.cancelQueries({ queryKey: mediaListKey }),
     onSuccess: async ({ fileRemovedAt }) => {
-      const updated = { ...item, fileRemovedAt };
-      client.setQueryData(mediaItemOptions(item.id).queryKey, updated);
-      client.setQueryData(mediaListOptions.queryKey, (current) =>
-        current?.map((entry) => (entry.id === item.id ? updated : entry)),
-      );
-      await client.invalidateQueries({ queryKey: mediaListOptions.queryKey, exact: true });
+      client.setQueryData(mediaItemOptions(item.id).queryKey, { ...item, fileRemovedAt });
+      await client.invalidateQueries({ queryKey: mediaListKey });
     },
   });
   return (

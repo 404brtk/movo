@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { serve } from "@hono/node-server";
 import { Effect } from "effect";
 import { expect, test as base } from "@playwright/test";
 import { openDatabase } from "../../src/server/db/database.ts";
@@ -13,6 +11,7 @@ import { createMediaTools } from "../../src/server/media-tools/tools.ts";
 import { createModels } from "../../src/server/models/models.ts";
 import { createTranscriptions } from "../../src/server/transcriptions/jobs.ts";
 import type { TranscriptionJob } from "../../src/shared/contracts/transcriptions.ts";
+import { serveBrowserApp } from "../helpers/browser-server.ts";
 import { timedWords } from "../helpers/timed-words.ts";
 
 const plainText = "Zażółć gęślą jaźń.\nA & <b>B</b> Second line --> end.";
@@ -57,22 +56,7 @@ const test = base.extend<{ recording: { title: string; url: string } }>({
               models,
               transcriptions,
             });
-            const server = yield* Effect.acquireRelease(
-              Effect.sync(() => serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 })),
-              (instance) =>
-                Effect.promise(
-                  () =>
-                    new Promise<void>((resolveClose, reject) => {
-                      instance.close((error) => (error ? reject(error) : resolveClose()));
-                      if ("closeAllConnections" in instance) instance.closeAllConnections();
-                    }),
-                ),
-            );
-            yield* Effect.promise(() => once(server, "listening"));
-            const address = server.address();
-            if (!address || typeof address === "string")
-              throw new Error("Missing browser export test address.");
-            const origin = `http://127.0.0.1:${address.port}`;
+            const origin = yield* serveBrowserApp(app);
             yield* Effect.promise(async () => {
               const title = `Żółć ${randomUUID()}`;
               const uploaded = await request.post(`${origin}/api/media`, {

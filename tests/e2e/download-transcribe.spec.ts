@@ -1,8 +1,6 @@
 import { copyFile, mkdtemp, rm } from "node:fs/promises";
-import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { serve } from "@hono/node-server";
 import { Deferred, Effect } from "effect";
 import { expect, test as base } from "@playwright/test";
 import { openDatabase } from "../../src/server/db/database.ts";
@@ -13,6 +11,7 @@ import { createMediaTools } from "../../src/server/media-tools/tools.ts";
 import { createYtdlp } from "../../src/server/media-tools/ytdlp.ts";
 import { createModels } from "../../src/server/models/models.ts";
 import { createTranscriptions } from "../../src/server/transcriptions/jobs.ts";
+import { serveBrowserApp } from "../helpers/browser-server.ts";
 import { timedWords } from "../helpers/timed-words.ts";
 
 const sourceUrl = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
@@ -85,22 +84,7 @@ const test = base.extend<{
               downloads,
               transcriptions,
             });
-            const server = yield* Effect.acquireRelease(
-              Effect.sync(() => serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 })),
-              (instance) =>
-                Effect.promise(
-                  () =>
-                    new Promise<void>((resolveClose, reject) => {
-                      instance.close((error) => (error ? reject(error) : resolveClose()));
-                      if ("closeAllConnections" in instance) instance.closeAllConnections();
-                    }),
-                ),
-            );
-            yield* Effect.promise(() => once(server, "listening"));
-            const address = server.address();
-            if (!address || typeof address === "string")
-              throw new Error("Missing test server address.");
-            const origin = `http://127.0.0.1:${address.port}`;
+            const origin = yield* serveBrowserApp(app);
             yield* Effect.promise(async () => {
               expect((await request.get(`${origin}/api/media`)).status()).toBe(200);
               await use({
@@ -121,7 +105,7 @@ const test = base.extend<{
   },
 });
 
-test("downloads and transcribes once, reports missing prerequisites and persists progress across navigation", async ({
+test("downloads and transcribes once, reports missing prerequisites and shows the finished transcript in a filtered library", async ({
   page,
   workflow,
 }) => {
@@ -150,7 +134,10 @@ test("downloads and transcribes once, reports missing prerequisites and persists
   await expect(
     page.getByRole("button", { name: "Cancel transcription", exact: true }),
   ).toBeVisible();
+  await page.goto(`${workflow.origin}/?transcript=available`);
+  await expect(page.getByRole("heading", { name: "No recordings match" })).toBeVisible();
   await workflow.finishTranscription();
+  await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   await expect(page.getByText(passage, { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText(passage, { exact: true })).toBeVisible();

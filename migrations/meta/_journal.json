@@ -71,6 +71,13 @@
       "when": 1793985513054,
       "tag": "0009_media_file_removal",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793990837907,
+      "tag": "0010_library_search",
+      "breakpoints": true
     }
   ]
 }

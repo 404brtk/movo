@@ -24,9 +24,11 @@ const phaseLabels = {
 export function TranscriptionPanel({
   mediaId,
   playback,
+  revealMs,
 }: {
   mediaId: string;
   playback?: TranscriptPlayback;
+  revealMs?: number | undefined;
 }) {
   const options = transcriptionOptions(mediaId);
   const query = useQuery(options);
@@ -143,7 +145,7 @@ export function TranscriptionPanel({
         ) : (
           <>
             <TranscriptActions mediaId={mediaId} transcript={job.transcript} />
-            <TranscriptReader transcript={job.transcript} playback={playback} />
+            <TranscriptReader transcript={job.transcript} playback={playback} revealMs={revealMs} />
           </>
         )
       ) : null}

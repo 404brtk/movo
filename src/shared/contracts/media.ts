@@ -16,6 +16,8 @@ export const mediaContentTypes = [
   "audio/aac",
 ] as const;
 
+export const mediaKinds = ["audio", "video"] as const;
+
 export const MediaId = Schema.String.check(Schema.isUUID(4));
 export const MediaFileName = Schema.String.check(
   Schema.isMinLength(1),
@@ -35,7 +37,7 @@ export const MediaItem = Schema.Struct({
   id: MediaId,
   title: Schema.String.check(Schema.isMinLength(1)),
   originalName: MediaFileName,
-  kind: Schema.Literals(["audio", "video"]),
+  kind: Schema.Literals(mediaKinds),
   contentType: MediaContentType,
   byteSize: Schema.Number.check(
     Schema.isInt(),
