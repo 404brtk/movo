@@ -1,6 +1,8 @@
-import { spawn } from "node:child_process";
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { chmod, mkdir, open, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+
+const UV_FS_O_EXLOCK = 0x10000000;
 
 export async function blockCleanup(directory: string) {
   const blocked = process.platform === "win32" ? directory : join(directory, "locked");
@@ -13,46 +15,6 @@ export async function blockCleanup(directory: string) {
       await chmod(blocked, 0o700);
     };
   }
-  const child = spawn(
-    "powershell.exe",
-    [
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      "$path = [Console]::In.ReadLine(); $file = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None); [Console]::Out.WriteLine('LOCKED'); [Console]::Out.Flush(); [void][Console]::In.ReadLine(); $file.Dispose()",
-    ],
-    { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] },
-  );
-  let closed = false;
-  const exited = new Promise<void>((resolve) =>
-    child.once("close", () => {
-      closed = true;
-      resolve();
-    }),
-  );
-  const release = async () => {
-    if (!closed) child.stdin.end("\n");
-    await exited;
-  };
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await new Promise<void>((resolve, reject) => {
-      let output = "";
-      child.stdout.on("data", (chunk: Buffer) => {
-        output += chunk.toString();
-        if (output.includes("LOCKED")) resolve();
-      });
-      child.once("error", reject);
-      child.stderr.on("data", (chunk: Buffer) => reject(new Error(chunk.toString())));
-      timer = setTimeout(() => reject(new Error("File lock fixture timed out.")), 5000);
-      child.stdin.write(`${path}\n`);
-    });
-    return release;
-  } catch (cause) {
-    child.kill();
-    await exited;
-    throw cause;
-  } finally {
-    clearTimeout(timer);
-  }
+  const file = await open(path, constants.O_RDONLY | UV_FS_O_EXLOCK);
+  return () => file.close();
 }
