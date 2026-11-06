@@ -10,7 +10,7 @@ import {
 import { formatDevice } from "../lib/format.ts";
 import { MediaToolsSetup } from "./media-tools-setup.tsx";
 import { TranscriptActions } from "./transcript-actions.tsx";
-import { TranscriptReader } from "./transcript-reader.tsx";
+import { TranscriptReader, type TranscriptPlayback } from "./transcript-reader.tsx";
 import { Button } from "./ui/button.tsx";
 
 const phaseLabels = {
@@ -23,14 +23,12 @@ const phaseLabels = {
 
 export function TranscriptionPanel({
   mediaId,
-  positionMs,
+  playback,
   revealMs,
-  onSeek,
 }: {
   mediaId: string;
-  positionMs: number;
+  playback?: TranscriptPlayback;
   revealMs?: number | undefined;
-  onSeek: (milliseconds: number) => void;
 }) {
   const options = transcriptionOptions(mediaId);
   const query = useQuery(options);
@@ -63,7 +61,7 @@ export function TranscriptionPanel({
             Parakeet Ultra · processed on this computer.
           </p>
         </div>
-        {query.isSuccess && !job ? (
+        {playback && query.isSuccess && !job ? (
           <Button disabled={action.isPending} onClick={() => action.mutate("start")}>
             Transcribe
           </Button>
@@ -77,7 +75,7 @@ export function TranscriptionPanel({
             Cancel transcription
           </Button>
         ) : null}
-        {job && !active ? (
+        {playback && job && !active ? (
           <Button
             variant={job.status === "completed" ? "outline" : "default"}
             disabled={action.isPending}
@@ -147,12 +145,7 @@ export function TranscriptionPanel({
         ) : (
           <>
             <TranscriptActions mediaId={mediaId} transcript={job.transcript} />
-            <TranscriptReader
-              transcript={job.transcript}
-              positionMs={positionMs}
-              revealMs={revealMs}
-              onSeek={onSeek}
-            />
+            <TranscriptReader transcript={job.transcript} playback={playback} revealMs={revealMs} />
           </>
         )
       ) : null}

@@ -1,14 +1,20 @@
 import { AlertDialog } from "@base-ui/react/alert-dialog";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+} from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
 import type { LibraryItem } from "../../shared/contracts/library.ts";
-import type { MediaItem } from "../../shared/contracts/media.ts";
+import type { MediaDeletion, MediaItem } from "../../shared/contracts/media.ts";
 import {
   deleteMedia,
   downloadsOptions,
   mediaItemOptions,
   mediaListKey,
+  removeMediaFile,
   renameMedia,
   transcriptionOptions,
 } from "../lib/api.ts";
@@ -19,10 +25,8 @@ export function MediaActions({ item }: { item: MediaItem }) {
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(item.title);
-  const [confirming, setConfirming] = useState(false);
   const renameTrigger = useRef<HTMLButtonElement>(null);
   const focusTitle = useCallback((input: HTMLInputElement | null) => input?.focus(), []);
-  const focusCompletion = useCallback((button: HTMLButtonElement | null) => button?.focus(), []);
   const rename = useMutation({
     mutationFn: () => renameMedia(item.id, title.trim()),
     onMutate: () => client.cancelQueries({ queryKey: mediaListKey }),
@@ -58,6 +62,19 @@ export function MediaActions({ item }: { item: MediaItem }) {
       if (!deleted.cleanupError) await leaveRecording();
     },
   });
+  const transcription = useQuery(transcriptionOptions(item.id));
+  const canRemoveFile =
+    item.fileRemovedAt === null &&
+    transcription.data?.transcript != null &&
+    !["queued", "running"].includes(transcription.data.status);
+  const removeFile = useMutation({
+    mutationFn: () => removeMediaFile(item.id),
+    onMutate: () => client.cancelQueries({ queryKey: mediaListKey }),
+    onSuccess: async ({ fileRemovedAt }) => {
+      client.setQueryData(mediaItemOptions(item.id).queryKey, { ...item, fileRemovedAt });
+      await client.invalidateQueries({ queryKey: mediaListKey });
+    },
+  });
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-3">
@@ -65,7 +82,7 @@ export function MediaActions({ item }: { item: MediaItem }) {
           ref={renameTrigger}
           variant="outline"
           className="h-10 px-3 text-sm"
-          disabled={remove.isPending}
+          disabled={remove.isPending || removeFile.isPending}
           aria-expanded={editing}
           onClick={() => {
             if (rename.isPending) return;
@@ -76,73 +93,35 @@ export function MediaActions({ item }: { item: MediaItem }) {
         >
           Rename
         </Button>
-        <AlertDialog.Root
-          open={confirming}
-          onOpenChange={(open) => {
-            if (remove.isPending) return;
-            if (!open && remove.data?.cleanupError) {
-              void leaveRecording();
-              return;
-            }
-            remove.reset();
-            setConfirming(open);
+        {canRemoveFile || removeFile.isSuccess ? (
+          <ConfirmRemoval
+            removal={removeFile}
+            disabled={editing || remove.isPending}
+            trigger="Remove saved copy"
+            title={`Remove the saved copy of “${item.title}”?`}
+            description="This permanently deletes Movo’s saved copy to free up space. The transcript and its exports stay available, but playback and transcribing again will not. Your original imported file stays where it is."
+            keep="Keep saved copy"
+            confirm="Remove saved copy"
+            pending="Removing…"
+            completed="Saved copy removed"
+            onAcknowledge={() => removeFile.reset()}
+          />
+        ) : null}
+        <ConfirmRemoval
+          removal={remove}
+          disabled={editing || removeFile.isPending}
+          trigger="Delete recording"
+          title={`Delete “${item.title}”?`}
+          description="This permanently deletes Movo’s saved copy, its transcript and linked download history. Your original imported file stays where it is."
+          keep="Keep recording"
+          confirm="Delete permanently"
+          pending="Deleting…"
+          completed="Recording deleted"
+          acknowledge="Back to library"
+          onAcknowledge={() => {
+            void leaveRecording();
           }}
-        >
-          <AlertDialog.Trigger
-            render={<Button variant="destructive" className="h-10 px-3 text-sm" />}
-            disabled={editing}
-          >
-            Delete recording
-          </AlertDialog.Trigger>
-          <AlertDialog.Portal>
-            <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/50" />
-            <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 space-y-5 overflow-y-auto rounded-xl border bg-background p-6 shadow-lg">
-              <AlertDialog.Title className="text-xl font-semibold wrap-anywhere">
-                {remove.data?.cleanupError ? "Recording deleted" : `Delete “${item.title}”?`}
-              </AlertDialog.Title>
-              <AlertDialog.Description
-                aria-live="polite"
-                className="text-sm leading-6 text-muted-foreground"
-              >
-                {remove.data?.cleanupError ??
-                  "This permanently deletes Movo’s saved copy, its transcript and linked download history. Your original imported file stays where it is."}
-              </AlertDialog.Description>
-              {remove.isError ? (
-                <p role="alert" className="text-sm wrap-anywhere text-destructive">
-                  {remove.error.message}
-                </p>
-              ) : null}
-              {remove.data?.cleanupError ? (
-                <Button
-                  ref={focusCompletion}
-                  className="h-10 px-3 text-sm"
-                  onClick={() => {
-                    void leaveRecording();
-                  }}
-                >
-                  Back to library
-                </Button>
-              ) : (
-                <div className="flex flex-wrap justify-end gap-3">
-                  <AlertDialog.Close
-                    render={<Button variant="outline" className="h-10 px-3 text-sm" />}
-                    disabled={remove.isPending}
-                  >
-                    Keep recording
-                  </AlertDialog.Close>
-                  <Button
-                    variant="destructive"
-                    className="h-10 px-3 text-sm"
-                    disabled={remove.isPending}
-                    onClick={() => remove.mutate()}
-                  >
-                    {remove.isPending ? "Deleting…" : "Delete permanently"}
-                  </Button>
-                </div>
-              )}
-            </AlertDialog.Popup>
-          </AlertDialog.Portal>
-        </AlertDialog.Root>
+        />
       </div>
       {editing ? (
         <form
@@ -197,5 +176,105 @@ export function MediaActions({ item }: { item: MediaItem }) {
         </form>
       ) : null}
     </div>
+  );
+}
+
+function ConfirmRemoval({
+  removal,
+  disabled,
+  trigger,
+  title,
+  description,
+  keep,
+  confirm,
+  pending,
+  completed,
+  acknowledge = "Close",
+  onAcknowledge,
+}: {
+  removal: UseMutationResult<MediaDeletion, Error, void>;
+  disabled: boolean;
+  trigger: string;
+  title: string;
+  description: string;
+  keep: string;
+  confirm: string;
+  pending: string;
+  completed: string;
+  acknowledge?: string;
+  onAcknowledge: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const focusCompletion = useCallback((button: HTMLButtonElement | null) => button?.focus(), []);
+  const cleanupError = removal.data?.cleanupError;
+  return (
+    <AlertDialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (removal.isPending) return;
+        if (!next && cleanupError) {
+          onAcknowledge();
+          return;
+        }
+        removal.reset();
+        setOpen(next);
+      }}
+    >
+      <AlertDialog.Trigger
+        render={<Button variant="destructive" className="h-10 px-3 text-sm" />}
+        disabled={disabled}
+      >
+        {trigger}
+      </AlertDialog.Trigger>
+      <AlertDialog.Portal>
+        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/50" />
+        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 space-y-5 overflow-y-auto rounded-xl border bg-background p-6 shadow-lg">
+          <AlertDialog.Title className="text-xl font-semibold wrap-anywhere">
+            {cleanupError ? completed : title}
+          </AlertDialog.Title>
+          <AlertDialog.Description
+            aria-live="polite"
+            className="text-sm leading-6 text-muted-foreground"
+          >
+            {cleanupError ?? description}
+          </AlertDialog.Description>
+          {removal.isError ? (
+            <p role="alert" className="text-sm wrap-anywhere text-destructive">
+              {removal.error.message}
+            </p>
+          ) : null}
+          {cleanupError ? (
+            <Button ref={focusCompletion} className="h-10 px-3 text-sm" onClick={onAcknowledge}>
+              {acknowledge}
+            </Button>
+          ) : (
+            <div className="flex flex-wrap justify-end gap-3">
+              <AlertDialog.Close
+                render={<Button variant="outline" className="h-10 px-3 text-sm" />}
+                disabled={removal.isPending}
+              >
+                {keep}
+              </AlertDialog.Close>
+              <Button
+                variant="destructive"
+                className="h-10 px-3 text-sm"
+                disabled={removal.isPending}
+                onClick={() =>
+                  removal.mutate(undefined, {
+                    onSuccess: (result) => {
+                      if (result.cleanupError) return;
+                      removal.reset();
+                      setOpen(false);
+                    },
+                  })
+                }
+              >
+                {removal.isPending ? pending : confirm}
+              </Button>
+            </div>
+          )}
+        </AlertDialog.Popup>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
   );
 }

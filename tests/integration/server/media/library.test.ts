@@ -199,6 +199,133 @@ describe("managed media library", () => {
     });
   });
 
+  it("removes only the saved copy and keeps its transcript, download history and metadata", async () => {
+    await withLibrary(async (library, database, directory) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      const transcript = { language: "pl", words: [...timedWords(0, 1000, "Saved speech.")] };
+      database
+        .insert(transcriptionJobs)
+        .values({
+          mediaId: item.id,
+          modelId: transcriptionModel.id,
+          status: "completed",
+          phase: "finished",
+          transcript,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+      database
+        .insert(downloadJobs)
+        .values({
+          id: item.id,
+          mediaId: item.id,
+          url: "https://www.youtube.com/watch?v=abcdefghijk",
+          status: "completed",
+          phase: "finished",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+      const { path } = await Effect.runPromise(library.file(item.id));
+      const removed = await Effect.runPromise(library.removeFile(item.id));
+      expect(removed).toEqual({ ...item, fileRemovedAt: expect.any(Number) });
+      expect(existsSync(path)).toBe(false);
+      expect(readdirSync(join(directory, "media"))).toEqual([]);
+      expect(await Effect.runPromise(library.removeFile(item.id))).toEqual(removed);
+      await expect(Effect.runPromise(library.file(item.id))).rejects.toThrow(
+        "saved copy of this recording was removed",
+      );
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const reopened = yield* openDatabase(join(directory, "test.sqlite"));
+            expect(yield* createMediaLibrary(reopened, directory, resolveProbe).list()).toEqual([
+              removed,
+            ]);
+          }),
+        ),
+      );
+      expect(database.select().from(transcriptionJobs).get()?.transcript).toEqual(transcript);
+      expect(database.select().from(downloadJobs).get()?.mediaId).toBe(item.id);
+      expect(await Effect.runPromise(library.remove(item.id))).toEqual(removed);
+      expect(await Effect.runPromise(library.list())).toEqual([]);
+      expect(database.select().from(transcriptionJobs).all()).toEqual([]);
+    });
+  });
+
+  it.each([
+    ["no transcription", undefined, "Transcribe this recording"],
+    ["a failed first attempt", "failed", "Transcribe this recording"],
+    ["a queued replacement", "queued", "Cancel the transcription"],
+    ["a running replacement", "running", "Cancel the transcription"],
+  ] as const)("keeps the saved copy with %s", async (_label, status, message) => {
+    await withLibrary(async (library, database) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      if (status)
+        database
+          .insert(transcriptionJobs)
+          .values({
+            mediaId: item.id,
+            modelId: transcriptionModel.id,
+            status,
+            phase: status === "failed" ? "finished" : "queued",
+            transcript:
+              status === "failed"
+                ? null
+                : { language: null, words: [...timedWords(0, 500, "Old.")] },
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          })
+          .run();
+      await expect(Effect.runPromise(library.removeFile(item.id))).rejects.toThrow(message);
+      expect(await Effect.runPromise(library.get(item.id))).toEqual(item);
+      expect(readFileSync((await Effect.runPromise(library.file(item.id))).path)).toEqual(wave);
+    });
+  });
+
+  it("deletes a pending removed copy during recovery instead of restoring it", async () => {
+    await withLibrary(async (library, database) => {
+      const item = await Effect.runPromise(library.import(body(), "recording.wav"));
+      database
+        .insert(transcriptionJobs)
+        .values({
+          mediaId: item.id,
+          modelId: transcriptionModel.id,
+          status: "completed",
+          phase: "finished",
+          transcript: { language: null, words: [] },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+      const { path } = await Effect.runPromise(library.file(item.id));
+      const pending = `${path}.deleting`;
+      const held = `${path}.held`;
+      database.$client.function("block_pending_cleanup", () => {
+        renameSync(pending, held);
+        mkdirSync(pending);
+        return null;
+      });
+      database.$client.exec(
+        "CREATE TRIGGER block_pending_cleanup AFTER UPDATE OF file_removed_at ON media_items BEGIN SELECT block_pending_cleanup(); END",
+      );
+      expect(await Effect.runPromise(library.removeFile(item.id))).toMatchObject({
+        id: item.id,
+        fileRemovedAt: expect.any(Number),
+        cleanupError: expect.stringContaining("transcript was kept"),
+      });
+      rmSync(pending, { recursive: true });
+      renameSync(held, pending);
+      await Effect.runPromise(library.recoverDeletions());
+      expect(existsSync(pending)).toBe(false);
+      expect(existsSync(path)).toBe(false);
+      expect((await Effect.runPromise(library.get(item.id))).fileRemovedAt).toEqual(
+        expect.any(Number),
+      );
+    });
+  });
+
   it("keeps saved media and metadata when SQLite rejects deletion", async () => {
     await withLibrary(async (library, database) => {
       const item = await Effect.runPromise(library.import(body(), "recording.wav"));

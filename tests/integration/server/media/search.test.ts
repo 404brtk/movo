@@ -165,7 +165,7 @@ it("shows the first matching passages and counts all of them", async ({ signal }
   );
 });
 
-it("keeps search results in step with renames, replacement transcripts and deletion", async ({
+it("keeps search results in step with renames, replacement transcripts and removals", async ({
   signal,
 }) => {
   await withLibrary(signal, ({ database, library, meeting, review, transcribe }) =>
@@ -177,6 +177,10 @@ it("keeps search results in step with renames, replacement transcripts and delet
       yield* transcribe(review, timedWords(0, 900, "Druga wersja."));
       expect(yield* library.list({ q: "pierwsza" })).toEqual([]);
       expect(ids(yield* library.list({ q: "druga" }))).toEqual([review.id]);
+      yield* library.removeFile(review.id);
+      expect(ids(yield* library.list({ q: "druga", transcript: "available" }))).toEqual([
+        review.id,
+      ]);
       yield* library.remove(review.id);
       expect(yield* library.list({ q: "druga" })).toEqual([]);
       expect(database.all(sql`select media_id as id from media_search`)).toEqual([

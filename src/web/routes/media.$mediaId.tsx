@@ -31,6 +31,19 @@ function PlaybackWithTranscript({
   item: MediaItem;
   startMs: number | undefined;
 }) {
+  if (item.fileRemovedAt !== null)
+    return (
+      <>
+        <p className="rounded-xl border bg-muted/40 px-4 py-6 text-sm text-muted-foreground sm:px-8">
+          The saved copy was removed to free up space. The transcript is still available.
+        </p>
+        <TranscriptionPanel mediaId={item.id} revealMs={startMs} />
+      </>
+    );
+  return <PlaybackWithPlayer item={item} startMs={startMs} />;
+}
+
+function PlaybackWithPlayer({ item, startMs }: { item: MediaItem; startMs: number | undefined }) {
   const player = useRef<HTMLMediaElement | null>(null);
   const [positionMs, setPositionMs] = useState(startMs ?? 0);
   const playerRef = useCallback((element: HTMLMediaElement | null) => {
@@ -49,9 +62,8 @@ function PlaybackWithTranscript({
       />
       <TranscriptionPanel
         mediaId={item.id}
-        positionMs={positionMs}
+        playback={{ positionMs, onSeek: seek }}
         revealMs={startMs}
-        onSeek={seek}
       />
     </>
   );
@@ -103,17 +115,19 @@ function MediaDetail() {
               </h1>
               <p className="text-sm wrap-anywhere text-muted-foreground">{item.originalName}</p>
             </div>
-            <a
-              className={buttonVariants({
-                variant: "outline",
-                className: "h-10 w-fit gap-2 px-3 text-sm",
-              })}
-              href={mediaFileUrl(item.id)}
-              download={item.originalName}
-            >
-              <HugeiconsIcon icon={Download04Icon} size={18} aria-hidden="true" />
-              Save a copy
-            </a>
+            {item.fileRemovedAt === null ? (
+              <a
+                className={buttonVariants({
+                  variant: "outline",
+                  className: "h-10 w-fit gap-2 px-3 text-sm",
+                })}
+                href={mediaFileUrl(item.id)}
+                download={item.originalName}
+              >
+                <HugeiconsIcon icon={Download04Icon} size={18} aria-hidden="true" />
+                Save a copy
+              </a>
+            ) : null}
           </div>
           <MediaActions key={item.id} item={item} />
           <PlaybackWithTranscript key={`${item.id}:${startMs}`} item={item} startMs={startMs} />
@@ -138,7 +152,7 @@ function MediaDetail() {
             </div>
             <div className="space-y-1.5">
               <dt className="text-muted-foreground">File size</dt>
-              <dd>{formatBytes(item.byteSize)}</dd>
+              <dd>{item.fileRemovedAt === null ? formatBytes(item.byteSize) : "Removed"}</dd>
             </div>
             <div className="space-y-1.5">
               <dt className="text-muted-foreground">Imported</dt>

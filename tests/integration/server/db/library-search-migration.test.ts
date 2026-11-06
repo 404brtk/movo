@@ -15,7 +15,7 @@ it("indexes recordings and transcripts saved before library search existed", asy
   const transcribed = "11111111-1111-4111-8111-111111111111";
   const untranscribed = "22222222-2222-4222-8222-222222222222";
   try {
-    const legacy = openLegacyDatabase(directory, path, 8);
+    const legacy = openLegacyDatabase(directory, path, 9);
     try {
       const insertMedia = legacy.prepare(
         "insert into media_items (id, title, original_name, kind, content_type, byte_size, duration_seconds, imported_at) values (?, ?, 'original.wav', 'audio', 'audio/wav', 100, 2, ?)",

@@ -1,8 +1,8 @@
 {
-  "id": "91ccff0c-7907-4dc2-88e0-8bbedc426374",
-  "prevId": "d88b7dd5-db9b-4edc-a414-435e577d1898",
   "version": "6",
   "dialect": "sqlite",
+  "id": "a8ee418a-2a7c-4fc9-b3df-770a02406888",
+  "prevId": "d88b7dd5-db9b-4edc-a414-435e577d1898",
   "tables": {
     "download_jobs": {
       "name": "download_jobs",
@@ -132,11 +132,11 @@
         "download_jobs_media_id_media_items_id_fk": {
           "name": "download_jobs_media_id_media_items_id_fk",
           "tableFrom": "download_jobs",
-          "columnsFrom": ["media_id"],
           "tableTo": "media_items",
+          "columnsFrom": ["media_id"],
           "columnsTo": ["id"],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -210,6 +210,13 @@
         "source_url": {
           "name": "source_url",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "file_removed_at": {
+          "name": "file_removed_at",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -315,11 +322,11 @@
         "transcription_jobs_media_id_media_items_id_fk": {
           "name": "transcription_jobs_media_id_media_items_id_fk",
           "tableFrom": "transcription_jobs",
-          "columnsFrom": ["media_id"],
           "tableTo": "media_items",
+          "columnsFrom": ["media_id"],
           "columnsTo": ["id"],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -330,9 +337,9 @@
   "views": {},
   "enums": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
+    "tables": {},
+    "columns": {}
   },
   "internal": {
     "indexes": {}

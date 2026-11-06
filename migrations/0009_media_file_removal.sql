@@ -1,0 +1,1 @@
+ALTER TABLE `media_items` ADD `file_removed_at` integer;

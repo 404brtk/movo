@@ -34,7 +34,7 @@ Startup marks persisted running jobs interrupted and clears terminal staging dir
 
 ## Passages and reading along
 
-`src/shared/transcript-passages.ts` groups words into passages. A passage ends after a word that ends a sentence (`.`, `?`, `!` or `…`, optionally followed by closing quotes or brackets). A new passage also starts before a word that would make the passage longer than 84 characters or 7 seconds, the length of a two-line subtitle. A single word longer than either limit forms its own passage. The model's own long-form segments are internal processing chunks of up to 30 seconds and are not used for display.
+`src/shared/transcript-passages.ts` groups words into passages. A passage ends after a word that ends a sentence (`.`, `?`, `!` or `…`, optionally followed by closing quotes or brackets). Common English abbreviations that precede more text, such as `Mr.`, `Dr.`, `St.`, `e.g.` and `vs.`, do not end a sentence; abbreviations that often close one, such as `a.m.`, `U.S.` and `Jr.`, still do. A sentence longer than 84 characters or 7 seconds, the length of a two-line subtitle, is split in two until every part fits. Each split uses the `,`, `;` or `:` closest to the middle when one lies in the middle half of the text; otherwise it uses the word boundary closest to the middle, so no short remainder is left behind. A single word longer than either limit forms its own passage. Pauses are not used: the model reports only long silences as gaps between words and usually adds shorter pauses to a neighboring word. The model's own long-form segments are internal processing chunks of up to 30 seconds and are not used for display.
 
 While the recording plays, the passage containing the current word is highlighted and marked with `aria-current="time"`, and the current word is wrapped in `<mark>`. The current word is the last word that started at or before the player's position. Only the passages whose state changes re-render. Word timestamps come in 80 ms steps and can be off by a word or two; selecting a passage's timestamp seeks to its first word.
 
@@ -50,7 +50,7 @@ Copying runs only after an explicit action using the browser's Clipboard API. A 
 
 ## Resource use
 
-Decoded float32 mono audio uses 64,000 bytes per second, approximately 230 MB per hour on disk. The isolated worker reads that prepared audio into memory, in addition to the model and inference workspace. Longer recordings therefore need proportionally more free memory and disk space. Preparation has a 30-minute timeout and inference a six-hour timeout. Memory allocation or native runtime errors fail the job; they do not silently publish partial text.
+Decoded float32 mono audio uses 64,000 bytes per second, approximately 230 MB per hour on disk. The isolated worker reads that prepared audio into memory, in addition to the model and inference workspace. Longer recordings therefore need proportionally more free memory and disk space. The worker reads the file in chunks, so Node's 2 GiB whole-file read limit does not apply. The engine accepts at most 2³¹−1 samples (about 37 hours); longer recordings fail before the audio is loaded. Preparation has a 30-minute timeout and inference a six-hour timeout. Memory allocation or native runtime errors fail the job; they do not silently publish partial text.
 
 The initial implementation keeps native long-form segmentation and does not add a custom streaming decoder. Manual device selection, speaker labels, multiple transcript versions and editing are outside this implementation.
 
