@@ -44,6 +44,7 @@ export const MediaItem = Schema.Struct({
   durationSeconds: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
   importedAt: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
   sourceUrl: Schema.NullOr(Schema.String),
+  fileRemovedAt: Schema.NullOr(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
 });
 export type MediaItem = typeof MediaItem.Type;
 export const MediaDeletion = Schema.Struct({
