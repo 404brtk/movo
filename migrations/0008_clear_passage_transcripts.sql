@@ -1,1 +1,1 @@
-DELETE FROM `transcription_jobs` WHERE `transcript` IS NOT NULL;
+UPDATE `transcription_jobs` SET `status` = 'failed', `phase` = 'finished', `transcript` = NULL, `device` = NULL, `error` = 'This transcript was saved in an earlier format. Retry to transcribe the recording again.' WHERE `transcript` IS NOT NULL;

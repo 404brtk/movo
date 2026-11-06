@@ -22,7 +22,7 @@ The model worker is connected to its backend through Node IPC and exits if the o
 
 ## Storage and lifecycle
 
-The `transcription_jobs` table in `MOVO_DATA_DIR/app.sqlite` stores one job per media ID, the model ID, state, timestamps, errors and the completed transcript. The transcript stores the recognized words, each with `startMs`, `endMs` and `text`, plus a nullable detected language. Passages are not stored; they are derived from the words wherever they are shown or exported, so their rules can change without transcribing again. Transcripts saved before word timestamps were removed by a migration; transcribe those recordings again. Native model output that does not provide a language leaves it unset.
+The `transcription_jobs` table in `MOVO_DATA_DIR/app.sqlite` stores one job per media ID, the model ID, state, timestamps, errors and the completed transcript. The transcript stores the recognized words, each with `startMs`, `endMs` and `text`, plus a nullable detected language. Passages are not stored; they are derived from the words wherever they are shown or exported, so their rules can change without transcribing again. A migration discards transcripts saved before word timestamps: their jobs become failed with an explanation, so the recordings can be retried and startup still cleans their temporary files. Native model output that does not provide a language leaves it unset.
 
 Work files live in `MOVO_DATA_DIR/transcriptions/<media-id>/`. Stored library media and shared Hugging Face weights are read-only during transcription. Results become visible through one database update; partial inference is not published as a completed transcript.
 
