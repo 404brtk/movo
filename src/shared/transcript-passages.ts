@@ -2,7 +2,36 @@ import type { TranscriptWord } from "./contracts/transcriptions.ts";
 
 export const maxPassageCharacters = 84;
 export const maxPassageMs = 7000;
-const sentenceEnding = /[.!?…]["'”’)\]]*$/u;
+const closingMarks = String.raw`["'”’)\]]*$`;
+const sentenceEnding = new RegExp(`[.!?…]${closingMarks}`, "u");
+const clauseEnding = new RegExp(`[,;:]${closingMarks}`, "u");
+const openingMarks = /^["'“‘([]+/u;
+const abbreviations = new Set([
+  "mr.",
+  "mrs.",
+  "ms.",
+  "dr.",
+  "prof.",
+  "rev.",
+  "hon.",
+  "gen.",
+  "gov.",
+  "sen.",
+  "rep.",
+  "capt.",
+  "lt.",
+  "col.",
+  "sgt.",
+  "st.",
+  "mt.",
+  "vs.",
+  "etc.",
+  "e.g.",
+  "i.e.",
+  "cf.",
+  "approx.",
+  "fig.",
+]);
 
 export interface TranscriptPassage {
   startMs: number;
@@ -24,33 +53,38 @@ function passage(words: readonly TranscriptWord[], firstWord: number): Transcrip
   };
 }
 
+function endsSentence(text: string) {
+  return (
+    sentenceEnding.test(text) && !abbreviations.has(text.replace(openingMarks, "").toLowerCase())
+  );
+}
+
+function fits(words: readonly TranscriptWord[]) {
+  const { text, startMs, endMs } = passage(words, 0);
+  return text.length <= maxPassageCharacters && endMs - startMs <= maxPassageMs;
+}
+
+function cutIndex(words: readonly TranscriptWord[], firstWord: number, overflowingWord: number) {
+  const clauseEnd =
+    firstWord +
+    1 +
+    words.slice(firstWord, overflowingWord).findLastIndex((word) => clauseEnding.test(word.text));
+  return 2 * (clauseEnd - firstWord) >= overflowingWord - firstWord ? clauseEnd : overflowingWord;
+}
+
 export function transcriptPassages(words: readonly TranscriptWord[]) {
   const passages: TranscriptPassage[] = [];
   let firstWord = 0;
-  let characters = 0;
-  let endMs = 0;
+  const addPassageBefore = (end: number) => {
+    passages.push(passage(words.slice(firstWord, end), firstWord));
+    return end;
+  };
   words.forEach((word, index) => {
-    const start = words[firstWord];
-    if (
-      start &&
-      index > firstWord &&
-      (characters + 1 + word.text.length > maxPassageCharacters ||
-        Math.max(endMs, word.endMs) - start.startMs > maxPassageMs)
-    ) {
-      passages.push(passage(words.slice(firstWord, index), firstWord));
-      firstWord = index;
-      characters = 0;
-    }
-    const opensPassage = index === firstWord;
-    characters += (opensPassage ? 0 : 1) + word.text.length;
-    endMs = opensPassage ? word.endMs : Math.max(endMs, word.endMs);
-    if (sentenceEnding.test(word.text)) {
-      passages.push(passage(words.slice(firstWord, index + 1), firstWord));
-      firstWord = index + 1;
-      characters = 0;
-    }
+    while (index > firstWord && !fits(words.slice(firstWord, index + 1)))
+      firstWord = addPassageBefore(cutIndex(words, firstWord, index));
+    if (endsSentence(word.text)) firstWord = addPassageBefore(index + 1);
   });
-  if (firstWord < words.length) passages.push(passage(words.slice(firstWord), firstWord));
+  if (firstWord < words.length) addPassageBefore(words.length);
   return passages;
 }
 

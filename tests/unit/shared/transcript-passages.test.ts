@@ -18,6 +18,12 @@ function words(text: string, stepMs = 300): TranscriptWord[] {
 const texts = (value: readonly TranscriptWord[]) =>
   transcriptPassages(value).map((passage) => passage.text);
 
+const longSentence = (clauseEnd: number) =>
+  words(
+    Array.from({ length: 20 }, (_, index) => (index === clauseEnd ? "word;" : "word")).join(" "),
+    100,
+  );
+
 describe("transcript passages", () => {
   it("returns no passages without words", () => {
     expect(transcriptPassages([])).toEqual([]);
@@ -38,6 +44,33 @@ describe("transcript passages", () => {
     expect(texts(words("First, second; third: fourth."))).toEqual([
       "First, second; third: fourth.",
     ]);
+  });
+
+  it("does not end a passage after a common abbreviation", () => {
+    expect(
+      texts(words("Mr. Smith met Dr. Jones (e.g. at St. Mary's) etc. today. Meet at 5 p.m. No.")),
+    ).toEqual([
+      "Mr. Smith met Dr. Jones (e.g. at St. Mary's) etc. today.",
+      "Meet at 5 p.m.",
+      "No.",
+    ]);
+  });
+
+  it("splits a long sentence after its last clause punctuation before the limit", () => {
+    const passages = transcriptPassages(longSentence(9));
+    expect(passages.map((passage) => passage.words.length)).toEqual([10, 10]);
+    expect(passages[0]?.text.endsWith("word;")).toBe(true);
+  });
+
+  it("splits at the limit when clause punctuation would leave a short first passage", () => {
+    const passages = transcriptPassages(longSentence(3));
+    expect(passages.map((passage) => passage.words.length)).toEqual([16, 4]);
+    expect(passages.every((passage) => passage.text.length <= maxPassageCharacters)).toBe(true);
+  });
+
+  it("keeps splitting until the passage fits after a clause split", () => {
+    const long = "x".repeat(maxPassageCharacters - 4);
+    expect(texts(words(`first, next ${long} end.`))).toEqual(["first,", "next", long, "end."]);
   });
 
   it("starts a new passage before a word that would exceed the character limit", () => {
