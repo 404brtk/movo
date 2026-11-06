@@ -1,7 +1,8 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { Schema } from "effect";
 import { TranscribeModel } from "transcribe-cpp";
 import { Transcript, TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
+import { readPreparedAudio } from "./prepared-audio.ts";
 
 const ownerDisconnected = () => process.exit(1);
 process.once("disconnect", ownerDisconnected);
@@ -26,9 +27,7 @@ try {
       !["word", "token"].includes(model.capabilities.maxTimestampKind)
     )
       throw new Error("The model does not support the required transcription and word timestamps.");
-    const pcm = await readFile(audioPath);
-    if (pcm.length === 0 || pcm.length % 4 !== 0)
-      throw new Error("Prepared audio is empty or incomplete.");
+    const pcm = await readPreparedAudio(audioPath);
     console.log("MOVO_PHASE:transcribing");
     const result = await model.transcribe(pcm, { timestamps: "word" });
     if (result.aborted || result.truncated)

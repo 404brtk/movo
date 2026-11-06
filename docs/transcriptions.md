@@ -50,7 +50,7 @@ Copying runs only after an explicit action using the browser's Clipboard API. A 
 
 ## Resource use
 
-Decoded float32 mono audio uses 64,000 bytes per second, approximately 230 MB per hour on disk. The isolated worker reads that prepared audio into memory, in addition to the model and inference workspace. Longer recordings therefore need proportionally more free memory and disk space. Preparation has a 30-minute timeout and inference a six-hour timeout. Memory allocation or native runtime errors fail the job; they do not silently publish partial text.
+Decoded float32 mono audio uses 64,000 bytes per second, approximately 230 MB per hour on disk. The isolated worker reads that prepared audio into memory, in addition to the model and inference workspace. Longer recordings therefore need proportionally more free memory and disk space. The worker reads the file in chunks, so Node's 2 GiB whole-file read limit does not apply. The engine accepts at most 2³¹−1 samples (about 37 hours); longer recordings fail before the audio is loaded. Preparation has a 30-minute timeout and inference a six-hour timeout. Memory allocation or native runtime errors fail the job; they do not silently publish partial text.
 
 The initial implementation keeps native long-form segmentation and does not add a custom streaming decoder. Manual device selection, speaker labels, multiple transcript versions and editing are outside this implementation.
 
