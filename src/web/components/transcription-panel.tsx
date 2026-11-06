@@ -72,9 +72,13 @@ export function TranscriptionPanel({
             Cancel transcription
           </Button>
         ) : null}
-        {job && ["failed", "cancelled", "interrupted"].includes(job.status) ? (
-          <Button disabled={action.isPending} onClick={() => action.mutate("retry")}>
-            Retry transcription
+        {job && !active ? (
+          <Button
+            variant={job.status === "completed" ? "outline" : "default"}
+            disabled={action.isPending}
+            onClick={() => action.mutate("retry")}
+          >
+            {job.status === "completed" ? "Transcribe again" : "Retry transcription"}
           </Button>
         ) : null}
       </div>
@@ -127,7 +131,12 @@ export function TranscriptionPanel({
       {job?.status === "cancelled" ? (
         <output className="block text-sm text-muted-foreground">Transcription cancelled.</output>
       ) : null}
-      {job?.status === "completed" && job.transcript ? (
+      {job?.transcript && job.status !== "completed" ? (
+        <p className="text-sm text-muted-foreground">
+          Showing the previous transcript until a new one completes.
+        </p>
+      ) : null}
+      {job?.transcript ? (
         job.transcript.segments.length === 0 ? (
           <p className="text-sm text-muted-foreground">No speech was detected in this recording.</p>
         ) : (

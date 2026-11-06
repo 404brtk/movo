@@ -187,7 +187,7 @@ export function createApp(
         throw new MediaError("invalid", "Choose TXT, SRT or VTT for the transcript export.", cause);
       }
       const job = await runMedia(transcriptions.get(context.req.param("id")));
-      if (job?.status !== "completed" || !job.transcript)
+      if (!job?.transcript)
         throw new MediaError("invalid", "Complete the transcription before downloading it.");
       const item = await runMedia(library.get(job.mediaId));
       const contentTypes = {

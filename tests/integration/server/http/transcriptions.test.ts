@@ -87,7 +87,7 @@ it("runs transcription beyond the initiating request and exposes status, cancel 
   }
 });
 
-it("downloads completed transcripts as UTF-8 attachments without starting another transcription", async () => {
+it("downloads saved transcripts as UTF-8 attachments, including during a replacement attempt", async () => {
   const directory = await mkdtemp(join(tmpdir(), "movo-transcription-export-"));
   try {
     await Effect.runPromise(
@@ -113,11 +113,7 @@ it("downloads completed transcripts as UTF-8 attachments without starting anothe
           let attempts = 0;
           const transcriptions = createTranscriptions(database, config, tools, {
             check: () => Effect.void,
-            transcribe: () =>
-              Effect.sync(() => {
-                attempts++;
-                return transcript;
-              }),
+            transcribe: () => (++attempts === 1 ? Effect.succeed(transcript) : Effect.never),
           });
           const app = createApp(database, config, undefined, { tools, transcriptions });
           const base = `http://127.0.0.1:4310/api/media/${media.id}/transcription`;
@@ -180,6 +176,12 @@ it("downloads completed transcripts as UTF-8 attachments without starting anothe
               transcript,
             );
             expect(attempts).toBe(1);
+            expect((await app.request(`${base}/retry`, { method: "POST" })).status).toBe(202);
+            await expect.poll(() => attempts).toBe(2);
+            const during = await app.request(`${base}/export/txt`);
+            expect(during.status).toBe(200);
+            expect(await during.text()).toBe(exports[0]?.text);
+            expect((await app.request(`${base}/cancel`, { method: "POST" })).status).toBe(200);
             const rename = await app.request(base.replace("/transcription", ""), {
               method: "PATCH",
               body: JSON.stringify({ title: "Renamed transcript" }),

@@ -16,7 +16,7 @@ A separate Node process loads the model through `transcribe-cpp` and requests se
 
 The worker loads the model with the engine's [automatic backend policy](https://github.com/handy-computer/transcribe.cpp/blob/main/bindings/typescript/README.md#backend-selection): the best accelerator supported by the installed native package, otherwise the CPU. The engine falls back to the CPU without an error when, for example, the Vulkan loader or driver is missing. Movo does not add its own fallback or offer a device setting. A failure to initialize or run on the selected device fails the job and publishes no transcript.
 
-After loading, the worker reports the device the model actually runs on. The job stores it as `device` with the engine's backend (`cpu`, `vulkan`, `cuda`, `rocm` or `metal`) and the device name. The transcription panel shows it while the job runs and after it finishes; a CPU fallback therefore appears as the CPU. Failed, cancelled and interrupted attempts keep the device they ran on. Retry clears it until the next attempt reports one. Transcripts completed before this field existed have no device. A worker result without a device report is rejected.
+After loading, the worker reports the device the model actually runs on. The job stores it as `device` with the engine's backend (`cpu`, `vulkan`, `cuda`, `rocm` or `metal`) and the device name. The transcription panel shows it while the job runs and after it finishes; a CPU fallback therefore appears as the CPU. Failed, cancelled and interrupted attempts keep the device they ran on. Retry and re-transcription clear it until the next attempt reports one, so the device always describes the latest attempt. Transcripts completed before this field existed have no device. A worker result without a device report is rejected.
 
 The model worker is connected to its backend through Node IPC and exits if the owner disappears. Cancellation and ordinary shutdown stop the owned process before removing its temporary files. This is process isolation for lifecycle and fault handling, not an operating-system security sandbox.
 
@@ -28,11 +28,13 @@ Work files live in `MOVO_DATA_DIR/transcriptions/<media-id>/`. Stored library me
 
 Jobs move through queued, running, completed, failed, cancelled or interrupted states. A single worker runs one transcription at a time, independently of media downloads and browser requests. Duplicate enqueue requests return the existing job. Cancel and retry operations are serialized so concurrent requests cannot clean files belonging to a new attempt.
 
-Startup marks persisted running jobs interrupted and clears terminal staging directories. Queued jobs continue automatically. Interrupted jobs require an explicit retry. Cleanup failures are saved separately on the affected job and do not stop other recordings or discard a completed transcript. Retrying requires successful cleanup. Restart attempts cleanup again.
+**Transcribe again** starts a new attempt for a completed recording through the retry operation. The row keeps its last successful transcript while the new attempt is queued or running, and the panel shows it with a note until a replacement completes. A successful attempt replaces it in the same update that marks the job completed. Failure, cancellation and interruption keep the previous transcript and report the new attempt's state and error. A second retry while an attempt is queued or running is rejected, so one recording never has two active attempts.
+
+Startup marks persisted running jobs interrupted and clears terminal staging directories. Queued jobs continue automatically. Interrupted jobs require an explicit retry; both keep any previous transcript. Cleanup failures are saved separately on the affected job and do not stop other recordings or discard a completed transcript. Retrying requires successful cleanup. Restart attempts cleanup again.
 
 ## Copy and export
 
-Completed, nonempty transcripts show **Copy text**, **Download TXT**, **Download SRT** and **Download VTT** above the passages. Copying and TXT use the same plain text, with a blank line between passages and no timestamps. Downloads use UTF-8. The server supplies the recording title with the selected extension in `Content-Disposition`, so normal links and direct export URLs use the same filename. The header includes an ASCII `filename` fallback and UTF-8 `filename*`; path separators and control characters are replaced with underscores.
+Saved, nonempty transcripts show **Copy text**, **Download TXT**, **Download SRT** and **Download VTT** above the passages. Copying and TXT use the same plain text, with a blank line between passages and no timestamps. Downloads use UTF-8. The server supplies the recording title with the selected extension in `Content-Disposition`, so normal links and direct export URLs use the same filename. The header includes an ASCII `filename` fallback and UTF-8 `filename*`; path separators and control characters are replaced with underscores.
 
 SRT and WebVTT export one subtitle cue per passage with millisecond timestamps. Subtitle text collapses whitespace into spaces so blank lines cannot split a cue, and escapes `&`, `<` and `>` so recognized text remains literal. Existing overlaps are preserved. A zero-duration passage receives a one-millisecond cue so its text is retained with a valid end time. See the [SubRip description](https://www.loc.gov/preservation/digital/formats/fdd/fdd000569.shtml) and [WebVTT specification](https://www.w3.org/TR/webvtt1/).
 
@@ -51,16 +53,16 @@ The initial implementation keeps native long-form segmentation and does not add 
 All commands use the existing local-origin checks. They operate on a saved media ID and take no JSON options.
 
 - `GET /api/media/:id/transcription` returns the job or `null` when the media exists without a transcription. Responses use `Cache-Control: no-store`.
-- `GET /api/media/:id/transcription/export/:format` downloads a completed result as `txt`, `srt` or `vtt`. Responses use the corresponding content type, `Content-Disposition: attachment` with the filename parameters above, `Cache-Control: private, no-store` and `X-Content-Type-Options: nosniff`. Unsupported formats and unfinished/missing results return HTTP 400. No transcription is enqueued by this request.
+- `GET /api/media/:id/transcription/export/:format` downloads the saved transcript, including while a replacement attempt runs or after it fails, as `txt`, `srt` or `vtt`. Responses use the corresponding content type, `Content-Disposition: attachment` with the filename parameters above, `Cache-Control: private, no-store` and `X-Content-Type-Options: nosniff`. Unsupported formats and recordings without a saved transcript return HTTP 400. No transcription is enqueued by this request.
 - `POST /api/media/:id/transcription` returns HTTP 202 with the existing or newly queued job.
 - `POST /api/media/:id/transcription/cancel` returns the current job after stopping active work, or `null` when none exists.
-- `POST /api/media/:id/transcription/retry` returns HTTP 202 after retrying a failed, cancelled or interrupted job. Other states are rejected.
+- `POST /api/media/:id/transcription/retry` returns HTTP 202 after starting a new attempt for a completed, failed, cancelled or interrupted job. Queued and running jobs are rejected.
 
 An invalid or missing media ID returns HTTP 404. Model/tool unavailability returns HTTP 503. The worker owns accepted work after the initiating request ends.
 
 ## Verification
 
-Normal tests use real temporary SQLite and filesystem storage, real local FFmpeg conversion and controlled substitutes only at inference/process boundaries. Browser tests verify explicit initiation, setup errors, navigation during work, cancellation/retry, saved passages, reload, empty output and seeking. They never download weights or inspect the user's model cache.
+Normal tests use real temporary SQLite and filesystem storage, real local FFmpeg conversion and controlled substitutes only at inference/process boundaries. Browser tests verify explicit initiation, setup errors, navigation during work, cancellation/retry, re-transcription with the previous transcript visible, saved passages, reload, empty output and seeking. They never download weights or inspect the user's model cache.
 
 Export tests cover literal text, Unicode, millisecond/hour boundaries, overlaps, zero-duration cues and empty results. HTTP tests exercise real saved transcripts and reject exports before completion. Browser export tests use an isolated real backend and database with a controlled inference result, save all three formats, parse the exported WebVTT with Chromium, and verify keyboard actions, narrow layout and clipboard failures. Clipboard tests replace the browser API without changing the system clipboard.
 
