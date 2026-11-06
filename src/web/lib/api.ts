@@ -163,6 +163,8 @@ export const renameMedia = (id: string, title: string) =>
   );
 export const deleteMedia = (id: string) =>
   readResponse(client.api.media[":id"].$delete({ param: { id } }), MediaDeletion);
+export const removeMediaFile = (id: string) =>
+  readResponse(client.api.media[":id"].file.$delete({ param: { id } }), MediaDeletion);
 export const transcriptionExportUrl = (id: string, format: TranscriptExportFormat) =>
   `/api/media/${encodeURIComponent(id)}/transcription/export/${format}`;
 

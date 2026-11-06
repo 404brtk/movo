@@ -226,3 +226,43 @@ test("reports denied or unavailable clipboard access and allows retrying after r
   await expect(panel.getByRole("status")).toHaveText("Transcript copied.");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(plainText);
 });
+
+test("removes the saved copy after confirmation while keeping the transcript readable and exportable", async ({
+  page,
+  recording,
+}, testInfo) => {
+  const removeTrigger = page.getByRole("button", { name: "Remove saved copy", exact: true });
+  await removeTrigger.click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText(`Remove the saved copy of “${recording.title}”?`);
+  await dialog.getByRole("button", { name: "Keep saved copy", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("audio")).toHaveCount(1);
+  await removeTrigger.click();
+  await dialog.getByRole("button", { name: "Remove saved copy", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  for (const reload of [false, true]) {
+    if (reload) await page.reload();
+    await expect(
+      page.getByText(
+        "The saved copy was removed to free up space. The transcript is still available.",
+      ),
+    ).toBeVisible();
+    await expect(page.locator("audio")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Save a copy" })).toHaveCount(0);
+    await expect(removeTrigger).toHaveCount(0);
+    const panel = page.getByRole("region", { name: "Transcription", exact: true });
+    await expect(panel.getByText("Zażółć gęślą jaźń.")).toBeVisible();
+    await expect(panel.getByRole("button", { name: /^Go to / })).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "Transcribe again" })).toHaveCount(0);
+  }
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Download TXT", exact: true }).click();
+  const path = testInfo.outputPath("removed-copy.txt");
+  await (await downloadPromise).saveAs(path);
+  expect(readFileSync(path, "utf8")).toBe(plainText);
+  await page.getByRole("link", { name: "Back to library" }).click();
+  await expect(
+    page.getByRole("link", { name: `Open ${recording.title}`, exact: true }),
+  ).toContainText("Removed");
+});

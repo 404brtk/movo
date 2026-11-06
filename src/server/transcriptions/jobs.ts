@@ -223,6 +223,8 @@ export function createTranscriptions(
           yield* Fiber.interrupt(active.fiber);
         return yield* library.remove(id);
       }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
+    removeMediaFile: (id: string) =>
+      library.removeFile(id).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
     enqueue: (id: string) =>
       Effect.gen(function* () {
         yield* library.file(id);
