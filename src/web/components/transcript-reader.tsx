@@ -8,18 +8,24 @@ import {
 import { formatDuration } from "../lib/format.ts";
 import { cn } from "../lib/utils.ts";
 
+const revealPassage = (element: HTMLLIElement | null) =>
+  element?.scrollIntoView({ block: "center" });
+
 const Passage = memo(function Passage({
   passage,
   currentWord,
+  revealed,
   onSeek,
 }: {
   passage: TranscriptPassage;
   currentWord: number;
+  revealed: boolean;
   onSeek: (milliseconds: number) => void;
 }) {
   const current = currentWord >= 0;
   return (
     <li
+      ref={revealed ? revealPassage : undefined}
       aria-current={current ? "time" : undefined}
       className={cn("flex gap-4 px-5 py-4 transition-colors sm:gap-6", current && "bg-muted")}
     >
@@ -52,14 +58,17 @@ const Passage = memo(function Passage({
 export function TranscriptReader({
   transcript,
   positionMs,
+  revealMs,
   onSeek,
 }: {
   transcript: Transcript;
   positionMs: number;
+  revealMs?: number | undefined;
   onSeek: (milliseconds: number) => void;
 }) {
   const passages = useMemo(() => transcriptPassages(transcript.words), [transcript.words]);
   const currentWord = currentWordIndex(transcript.words, positionMs);
+  const revealedWord = revealMs === undefined ? -1 : currentWordIndex(transcript.words, revealMs);
   return (
     <ol aria-label="Timestamped passages" className="divide-y overflow-hidden rounded-xl border">
       {passages.map((passage) => {
@@ -69,6 +78,10 @@ export function TranscriptReader({
             key={passage.firstWord}
             passage={passage}
             currentWord={offset >= 0 && offset < passage.words.length ? offset : -1}
+            revealed={
+              revealedWord >= passage.firstWord &&
+              revealedWord < passage.firstWord + passage.words.length
+            }
             onSeek={onSeek}
           />
         );

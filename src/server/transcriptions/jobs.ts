@@ -13,6 +13,7 @@ import type { AppDatabase } from "../db/database.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
+import { setSearchTranscript } from "../media/search.ts";
 import { queueTranscription } from "./queue.ts";
 import { transcriptionJobs } from "./transcriptions.schema.ts";
 
@@ -58,8 +59,12 @@ export function createTranscriptions(
       const job = row(id);
       return job ? Schema.decodeUnknownSync(TranscriptionJob)(job) : null;
     });
-  const updateRunning = (id: string, changes: Partial<typeof transcriptionJobs.$inferInsert>) =>
-    database
+  const updateRunning = (
+    id: string,
+    changes: Partial<typeof transcriptionJobs.$inferInsert>,
+    executor: Pick<AppDatabase, "update"> = database,
+  ) =>
+    executor
       .update(transcriptionJobs)
       .set({ ...changes, updatedAt: Date.now() })
       .where(and(eq(transcriptionJobs.mediaId, id), eq(transcriptionJobs.status, "running")))
@@ -139,11 +144,13 @@ export function createTranscriptions(
                 "unsupported",
                 "The engine returned words outside this recording.",
               );
-            updateRunning(job.mediaId, {
-              status: "completed",
-              phase: "finished",
-              transcript,
-              error: null,
+            database.transaction((transaction) => {
+              const completed = updateRunning(
+                job.mediaId,
+                { status: "completed", phase: "finished", transcript, error: null },
+                transaction,
+              );
+              if (completed.changes > 0) setSearchTranscript(transaction, job.mediaId, transcript);
             });
           });
         }),

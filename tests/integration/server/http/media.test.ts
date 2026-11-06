@@ -73,6 +73,31 @@ describe("media HTTP interface", () => {
     });
   });
 
+  it("searches and filters the library through validated query parameters", async () => {
+    await withApp(async (app) => {
+      const item = await importWave(app);
+      const found = await app.request(`${base}?q=PROBKA&kind=audio&transcript=missing&sort=title`);
+      expect(found.status).toBe(200);
+      expect(await found.json()).toEqual([
+        { ...item, match: { title: [{ start: 0, end: 6 }], passages: [], passageCount: 0 } },
+      ]);
+      expect(await (await app.request(`${base}?kind=video`)).json()).toEqual([]);
+      for (const query of [
+        "kind=image",
+        "transcript=yes",
+        "sort=size",
+        "kind=audio&kind=video",
+        `q=${"a".repeat(201)}`,
+      ]) {
+        const rejected = await app.request(`${base}?${query}`);
+        expect(rejected.status).toBe(400);
+        expect(await rejected.json()).toEqual({
+          error: "Use a search of up to 200 characters and supported library filters.",
+        });
+      }
+    });
+  });
+
   it("rejects malformed, invalid and oversized title requests without changing media", async () => {
     await withApp(async (app) => {
       const item = await importWave(app);

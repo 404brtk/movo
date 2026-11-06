@@ -1,9 +1,11 @@
 import { serveStatic } from "@hono/node-server/serve-static";
+import { sValidator } from "@hono/standard-validator";
 import { sql } from "drizzle-orm";
 import { Effect, Result, Schema } from "effect";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { DownloadRequest } from "../../shared/contracts/downloads.ts";
+import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
 import { RenameMediaRequest } from "../../shared/contracts/media.ts";
 import { TranscriptExportFormat } from "../../shared/contracts/transcriptions.ts";
 import { exportTranscript } from "../../shared/transcript-export.ts";
@@ -161,7 +163,17 @@ export function createApp(
     .post("/downloads/:id/retry", async (context) =>
       context.json(await runMedia(downloads.retry(context.req.param("id"))), 202),
     )
-    .get("/media", async (context) => context.json(await runMedia(library.list())))
+    .get(
+      "/media",
+      sValidator("query", Schema.toStandardSchemaV1(LibraryQuery), (result) => {
+        if (!result.success)
+          throw new MediaError(
+            "invalid",
+            `Use a search of up to ${maxSearchLength} characters and supported library filters.`,
+          );
+      }),
+      async (context) => context.json(await runMedia(library.list(context.req.valid("query")))),
+    )
     .get("/media/:id", async (context) =>
       context.json(await runMedia(library.get(context.req.param("id")))),
     )

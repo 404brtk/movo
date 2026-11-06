@@ -2,6 +2,7 @@ import { ArrowLeft02Icon, Download04Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { Schema } from "effect";
 import { useCallback, useRef, useState } from "react";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import { MediaPlayer } from "../components/media-player.tsx";
@@ -10,12 +11,28 @@ import { TranscriptionPanel } from "../components/transcription-panel.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
 import { ApiError, mediaFileUrl, mediaItemOptions } from "../lib/api.ts";
 import { formatBytes, formatDuration, formatImportDate } from "../lib/format.ts";
+import { searchParams } from "../lib/search-params.ts";
 
-export const Route = createFileRoute("/media/$mediaId")({ component: MediaDetail });
+export const Route = createFileRoute("/media/$mediaId")({
+  validateSearch: searchParams(
+    Schema.Struct({
+      startMs: Schema.optional(
+        Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+      ),
+    }),
+  ),
+  component: MediaDetail,
+});
 
-function PlaybackWithTranscript({ item }: { item: MediaItem }) {
+function PlaybackWithTranscript({
+  item,
+  startMs,
+}: {
+  item: MediaItem;
+  startMs: number | undefined;
+}) {
   const player = useRef<HTMLMediaElement | null>(null);
-  const [positionMs, setPositionMs] = useState(0);
+  const [positionMs, setPositionMs] = useState(startMs ?? 0);
   const playerRef = useCallback((element: HTMLMediaElement | null) => {
     player.current = element;
   }, []);
@@ -24,14 +41,25 @@ function PlaybackWithTranscript({ item }: { item: MediaItem }) {
   }, []);
   return (
     <>
-      <MediaPlayer item={item} playerRef={playerRef} onPositionChange={setPositionMs} />
-      <TranscriptionPanel mediaId={item.id} positionMs={positionMs} onSeek={seek} />
+      <MediaPlayer
+        item={item}
+        playerRef={playerRef}
+        startMs={startMs}
+        onPositionChange={setPositionMs}
+      />
+      <TranscriptionPanel
+        mediaId={item.id}
+        positionMs={positionMs}
+        revealMs={startMs}
+        onSeek={seek}
+      />
     </>
   );
 }
 
 function MediaDetail() {
   const { mediaId } = Route.useParams();
+  const { startMs } = Route.useSearch();
   const media = useQuery(mediaItemOptions(mediaId));
   const item = media.data;
   return (
@@ -88,7 +116,7 @@ function MediaDetail() {
             </a>
           </div>
           <MediaActions key={item.id} item={item} />
-          <PlaybackWithTranscript key={item.id} item={item} />
+          <PlaybackWithTranscript key={`${item.id}:${startMs}`} item={item} startMs={startMs} />
           {item.sourceUrl ? (
             <a
               href={item.sourceUrl}

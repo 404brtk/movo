@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { downloadsOptions, mediaListOptions } from "../lib/api.ts";
+import { downloadsOptions, mediaListKey } from "../lib/api.ts";
 
 export function DownloadActivity() {
   const jobs = useQuery(downloadsOptions);
@@ -13,7 +13,7 @@ export function DownloadActivity() {
   const active =
     jobs.data?.filter((job) => job.status === "queued" || job.status === "running").length ?? 0;
   useEffect(() => {
-    if (completed) void queryClient.invalidateQueries({ queryKey: mediaListOptions.queryKey });
+    if (completed) void queryClient.invalidateQueries({ queryKey: mediaListKey });
   }, [completed, queryClient]);
   return (
     <nav aria-label="Main navigation" className="flex items-center gap-1">

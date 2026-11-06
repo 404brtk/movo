@@ -24,10 +24,12 @@ const phaseLabels = {
 export function TranscriptionPanel({
   mediaId,
   positionMs,
+  revealMs,
   onSeek,
 }: {
   mediaId: string;
   positionMs: number;
+  revealMs?: number | undefined;
   onSeek: (milliseconds: number) => void;
 }) {
   const options = transcriptionOptions(mediaId);
@@ -145,7 +147,12 @@ export function TranscriptionPanel({
         ) : (
           <>
             <TranscriptActions mediaId={mediaId} transcript={job.transcript} />
-            <TranscriptReader transcript={job.transcript} positionMs={positionMs} onSeek={onSeek} />
+            <TranscriptReader
+              transcript={job.transcript}
+              positionMs={positionMs}
+              revealMs={revealMs}
+              onSeek={onSeek}
+            />
           </>
         )
       ) : null}

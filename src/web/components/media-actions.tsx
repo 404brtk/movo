@@ -2,12 +2,13 @@ import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
+import type { LibraryItem } from "../../shared/contracts/library.ts";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import {
   deleteMedia,
   downloadsOptions,
   mediaItemOptions,
-  mediaListOptions,
+  mediaListKey,
   renameMedia,
   transcriptionOptions,
 } from "../lib/api.ts";
@@ -24,15 +25,12 @@ export function MediaActions({ item }: { item: MediaItem }) {
   const focusCompletion = useCallback((button: HTMLButtonElement | null) => button?.focus(), []);
   const rename = useMutation({
     mutationFn: () => renameMedia(item.id, title.trim()),
-    onMutate: () => client.cancelQueries({ queryKey: mediaListOptions.queryKey }),
+    onMutate: () => client.cancelQueries({ queryKey: mediaListKey }),
     onSuccess: async (updated) => {
       client.setQueryData(mediaItemOptions(item.id).queryKey, updated);
-      client.setQueryData(mediaListOptions.queryKey, (current) =>
-        current?.map((entry) => (entry.id === item.id ? updated : entry)),
-      );
       setEditing(false);
       renameTrigger.current?.focus();
-      await client.invalidateQueries({ queryKey: mediaListOptions.queryKey, exact: true });
+      await client.invalidateQueries({ queryKey: mediaListKey });
     },
   });
   const leaveRecording = async () => {
@@ -40,7 +38,7 @@ export function MediaActions({ item }: { item: MediaItem }) {
     client.removeQueries({ queryKey: mediaItemOptions(item.id).queryKey, exact: true });
     client.removeQueries({ queryKey: transcriptionOptions(item.id).queryKey, exact: true });
     await Promise.all([
-      client.invalidateQueries({ queryKey: mediaListOptions.queryKey, exact: true }),
+      client.invalidateQueries({ queryKey: mediaListKey }),
       client.invalidateQueries({ queryKey: downloadsOptions.queryKey }),
     ]);
   };
@@ -48,13 +46,13 @@ export function MediaActions({ item }: { item: MediaItem }) {
     mutationFn: () => deleteMedia(item.id),
     onMutate: async () => {
       await Promise.all([
-        client.cancelQueries({ queryKey: mediaListOptions.queryKey }),
+        client.cancelQueries({ queryKey: mediaListKey }),
         client.cancelQueries({ queryKey: transcriptionOptions(item.id).queryKey }),
         client.cancelQueries({ queryKey: downloadsOptions.queryKey }),
       ]);
     },
     onSuccess: async (deleted) => {
-      client.setQueryData(mediaListOptions.queryKey, (current) =>
+      client.setQueriesData<readonly LibraryItem[]>({ queryKey: mediaListKey }, (current) =>
         current?.filter((entry) => entry.id !== item.id),
       );
       if (!deleted.cleanupError) await leaveRecording();
