@@ -94,7 +94,7 @@ function Home() {
                     {formatDuration(item.durationSeconds)}
                   </span>
                   <span className="hidden text-xs text-muted-foreground tabular-nums md:block">
-                    {formatBytes(item.byteSize)}
+                    {item.fileRemovedAt === null ? formatBytes(item.byteSize) : "Removed"}
                   </span>
                   <time
                     className="hidden text-xs text-muted-foreground md:block"

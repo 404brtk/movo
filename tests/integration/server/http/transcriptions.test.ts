@@ -204,3 +204,76 @@ it("downloads saved transcripts as UTF-8 attachments, including during a replace
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 });
+
+it("removes the saved copy over HTTP while keeping the transcript and its exports", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "movo-media-file-http-"));
+  try {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const database = yield* openDatabase(join(directory, "app.sqlite"));
+          const config = { dataDirectory: directory };
+          const tools = createMediaTools(config);
+          const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+          const audio = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
+          const media = yield* library.import(
+            new Response(audio).body,
+            "recording.wav",
+            audio.length,
+          );
+          let transcribed = 0;
+          const transcriptions = createTranscriptions(database, config, tools, {
+            check: () => Effect.void,
+            transcribe: () => {
+              transcribed += 1;
+              return Effect.succeed({ language: null, words: [...timedWords(0, 900, "Kept.")] });
+            },
+          });
+          const app = createApp(database, config, undefined, { tools, transcriptions });
+          const item = `http://127.0.0.1:4310/api/media/${media.id}`;
+          yield* Effect.promise(async () => {
+            const early = await app.request(`${item}/file`, { method: "DELETE" });
+            expect(early.status).toBe(409);
+            expect(await early.json()).toEqual({
+              error: "Transcribe this recording before removing its saved copy.",
+            });
+            expect((await app.request(`${item}/file`)).status).toBe(200);
+          });
+          yield* transcriptions.enqueue(media.id);
+          const worker = yield* transcriptions.start();
+          yield* Effect.promise(async () => {
+            await expect
+              .poll(async () => (await Effect.runPromise(transcriptions.get(media.id)))?.status)
+              .toBe("completed");
+            const removed = await app.request(`${item}/file`, { method: "DELETE" });
+            expect(removed.status).toBe(200);
+            const body = await removed.json();
+            expect(body).toEqual({ ...media, fileRemovedAt: expect.any(Number) });
+            expect(await (await app.request(item)).json()).toEqual(body);
+            const file = await app.request(`${item}/file`);
+            expect(file.status).toBe(404);
+            expect(await file.json()).toEqual({
+              error:
+                "The saved copy of this recording was removed. Its transcript is still available.",
+            });
+            expect(await (await app.request(`${item}/transcription/export/txt`)).text()).toBe(
+              "Kept.",
+            );
+            expect(
+              (await app.request(`${item}/transcription/retry`, { method: "POST" })).status,
+            ).toBe(404);
+            expect((await Effect.runPromise(transcriptions.get(media.id)))?.status).toBe(
+              "completed",
+            );
+            expect(transcribed).toBe(1);
+            expect((await app.request(item, { method: "DELETE" })).status).toBe(200);
+            expect((await app.request(item)).status).toBe(404);
+          });
+          yield* Fiber.interrupt(worker);
+        }),
+      ),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});
