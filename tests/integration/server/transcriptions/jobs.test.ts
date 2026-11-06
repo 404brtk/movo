@@ -299,6 +299,10 @@ it("keeps the previous transcript through failed, cancelled and interrupted repl
         segments: [{ startMs: 0, endMs: 1500, text: "A replacement passage." }],
       };
       let attempts = 0;
+      const attemptStarted = (attempt: number) =>
+        Effect.promise(async () => {
+          await expect.poll(() => attempts, { timeout: 10000 }).toBe(attempt);
+        });
       const first = createTranscriptions(database, { dataDirectory: directory }, tools, {
         check: () => Effect.void,
         transcribe: (_path, _staging, _update, reportDevice) =>
@@ -334,11 +338,11 @@ it("keeps the previous transcript through failed, cancelled and interrupted repl
         error: "The engine stopped.",
       });
       yield* first.retry(media.id);
-      yield* waitFor(first, media.id, "running");
-      expect((yield* first.get(media.id))?.transcript).toEqual(transcript);
+      yield* attemptStarted(3);
+      expect(yield* first.get(media.id)).toMatchObject({ status: "running", transcript });
       expect(yield* first.cancel(media.id)).toMatchObject({ status: "cancelled", transcript });
       yield* first.retry(media.id);
-      yield* waitFor(first, media.id, "running");
+      yield* attemptStarted(4);
       yield* Fiber.interrupt(worker);
       const reopened = yield* openDatabase(join(directory, "app.sqlite"));
       const restarted = createTranscriptions(reopened, { dataDirectory: directory }, tools, {
