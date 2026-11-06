@@ -56,32 +56,47 @@ describe("transcript passages", () => {
     ]);
   });
 
-  it("splits a long sentence after its last clause punctuation before the limit", () => {
-    const passages = transcriptPassages(longSentence(9));
-    expect(passages.map((passage) => passage.words.length)).toEqual([10, 10]);
+  it("splits a long sentence at clause punctuation near its middle", () => {
+    const passages = transcriptPassages(longSentence(7));
+    expect(passages.map((passage) => passage.words.length)).toEqual([8, 12]);
     expect(passages[0]?.text.endsWith("word;")).toBe(true);
   });
 
-  it("splits at the limit when clause punctuation would leave a short first passage", () => {
+  it("splits a long sentence in the middle when clause punctuation is near its edge", () => {
     const passages = transcriptPassages(longSentence(3));
-    expect(passages.map((passage) => passage.words.length)).toEqual([16, 4]);
-    expect(passages.every((passage) => passage.text.length <= maxPassageCharacters)).toBe(true);
+    expect(passages.map((passage) => passage.words.length)).toEqual([10, 10]);
   });
 
-  it("keeps splitting until the passage fits after a clause split", () => {
+  it("splits a long sentence into balanced passages without a short remainder", () => {
+    expect(
+      texts(
+        words(
+          "For exactly 51 years, the Z340 cipher was one of cryptography's most famous unsolved ciphers. " +
+            "Now, as computers got faster, amateur cord breakers threw enormous processing power at this grid of 340 symbols, assuming the zodiac killer had invented some masterwork of encryption.",
+        ),
+      ),
+    ).toEqual([
+      "For exactly 51 years, the Z340 cipher was one",
+      "of cryptography's most famous unsolved ciphers.",
+      "Now, as computers got faster,",
+      "amateur cord breakers threw enormous processing power at this grid of 340 symbols,",
+      "assuming the zodiac killer had invented some masterwork of encryption.",
+    ]);
+  });
+
+  it("keeps splitting until every passage fits", () => {
     const long = "x".repeat(maxPassageCharacters - 4);
-    expect(texts(words(`first, next ${long} end.`))).toEqual(["first,", "next", long, "end."]);
+    expect(texts(words(`first, next ${long} end.`))).toEqual(["first, next", long, "end."]);
   });
 
-  it("starts a new passage before a word that would exceed the character limit", () => {
+  it("splits a sentence that exceeds the character limit", () => {
     const sentence = words(Array.from({ length: 30 }, () => "word").join(" "), 100);
     const passages = transcriptPassages(sentence);
-    expect(passages.map((passage) => passage.text.length)).toEqual([84, 64]);
-    expect(passages.every((passage) => passage.text.length <= maxPassageCharacters)).toBe(true);
-    expect(passages.map((passage) => passage.firstWord)).toEqual([0, 17]);
+    expect(passages.map((passage) => passage.text.length)).toEqual([74, 74]);
+    expect(passages.map((passage) => passage.firstWord)).toEqual([0, 15]);
   });
 
-  it("starts a new passage before a word that would exceed the duration limit", () => {
+  it("splits a sentence that exceeds the duration limit", () => {
     const slow = words("one two three four five", 2000);
     const passages = transcriptPassages(slow);
     expect(passages.map((passage) => passage.text)).toEqual(["one two three", "four five"]);

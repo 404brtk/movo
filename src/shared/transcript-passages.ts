@@ -59,32 +59,47 @@ function endsSentence(text: string) {
   );
 }
 
-function fits(words: readonly TranscriptWord[]) {
-  const { text, startMs, endMs } = passage(words, 0);
+function fits({ text, startMs, endMs }: TranscriptPassage) {
   return text.length <= maxPassageCharacters && endMs - startMs <= maxPassageMs;
 }
 
-function cutIndex(words: readonly TranscriptWord[], firstWord: number, overflowingWord: number) {
-  const clauseEnd =
-    firstWord +
-    1 +
-    words.slice(firstWord, overflowingWord).findLastIndex((word) => clauseEnding.test(word.text));
-  return 2 * (clauseEnd - firstWord) >= overflowingWord - firstWord ? clauseEnd : overflowingWord;
+function middleCut({ words, text }: TranscriptPassage) {
+  let leftLength = -1;
+  const cuts = words.slice(0, -1).map((word, index) => {
+    leftLength += word.text.length + 1;
+    return {
+      index: index + 1,
+      imbalance: Math.abs(2 * leftLength - text.length),
+      clause:
+        clauseEnding.test(word.text) &&
+        4 * leftLength >= text.length &&
+        4 * leftLength <= 3 * text.length,
+    };
+  });
+  const clauseCuts = cuts.filter((cut) => cut.clause);
+  return (clauseCuts.length > 0 ? clauseCuts : cuts).reduce((best, cut) =>
+    cut.imbalance < best.imbalance ? cut : best,
+  ).index;
+}
+
+function fittingPassages(words: readonly TranscriptWord[], firstWord: number): TranscriptPassage[] {
+  const whole = passage(words, firstWord);
+  if (words.length === 1 || fits(whole)) return [whole];
+  const cut = middleCut(whole);
+  return [
+    ...fittingPassages(words.slice(0, cut), firstWord),
+    ...fittingPassages(words.slice(cut), firstWord + cut),
+  ];
 }
 
 export function transcriptPassages(words: readonly TranscriptWord[]) {
   const passages: TranscriptPassage[] = [];
   let firstWord = 0;
-  const addPassageBefore = (end: number) => {
-    passages.push(passage(words.slice(firstWord, end), firstWord));
-    return end;
-  };
   words.forEach((word, index) => {
-    while (index > firstWord && !fits(words.slice(firstWord, index + 1)))
-      firstWord = addPassageBefore(cutIndex(words, firstWord, index));
-    if (endsSentence(word.text)) firstWord = addPassageBefore(index + 1);
+    if (!endsSentence(word.text) && index < words.length - 1) return;
+    passages.push(...fittingPassages(words.slice(firstWord, index + 1), firstWord));
+    firstWord = index + 1;
   });
-  if (firstWord < words.length) addPassageBefore(words.length);
   return passages;
 }
 
