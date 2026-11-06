@@ -12,6 +12,8 @@ const words = [
     "Zespół przygotował szczegółowy plan działań, który obejmuje analizę kosztów, harmonogram prac i podział odpowiedzialności między działy.",
   ),
   ...timedWords(9000, 9600, "Dziękuję!"),
+  ...timedWords(9600, 10200, "Teraz cisza"),
+  ...timedWords(13500, 14100, "i dalej."),
 ];
 
 it("requires a new search index version when stored passages or their search text change", () => {
@@ -22,13 +24,15 @@ it("requires a new search index version when stored passages or their search tex
       foldSearchText(passage.text),
     ]),
   }).toEqual({
-    version: 1,
+    version: 2,
     passages: [
       [0, "dr. kowalski omowil np."],
       [889, "budzet lodzi na rok 2026."],
       [2000, "zespol przygotowal szczegolowy plan dzialan, ktory obejmuje analize kosztow,"],
       [5938, "harmonogram prac i podzial odpowiedzialnosci miedzy dzialy."],
       [9000, "dziekuje!"],
+      [9600, "teraz cisza"],
+      [13500, "i dalej."],
     ],
   });
 });

@@ -12,7 +12,7 @@ import { searchIndex, searchPassages } from "./search.schema.ts";
 
 type SearchDatabase = Pick<AppDatabase, "run" | "all" | "insert" | "delete">;
 
-export const searchIndexVersion = 1;
+export const searchIndexVersion = 2;
 const maxPassageMatches = 3;
 const passagesPerInsert = 1000;
 
