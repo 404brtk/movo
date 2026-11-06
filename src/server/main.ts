@@ -30,9 +30,11 @@ const program = Effect.gen(function* () {
     Effect.sync(() => createMediaTools(config)),
     (managedTools) => managedTools.close(),
   );
-  yield* createMediaLibrary(database, config.dataDirectory, () =>
+  const library = createMediaLibrary(database, config.dataDirectory, () =>
     tools.resolve("ffprobe"),
-  ).recoverDeletions();
+  );
+  yield* library.recoverDeletions();
+  yield* library.syncSearchIndex();
   const ytdlp = yield* Effect.acquireRelease(
     Effect.sync(() => createYtdlp(config)),
     (managedYtdlp) => managedYtdlp.close(),

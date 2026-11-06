@@ -9,7 +9,7 @@ import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { openLegacyDatabase } from "../../../helpers/legacy-database.ts";
 import { timedWords } from "../../../helpers/timed-words.ts";
 
-it("indexes recordings and transcripts saved before library search existed", async () => {
+it("indexes recordings and transcripts saved before library search existed at startup", async () => {
   const directory = mkdtempSync(join(tmpdir(), "movo-search-migration-"));
   const path = join(directory, "app.sqlite");
   const transcribed = "11111111-1111-4111-8111-111111111111";
@@ -45,6 +45,8 @@ it("indexes recordings and transcripts saved before library search existed", asy
           const database = yield* openDatabase(path);
           const tools = createMediaTools({ dataDirectory: directory });
           const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+          expect(yield* library.list({ q: "wywiad" })).toEqual([]);
+          yield* library.syncSearchIndex();
           const [interview] = yield* library.list({ q: "zrodlo lad oresund" });
           expect(interview?.id).toBe(transcribed);
           expect(interview?.match?.passages).toEqual([

@@ -8,6 +8,8 @@ import { expect, it, onTestFinished } from "vitest";
 import { openDatabase, type AppDatabase } from "../../../../src/server/db/database.ts";
 import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { mediaItems } from "../../../../src/server/media/media.schema.ts";
+import { searchIndexVersion } from "../../../../src/server/media/search.ts";
+import { searchIndex, searchPassages } from "../../../../src/server/media/search.schema.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { createTranscriptions } from "../../../../src/server/transcriptions/jobs.ts";
 import type { MediaItem } from "../../../../src/shared/contracts/media.ts";
@@ -224,6 +226,31 @@ it("reports a running transcription even when its recording is filtered out", as
           })
           .toEqual({ items: [meeting], transcribing: false });
       });
+    }),
+  );
+});
+
+it("rebuilds an outdated index once and keeps a current one", async ({ signal }) => {
+  await withLibrary(signal, ({ database, library, review, transcribe }) =>
+    Effect.gen(function* () {
+      yield* transcribe(review, timedWords(0, 900, "Odbudowany indeks."));
+      yield* library.syncSearchIndex();
+      const passages = database.select().from(searchPassages).all();
+      yield* library.syncSearchIndex();
+      expect(database.select().from(searchPassages).all()).toEqual(passages);
+      database.delete(searchPassages).run();
+      database.run(sql`delete from media_search`);
+      yield* library.syncSearchIndex();
+      expect(yield* library.list({ q: "odbudowany" })).toEqual([]);
+      database
+        .update(searchIndex)
+        .set({ version: searchIndexVersion - 1 })
+        .run();
+      yield* library.syncSearchIndex();
+      expect(database.select().from(searchIndex).all()).toEqual([{ version: searchIndexVersion }]);
+      expect((yield* library.list({ q: "odbudowany budget" }))[0]?.match?.passages).toEqual([
+        { startMs: 0, text: "Odbudowany indeks.", ranges: [{ start: 0, end: 10 }] },
+      ]);
     }),
   );
 });

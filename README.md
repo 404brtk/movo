@@ -71,7 +71,7 @@ Transcript results show up to three matching passages with their timestamps and 
 
 **Type** limits results to audio or video, **Transcript** to recordings with or without a saved transcript, and **Sort by** orders them by best match (while searching), newest, oldest or title. The search, filters and order are kept in the page address, so they survive a refresh and the browser's back button. **Clear search and filters** appears when nothing matches. While any transcription is queued or running, the library refreshes every two seconds, so a finished transcript appears in filtered and search results without reloading.
 
-Search uses SQLite's built-in FTS5 full-text index in `app.sqlite`. Movo updates it in the same transaction as imports, renames, deletions and completed transcripts, so it needs no rebuild.
+Search uses two SQLite FTS5 full-text indexes in `app.sqlite`: one row per recording (title and transcript) decides which recordings match and how they rank, and one row per transcript passage, with its start time, supplies the previews. Search therefore never reads the stored transcripts. Movo updates both indexes in the same transaction as imports, renames, deletions and completed transcripts. When the passage rules or the search text folding change, Movo rebuilds the indexes once at startup.
 
 ## Download from YouTube or X
 

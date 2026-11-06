@@ -1,3 +1,17 @@
+CREATE TABLE `search_index` (
+	`version` integer PRIMARY KEY NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `search_passages` (
+	`id` integer PRIMARY KEY NOT NULL,
+	`media_id` text NOT NULL,
+	`start_ms` integer NOT NULL,
+	`text` text NOT NULL,
+	`search_text` text NOT NULL,
+	FOREIGN KEY (`media_id`) REFERENCES `media_items`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE INDEX `search_passages_media_order` ON `search_passages` (`media_id`,`start_ms`);--> statement-breakpoint
 CREATE VIRTUAL TABLE `media_search` USING fts5(
 	`media_id` UNINDEXED,
 	`title`,
@@ -5,37 +19,22 @@ CREATE VIRTUAL TABLE `media_search` USING fts5(
 	tokenize = 'unicode61 remove_diacritics 2'
 );
 --> statement-breakpoint
-WITH RECURSIVE `source` AS (
-	SELECT
-		`media_items`.`id` AS `media_id`,
-		`media_items`.`title` AS `title`,
-		coalesce(
-			(
-				SELECT group_concat(`word`.`value` ->> 'text', ' ' ORDER BY `word`.`key`)
-				FROM json_each(`transcription_jobs`.`transcript`, '$.words') AS `word`
-			),
-			''
-		) AS `transcript`
-	FROM `media_items`
-	LEFT JOIN `transcription_jobs` ON `transcription_jobs`.`media_id` = `media_items`.`id`
-),
-`letters` (`text`, `plain`) AS (
-	VALUES ('ł', 'l'), ('Ł', 'l'), ('đ', 'd'), ('Đ', 'd'), ('ø', 'o'), ('Ø', 'o'),
-		('ħ', 'h'), ('Ħ', 'h'), ('ŧ', 't'), ('Ŧ', 't'), ('ı', 'i')
-),
-`folded` (`media_id`, `title`, `transcript`, `step`) AS (
-	SELECT `media_id`, `title`, `transcript`, 0 FROM `source`
-	UNION ALL
-	SELECT
-		`folded`.`media_id`,
-		replace(`folded`.`title`, `letter`.`text`, `letter`.`plain`),
-		replace(`folded`.`transcript`, `letter`.`text`, `letter`.`plain`),
-		`folded`.`step` + 1
-	FROM `folded`
-	JOIN (SELECT `text`, `plain`, row_number() OVER () AS `step` FROM `letters`) AS `letter`
-		ON `letter`.`step` = `folded`.`step` + 1
-)
-INSERT INTO `media_search` (`media_id`, `title`, `transcript`)
-SELECT `media_id`, `title`, `transcript`
-FROM `folded`
-WHERE `step` = (SELECT count(*) FROM `letters`);
+CREATE VIRTUAL TABLE `passage_search` USING fts5(
+	`search_text`,
+	content = 'search_passages',
+	content_rowid = 'id',
+	tokenize = 'unicode61 remove_diacritics 2'
+);
+--> statement-breakpoint
+CREATE TRIGGER `search_passages_insert` AFTER INSERT ON `search_passages` BEGIN
+	INSERT INTO `passage_search` (`rowid`, `search_text`) VALUES (new.`id`, new.`search_text`);
+END;
+--> statement-breakpoint
+CREATE TRIGGER `search_passages_delete` AFTER DELETE ON `search_passages` BEGIN
+	INSERT INTO `passage_search` (`passage_search`, `rowid`, `search_text`) VALUES ('delete', old.`id`, old.`search_text`);
+END;
+--> statement-breakpoint
+CREATE TRIGGER `search_passages_update` AFTER UPDATE ON `search_passages` BEGIN
+	INSERT INTO `passage_search` (`passage_search`, `rowid`, `search_text`) VALUES ('delete', old.`id`, old.`search_text`);
+	INSERT INTO `passage_search` (`rowid`, `search_text`) VALUES (new.`id`, new.`search_text`);
+END;

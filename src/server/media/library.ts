@@ -22,7 +22,6 @@ import {
   MediaTitle,
   type MediaDeletion,
 } from "../../shared/contracts/media.ts";
-import { Transcript } from "../../shared/contracts/transcriptions.ts";
 import { searchTerms } from "../../shared/search-text.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { downloadJobs } from "../downloads/downloads.schema.ts";
@@ -33,9 +32,11 @@ import { probeMedia } from "./probe.ts";
 import {
   addSearchEntry,
   describeMatch,
+  findPassageMatches,
   rankSearchMatches,
   removeSearchEntry,
   setSearchTitle,
+  syncSearchIndex,
 } from "./search.ts";
 
 const extensions: Record<MediaItem["contentType"], string> = {
@@ -290,28 +291,14 @@ export function createMediaLibrary(
     );
     const ordered = items.toSorted(compareItems(librarySort(query), ranks));
     if (!ranks) return ordered;
-    const transcripts = new Map(
-      database
-        .select({
-          mediaId: transcriptionJobs.mediaId,
-          transcript: transcriptionJobs.transcript,
-        })
-        .from(transcriptionJobs)
-        .where(
-          and(
-            inArray(
-              transcriptionJobs.mediaId,
-              ordered.map((item) => item.id),
-            ),
-            isNotNull(transcriptionJobs.transcript),
-          ),
-        )
-        .all()
-        .map((row) => [row.mediaId, Schema.decodeUnknownSync(Transcript)(row.transcript)]),
+    const passages = findPassageMatches(
+      database,
+      terms,
+      ordered.map((item) => item.id),
     );
     return ordered.map((item) => ({
       ...item,
-      match: describeMatch(item.title, transcripts.get(item.id), terms),
+      match: describeMatch(item.title, passages.get(item.id), terms),
     }));
   };
 
@@ -380,6 +367,8 @@ export function createMediaLibrary(
         });
         return yield* save(path, basename(path), title, sourceUrl, stored.size, id);
       }),
+    syncSearchIndex: () =>
+      Effect.try({ try: () => syncSearchIndex(database), catch: storageError }),
     list: (query: LibraryQuery = {}) =>
       Effect.try({ try: () => listItems(query), catch: storageError }),
     browse: (query: LibraryQuery) =>
@@ -439,8 +428,8 @@ export function createMediaLibrary(
                 .delete(downloadJobs)
                 .where(or(eq(downloadJobs.mediaId, id), eq(downloadJobs.id, id)))
                 .run();
-              transaction.delete(mediaItems).where(eq(mediaItems.id, id)).run();
               removeSearchEntry(transaction, id);
+              transaction.delete(mediaItems).where(eq(mediaItems.id, id)).run();
               return item;
             },
           }),

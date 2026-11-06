@@ -1,8 +1,8 @@
 {
-  "id": "614a65cf-5cbc-472b-b6ec-970c35f6f1bb",
-  "prevId": "a8ee418a-2a7c-4fc9-b3df-770a02406888",
   "version": "6",
   "dialect": "sqlite",
+  "id": "b4d1cca0-5582-4ffd-b167-6e68e6ba440c",
+  "prevId": "a8ee418a-2a7c-4fc9-b3df-770a02406888",
   "tables": {
     "download_jobs": {
       "name": "download_jobs",
@@ -132,11 +132,11 @@
         "download_jobs_media_id_media_items_id_fk": {
           "name": "download_jobs_media_id_media_items_id_fk",
           "tableFrom": "download_jobs",
-          "columnsFrom": ["media_id"],
           "tableTo": "media_items",
+          "columnsFrom": ["media_id"],
           "columnsTo": ["id"],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -237,6 +237,84 @@
         }
       }
     },
+    "search_index": {
+      "name": "search_index",
+      "columns": {
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "search_passages": {
+      "name": "search_passages",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "media_id": {
+          "name": "media_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "start_ms": {
+          "name": "start_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "search_text": {
+          "name": "search_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "search_passages_media_order": {
+          "name": "search_passages_media_order",
+          "columns": ["media_id", "start_ms"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "search_passages_media_id_media_items_id_fk": {
+          "name": "search_passages_media_id_media_items_id_fk",
+          "tableFrom": "search_passages",
+          "tableTo": "media_items",
+          "columnsFrom": ["media_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "transcription_jobs": {
       "name": "transcription_jobs",
       "columns": {
@@ -322,11 +400,11 @@
         "transcription_jobs_media_id_media_items_id_fk": {
           "name": "transcription_jobs_media_id_media_items_id_fk",
           "tableFrom": "transcription_jobs",
-          "columnsFrom": ["media_id"],
           "tableTo": "media_items",
+          "columnsFrom": ["media_id"],
           "columnsTo": ["id"],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -337,9 +415,9 @@
   "views": {},
   "enums": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
+    "tables": {},
+    "columns": {}
   },
   "internal": {
     "indexes": {}
