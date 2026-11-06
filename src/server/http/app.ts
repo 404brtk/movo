@@ -244,6 +244,9 @@ export function createApp(
       );
       return context.json(item, 201);
     })
+    .delete("/media/:id/file", async (context) =>
+      context.json(await runMedia(transcriptions.removeMediaFile(context.req.param("id")))),
+    )
     .on(["GET", "HEAD"], "/media/:id/file", async (context, next) => {
       const { item, path } = await runMedia(library.file(context.req.param("id")));
       const response = await serveStatic({

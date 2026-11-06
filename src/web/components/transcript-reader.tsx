@@ -8,6 +8,11 @@ import {
 import { formatDuration } from "../lib/format.ts";
 import { cn } from "../lib/utils.ts";
 
+export interface TranscriptPlayback {
+  positionMs: number;
+  onSeek: (milliseconds: number) => void;
+}
+
 const Passage = memo(function Passage({
   passage,
   currentWord,
@@ -15,7 +20,7 @@ const Passage = memo(function Passage({
 }: {
   passage: TranscriptPassage;
   currentWord: number;
-  onSeek: (milliseconds: number) => void;
+  onSeek: ((milliseconds: number) => void) | undefined;
 }) {
   const current = currentWord >= 0;
   return (
@@ -23,14 +28,20 @@ const Passage = memo(function Passage({
       aria-current={current ? "time" : undefined}
       className={cn("flex gap-4 px-5 py-4 transition-colors sm:gap-6", current && "bg-muted")}
     >
-      <button
-        type="button"
-        aria-label={`Go to ${formatDuration(passage.startMs / 1000)}`}
-        className="min-h-10 shrink-0 self-start rounded-sm text-sm text-muted-foreground tabular-nums underline underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-        onClick={() => onSeek(passage.startMs)}
-      >
-        {formatDuration(passage.startMs / 1000)}
-      </button>
+      {onSeek ? (
+        <button
+          type="button"
+          aria-label={`Go to ${formatDuration(passage.startMs / 1000)}`}
+          className="min-h-10 shrink-0 self-start rounded-sm text-sm text-muted-foreground tabular-nums underline underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+          onClick={() => onSeek(passage.startMs)}
+        >
+          {formatDuration(passage.startMs / 1000)}
+        </button>
+      ) : (
+        <span className="shrink-0 py-2 text-sm text-muted-foreground tabular-nums">
+          {formatDuration(passage.startMs / 1000)}
+        </span>
+      )}
       <p className="min-w-0 py-2 text-sm leading-7 wrap-anywhere">
         {current
           ? passage.words.map((word, index) => (
@@ -51,15 +62,13 @@ const Passage = memo(function Passage({
 
 export function TranscriptReader({
   transcript,
-  positionMs,
-  onSeek,
+  playback,
 }: {
   transcript: Transcript;
-  positionMs: number;
-  onSeek: (milliseconds: number) => void;
+  playback?: TranscriptPlayback | undefined;
 }) {
   const passages = useMemo(() => transcriptPassages(transcript.words), [transcript.words]);
-  const currentWord = currentWordIndex(transcript.words, positionMs);
+  const currentWord = playback ? currentWordIndex(transcript.words, playback.positionMs) : -1;
   return (
     <ol aria-label="Timestamped passages" className="divide-y overflow-hidden rounded-xl border">
       {passages.map((passage) => {
@@ -69,7 +78,7 @@ export function TranscriptReader({
             key={passage.firstWord}
             passage={passage}
             currentWord={offset >= 0 && offset < passage.words.length ? offset : -1}
-            onSeek={onSeek}
+            onSeek={playback?.onSeek}
           />
         );
       })}
