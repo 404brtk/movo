@@ -6,8 +6,10 @@ import { expect, it } from "vitest";
 import { readServerConfig } from "../../src/server/config.ts";
 import { openDatabase } from "../../src/server/db/database.ts";
 import { createDownloads } from "../../src/server/downloads/jobs.ts";
+import { createMediaDownloader } from "../../src/server/downloads/ytdlp.ts";
 import { createMediaLibrary } from "../../src/server/media/library.ts";
 import { createMediaTools } from "../../src/server/media-tools/tools.ts";
+import { createYtdlp } from "../../src/server/media-tools/ytdlp.ts";
 import { runCommand } from "../../src/server/process/command.ts";
 
 const xSourceUrl = process.env.MOVO_TEST_X_URL?.trim();
@@ -33,12 +35,18 @@ for (const source of [
       const directory = await mkdtemp(join(tmpdir(), "movo-real-download-"));
       const config = readServerConfig({ ...process.env, MOVO_DATA_DIR: directory });
       const tools = createMediaTools(config);
+      const ytdlp = createYtdlp(config);
       try {
         await Effect.runPromise(
           Effect.scoped(
             Effect.gen(function* () {
               const database = yield* openDatabase(config.databasePath);
-              const jobs = createDownloads(database, config, tools);
+              const jobs = createDownloads(
+                database,
+                config,
+                tools,
+                createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools),
+              );
               const preview = yield* jobs.preview(source.url);
               expect(preview.title.length).toBeGreaterThan(0);
               const job = yield* jobs.enqueue(preview.url, preset);
@@ -78,6 +86,7 @@ for (const source of [
           ),
         );
       } finally {
+        await Effect.runPromise(ytdlp.close());
         await Effect.runPromise(tools.close());
         await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
       }

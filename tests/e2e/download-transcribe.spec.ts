@@ -10,6 +10,7 @@ import { createDownloads } from "../../src/server/downloads/jobs.ts";
 import { createApp } from "../../src/server/http/app.ts";
 import { MediaError } from "../../src/server/media/error.ts";
 import { createMediaTools } from "../../src/server/media-tools/tools.ts";
+import { createYtdlp } from "../../src/server/media-tools/ytdlp.ts";
 import { createModels } from "../../src/server/models/models.ts";
 import { createTranscriptions } from "../../src/server/transcriptions/jobs.ts";
 
@@ -67,8 +68,18 @@ const test = base.extend<{
             });
             yield* downloads.start();
             yield* transcriptions.start();
+            const ytdlp = yield* Effect.acquireRelease(
+              Effect.sync(() =>
+                createYtdlp(
+                  { ...config, ytdlpPath: process.execPath },
+                  { run: async () => "2026.10.26\n" },
+                ),
+              ),
+              (manager) => manager.close(),
+            );
             const app = createApp(database, config, resolve("dist/web"), {
               tools,
+              ytdlp,
               models,
               downloads,
               transcriptions,

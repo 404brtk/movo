@@ -13,6 +13,7 @@ vi.mock("../../../../src/server/process/command.ts", () => ({
   runCommand: vi.fn<typeof runCommand>(),
 }));
 const command = vi.mocked(runCommand);
+const ytdlp = () => Effect.succeed("yt-dlp");
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
 const metadata = {
   id: "aaaaaaaaaaa",
@@ -32,10 +33,7 @@ afterEach(() => vi.resetAllMocks());
 describe("Media downloader protocol", () => {
   it("previews an X post using its post identity rather than its media ID", async () => {
     command.mockReturnValue(Effect.succeed(JSON.stringify(xMetadata)));
-    const downloader = createMediaDownloader(
-      "yt-dlp",
-      createMediaTools({ dataDirectory: tmpdir() }),
-    );
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));
     expect(
       await Effect.runPromise(downloader.preview("https://twitter.com/example/status/123?s=20")),
     ).toEqual({ url: xUrl, title: xMetadata.title, durationSeconds: 2 });
@@ -52,10 +50,7 @@ describe("Media downloader protocol", () => {
     { ...xMetadata, live_status: "is_live" },
   ])("rejects X results outside the requested single native video: %j", async (invalid) => {
     command.mockReturnValue(Effect.succeed(JSON.stringify(invalid)));
-    const downloader = createMediaDownloader(
-      "yt-dlp",
-      createMediaTools({ dataDirectory: tmpdir() }),
-    );
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));
     await expect(Effect.runPromise(downloader.preview(xUrl))).rejects.toMatchObject({
       reason: "unsupported",
     });
@@ -81,7 +76,7 @@ describe("Media downloader protocol", () => {
         }),
       );
       const result = await Effect.runPromise(
-        createMediaDownloader("yt-dlp", tools).download(xUrl, directory, () => undefined, "audio"),
+        createMediaDownloader(ytdlp, tools).download(xUrl, directory, () => undefined, "audio"),
       );
       expect(result).toEqual({
         path: join(directory, "media.m4a"),
@@ -117,7 +112,7 @@ describe("Media downloader protocol", () => {
         }),
       );
       await Effect.runPromise(
-        createMediaDownloader("yt-dlp", tools).download(url, directory, () => undefined, preset),
+        createMediaDownloader(ytdlp, tools).download(url, directory, () => undefined, preset),
       );
       const args = command.mock.calls[1]?.[1] ?? [];
       expect(args.includes("--merge-output-format")).toBe(preset !== "audio");
@@ -138,10 +133,7 @@ describe("Media downloader protocol", () => {
         ),
       ),
     );
-    const downloader = createMediaDownloader(
-      "yt-dlp",
-      createMediaTools({ dataDirectory: tmpdir() }),
-    );
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));
     await expect(Effect.runPromise(downloader.preview(xUrl))).rejects.toMatchObject({
       reason: "unavailable",
       message:
@@ -159,7 +151,7 @@ describe("Media downloader protocol", () => {
       );
       await expect(
         Effect.runPromise(
-          createMediaDownloader("yt-dlp", tools).download(
+          createMediaDownloader(ytdlp, tools).download(
             xUrl,
             directory,
             () => undefined,
@@ -175,23 +167,21 @@ describe("Media downloader protocol", () => {
     }
   });
 
-  it.each([url, xUrl])("explains how to configure missing yt-dlp for %s", async (input) => {
-    const cause = Object.assign(new Error("Missing executable"), { code: "ENOENT" });
-    command.mockReturnValue(
-      Effect.fail(new MediaError("unavailable", "The executable is unavailable.", cause)),
+  it.each([url, xUrl])("reports unavailable yt-dlp for %s without running it", async (input) => {
+    const unavailable = new MediaError(
+      "unavailable",
+      "yt-dlp is unavailable. Download yt-dlp in Movo or set YTDLP_PATH.",
     );
     const downloader = createMediaDownloader(
-      "yt-dlp",
+      () => Effect.fail(unavailable),
       createMediaTools({ dataDirectory: tmpdir() }),
     );
     await expect(Effect.runPromise(downloader.preview(input))).rejects.toThrow("YTDLP_PATH");
+    expect(command).not.toHaveBeenCalled();
   });
   it("allows unknown duration and passes a normalized URL as a single argument", async () => {
     command.mockReturnValue(Effect.succeed(JSON.stringify({ ...metadata, duration: null })));
-    const downloader = createMediaDownloader(
-      "yt-dlp",
-      createMediaTools({ dataDirectory: tmpdir() }),
-    );
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));
     expect(
       await Effect.runPromise(downloader.preview("https://youtu.be/aaaaaaaaaaa?t=10")),
     ).toEqual({ url, title: metadata.title, durationSeconds: null });
@@ -208,10 +198,7 @@ describe("Media downloader protocol", () => {
     { ...metadata, duration: -1 },
   ])("rejects unsupported or invalid source metadata: %j", async (invalid) => {
     command.mockReturnValue(Effect.succeed(JSON.stringify(invalid)));
-    const downloader = createMediaDownloader(
-      "yt-dlp",
-      createMediaTools({ dataDirectory: tmpdir() }),
-    );
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));
     await expect(Effect.runPromise(downloader.preview(url))).rejects.toMatchObject({
       reason: "unsupported",
     });
@@ -238,7 +225,7 @@ describe("Media downloader protocol", () => {
         }),
       );
       const result = await Effect.runPromise(
-        createMediaDownloader("yt-dlp", tools).download(url, directory, (update) =>
+        createMediaDownloader(ytdlp, tools).download(url, directory, (update) =>
           updates.push(update),
         ),
       );
@@ -266,7 +253,7 @@ describe("Media downloader protocol", () => {
         }),
       );
       await expect(
-        Effect.runPromise(createMediaDownloader("yt-dlp", tools).download(url, directory, vi.fn())),
+        Effect.runPromise(createMediaDownloader(ytdlp, tools).download(url, directory, vi.fn())),
       ).rejects.toMatchObject({ reason: "tooLarge" });
     } finally {
       await Effect.runPromise(tools.close());

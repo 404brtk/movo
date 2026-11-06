@@ -1,10 +1,7 @@
-import type { MediaToolsDownload } from "../../shared/contracts/media-tools.ts";
-import { Result, Schema } from "effect";
+import { hasGlibc } from "./glibc.ts";
+import type { ToolPackage } from "./managed.ts";
 
-export interface MediaToolsPackage extends MediaToolsDownload {
-  id: string;
-  url: string;
-  sha256: string;
+export interface MediaToolsPackage extends ToolPackage {
   root: string;
   license: string;
 }
@@ -24,17 +21,7 @@ export function mediaToolsPackage(): MediaToolsPackage | null {
       license: "LICENSE",
     };
   }
-  const report =
-    process.platform === "linux"
-      ? Schema.decodeUnknownResult(
-          Schema.Struct({ header: Schema.Struct({ glibcVersionRuntime: Schema.String }) }),
-        )(process.report.getReport())
-      : null;
-  const [major = 0, minor = 0] =
-    report && Result.isSuccess(report)
-      ? report.success.header.glibcVersionRuntime.split(".").map(Number)
-      : [];
-  if (process.platform === "linux" && (major > 2 || (major === 2 && minor >= 28))) {
+  if (hasGlibc(2, 28)) {
     return {
       id: "btbn-9.0.2-39-linux-x64",
       provider: "BtbN",
