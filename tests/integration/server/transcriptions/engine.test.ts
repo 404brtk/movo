@@ -9,6 +9,8 @@ import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { runCommand } from "../../../../src/server/process/command.ts";
 import { createTranscriptionEngine } from "../../../../src/server/transcriptions/engine.ts";
 
+const deviceReport = 'MOVO_DEVICE:{"backend":"vulkan","name":"Test GPU"}';
+
 it.for(["tone.wav", "sample.webm"])(
   "prepares real %s audio and validates the isolated engine result",
   async (filename) => {
@@ -36,7 +38,7 @@ it.for(["tone.wav", "sample.webm"])(
           ? Effect.promise(async () => {
               prepared = await readFile(args[2] ?? "");
               options.onLine?.("MOVO_PHASE:loading");
-              options.onLine?.('MOVO_DEVICE:{"backend":"vulkan","name":"Test GPU"}');
+              options.onLine?.(deviceReport);
               options.onLine?.("MOVO_PHASE:transcribing");
               await writeFile(args[3] ?? "", JSON.stringify(expected), { flag: "wx" });
               return "";
@@ -66,11 +68,15 @@ it.for(["tone.wav", "sample.webm"])(
 it.for([
   {
     name: "a result without a reported device",
+    reportsDevice: false,
     payload: JSON.stringify({ language: null, segments: [] }),
+    cause: /did not report its device/u,
   },
-  { name: "unreadable JSON", payload: "{" },
+  { name: "unreadable JSON", reportsDevice: true, payload: "{", cause: /JSON/u },
   {
     name: "reversed timestamps",
+    reportsDevice: true,
+    cause: /ends before it starts/u,
     payload: JSON.stringify({
       language: null,
       segments: [{ startMs: 1000, endMs: 100, text: "Invalid" }],
@@ -78,6 +84,8 @@ it.for([
   },
   {
     name: "unordered passages",
+    reportsDevice: true,
+    cause: /not in time order/u,
     payload: JSON.stringify({
       language: null,
       segments: [
@@ -86,7 +94,7 @@ it.for([
       ],
     }),
   },
-])("rejects $name from the worker", async ({ payload }) => {
+])("rejects $name from the worker", async ({ reportsDevice, payload, cause }) => {
   const directory = await mkdtemp(join(tmpdir(), "movo-transcription-result-"));
   onTestFinished(() =>
     rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }),
@@ -95,9 +103,12 @@ it.for([
   const engine = createTranscriptionEngine(
     tools,
     { resolve: () => Effect.succeed("verified-model.gguf") },
-    (file, args) =>
+    (file, args, options) =>
       Effect.promise(async () => {
-        if (file === process.execPath) await writeFile(args[3] ?? "", payload, { flag: "wx" });
+        if (file === process.execPath) {
+          if (reportsDevice) options.onLine?.(deviceReport);
+          await writeFile(args[3] ?? "", payload, { flag: "wx" });
+        }
         return "";
       }),
   );
@@ -113,5 +124,6 @@ it.for([
   ).rejects.toMatchObject({
     reason: "unsupported",
     message: "The transcription engine returned an invalid result.",
+    cause: { message: expect.stringMatching(cause) },
   });
 });
