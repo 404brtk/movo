@@ -273,9 +273,17 @@ test("transcribes a completed recording again while keeping the previous transcr
     return route.fulfill({ status: 202, json: job });
   });
   await page.addInitScript(() => {
+    let writes = 0;
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
-      value: { writeText: async () => undefined },
+      value: {
+        writeText: async () => {
+          if (++writes === 2)
+            await new Promise((resolve) => {
+              window.addEventListener("release-copy", resolve, { once: true });
+            });
+        },
+      },
     });
   });
   await page.goto(`/media/${media.id}`);
@@ -302,8 +310,12 @@ test("transcribes a completed recording again while keeping the previous transcr
   await expect(panel.getByRole("alert")).toHaveText("The new attempt failed.");
   await expect(previousText).toBeVisible();
   await expect(notice).toBeVisible();
-  await panel.getByRole("button", { name: "Copy text", exact: true }).click();
-  await expect(panel.getByText("Transcript copied.", { exact: true })).toBeVisible();
+  const copyButton = panel.getByRole("button", { name: "Copy text", exact: true });
+  const copied = panel.getByText("Transcript copied.", { exact: true });
+  await copyButton.click();
+  await expect(copied).toBeVisible();
+  await copyButton.click();
+  await expect(copyButton).toBeDisabled();
   await panel.getByRole("button", { name: "Retry transcription", exact: true }).click();
   await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
   job = {
@@ -319,7 +331,14 @@ test("transcribes a completed recording again while keeping the previous transcr
   await expect(panel.getByText("The replacement transcript.", { exact: true })).toBeVisible();
   await expect(previousText).toHaveCount(0);
   await expect(notice).toHaveCount(0);
-  await expect(panel.getByText("Transcript copied.", { exact: true })).toHaveCount(0);
+  await expect(copied).toHaveCount(0);
   await expect(panel.getByText("Transcribed on Test GPU · Vulkan", { exact: true })).toBeVisible();
+  await copyButton.click();
+  await expect(copied).toBeVisible();
+  await page.evaluate(async () => {
+    window.dispatchEvent(new Event("release-copy"));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+  await expect(copied).toBeVisible();
   expect(retries).toBe(2);
 });

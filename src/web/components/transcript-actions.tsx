@@ -22,10 +22,16 @@ export function TranscriptActions({
     setCopy({ state: "copying", transcript: copied });
     try {
       await navigator.clipboard.writeText(transcriptText(copied));
-      setCopy({ state: "copied", transcript: copied });
+      finishCopy(copied, "copied");
     } catch {
-      setCopy({ state: "failed", transcript: copied });
+      finishCopy(copied, "failed");
     }
+  }
+
+  function finishCopy(copied: Transcript, state: "copied" | "failed") {
+    setCopy((current) =>
+      current?.transcript === copied ? { state, transcript: copied } : current,
+    );
   }
 
   return (
