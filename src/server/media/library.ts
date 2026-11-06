@@ -9,6 +9,7 @@ import { Effect, Result, Schema } from "effect";
 import {
   librarySort,
   type LibraryItem,
+  type LibraryList,
   type LibraryQuery,
   type LibrarySort,
 } from "../../shared/contracts/library.ts";
@@ -265,6 +266,55 @@ export function createMediaLibrary(
       );
     });
 
+  const listItems = (query: LibraryQuery): LibraryItem[] => {
+    const terms = searchTerms(query.q ?? "");
+    const ranks = terms.length > 0 ? rankSearchMatches(database, terms) : null;
+    if (ranks?.size === 0) return [];
+    const items = Schema.decodeUnknownSync(MediaList)(
+      database
+        .select(getTableColumns(mediaItems))
+        .from(mediaItems)
+        .leftJoin(transcriptionJobs, eq(transcriptionJobs.mediaId, mediaItems.id))
+        .where(
+          and(
+            query.kind ? eq(mediaItems.kind, query.kind) : undefined,
+            query.transcript === "available"
+              ? isNotNull(transcriptionJobs.transcript)
+              : query.transcript === "missing"
+                ? isNull(transcriptionJobs.transcript)
+                : undefined,
+            ranks ? inArray(mediaItems.id, [...ranks.keys()]) : undefined,
+          ),
+        )
+        .all(),
+    );
+    const ordered = items.toSorted(compareItems(librarySort(query), ranks));
+    if (!ranks) return ordered;
+    const transcripts = new Map(
+      database
+        .select({
+          mediaId: transcriptionJobs.mediaId,
+          transcript: transcriptionJobs.transcript,
+        })
+        .from(transcriptionJobs)
+        .where(
+          and(
+            inArray(
+              transcriptionJobs.mediaId,
+              ordered.map((item) => item.id),
+            ),
+            isNotNull(transcriptionJobs.transcript),
+          ),
+        )
+        .all()
+        .map((row) => [row.mediaId, Schema.decodeUnknownSync(Transcript)(row.transcript)]),
+    );
+    return ordered.map((item) => ({
+      ...item,
+      match: describeMatch(item.title, transcripts.get(item.id), terms),
+    }));
+  };
+
   return {
     recoverDeletions: () =>
       Effect.try({
@@ -331,55 +381,19 @@ export function createMediaLibrary(
         return yield* save(path, basename(path), title, sourceUrl, stored.size, id);
       }),
     list: (query: LibraryQuery = {}) =>
+      Effect.try({ try: () => listItems(query), catch: storageError }),
+    browse: (query: LibraryQuery) =>
       Effect.try({
-        try: (): LibraryItem[] => {
-          const terms = searchTerms(query.q ?? "");
-          const ranks = terms.length > 0 ? rankSearchMatches(database, terms) : null;
-          if (ranks?.size === 0) return [];
-          const items = Schema.decodeUnknownSync(MediaList)(
+        try: (): LibraryList => ({
+          items: listItems(query),
+          transcribing:
             database
-              .select(getTableColumns(mediaItems))
-              .from(mediaItems)
-              .leftJoin(transcriptionJobs, eq(transcriptionJobs.mediaId, mediaItems.id))
-              .where(
-                and(
-                  query.kind ? eq(mediaItems.kind, query.kind) : undefined,
-                  query.transcript === "available"
-                    ? isNotNull(transcriptionJobs.transcript)
-                    : query.transcript === "missing"
-                      ? isNull(transcriptionJobs.transcript)
-                      : undefined,
-                  ranks ? inArray(mediaItems.id, [...ranks.keys()]) : undefined,
-                ),
-              )
-              .all(),
-          );
-          const ordered = items.toSorted(compareItems(librarySort(query), ranks));
-          if (!ranks) return ordered;
-          const transcripts = new Map(
-            database
-              .select({
-                mediaId: transcriptionJobs.mediaId,
-                transcript: transcriptionJobs.transcript,
-              })
+              .select({ mediaId: transcriptionJobs.mediaId })
               .from(transcriptionJobs)
-              .where(
-                and(
-                  inArray(
-                    transcriptionJobs.mediaId,
-                    ordered.map((item) => item.id),
-                  ),
-                  isNotNull(transcriptionJobs.transcript),
-                ),
-              )
-              .all()
-              .map((row) => [row.mediaId, Schema.decodeUnknownSync(Transcript)(row.transcript)]),
-          );
-          return ordered.map((item) => ({
-            ...item,
-            match: describeMatch(item.title, transcripts.get(item.id), terms),
-          }));
-        },
+              .where(inArray(transcriptionJobs.status, ["queued", "running"]))
+              .limit(1)
+              .get() !== undefined,
+        }),
         catch: storageError,
       }),
     get,

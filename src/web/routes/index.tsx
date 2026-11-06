@@ -57,6 +57,7 @@ function PassageMatches({ item, match }: { item: LibraryItem; match: LibraryMatc
 function Home() {
   const search = Route.useSearch();
   const library = useQuery(mediaListOptions(search));
+  const items = library.data?.items;
   const filtered = Boolean(search.q?.trim() || search.kind || search.transcript);
   return (
     <main className="mx-auto max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
@@ -68,7 +69,7 @@ function Home() {
         <ImportMedia />
       </div>
       <DownloadLink />
-      {filtered || (library.data?.length ?? 0) > 0 ? <LibraryFilters search={search} /> : null}
+      {filtered || (items?.length ?? 0) > 0 ? <LibraryFilters search={search} /> : null}
       {library.isPending ? (
         <output className="block py-12 text-sm text-muted-foreground">Loading your library…</output>
       ) : null}
@@ -85,7 +86,7 @@ function Home() {
           </Button>
         </div>
       ) : null}
-      {library.data?.length === 0 && filtered ? (
+      {items?.length === 0 && filtered ? (
         <div className="flex min-h-48 flex-col items-center justify-center gap-4 rounded-xl border border-dashed px-6 py-12 text-center">
           <h2 className="text-lg font-medium tracking-tight">No recordings match</h2>
           <p className="max-w-sm text-sm leading-6 text-muted-foreground">
@@ -99,7 +100,7 @@ function Home() {
           </Link>
         </div>
       ) : null}
-      {library.data?.length === 0 && !filtered ? (
+      {items?.length === 0 && !filtered ? (
         <div className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed px-6 py-14 text-center">
           <span className="mb-5 text-muted-foreground">
             <HugeiconsIcon icon={FolderLibraryIcon} size={36} aria-hidden="true" />
@@ -113,12 +114,12 @@ function Home() {
           </p>
         </div>
       ) : null}
-      {library.data && library.data.length > 0 ? (
+      {items && items.length > 0 ? (
         <section aria-label="Saved media" aria-busy={library.isPlaceholderData}>
           <div className="mb-4 flex items-center justify-between gap-4 text-xs text-muted-foreground">
             <output>
-              {library.data.length} {filtered ? "result" : "file"}
-              {library.data.length === 1 ? "" : "s"}
+              {items.length} {filtered ? "result" : "file"}
+              {items.length === 1 ? "" : "s"}
             </output>
             <p>A separate copy of every import</p>
           </div>
@@ -132,7 +133,7 @@ function Home() {
             <span>Imported</span>
           </div>
           <ul aria-label="Media library" className="divide-y border-b">
-            {library.data.map((item) => (
+            {items.map((item) => (
               <li key={item.id}>
                 <Link
                   to="/media/$mediaId"

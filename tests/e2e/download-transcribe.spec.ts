@@ -105,7 +105,7 @@ const test = base.extend<{
   },
 });
 
-test("downloads and transcribes once, reports missing prerequisites and persists progress across navigation", async ({
+test("downloads and transcribes once, reports missing prerequisites and shows the finished transcript in a filtered library", async ({
   page,
   workflow,
 }) => {
@@ -134,7 +134,10 @@ test("downloads and transcribes once, reports missing prerequisites and persists
   await expect(
     page.getByRole("button", { name: "Cancel transcription", exact: true }),
   ).toBeVisible();
+  await page.goto(`${workflow.origin}/?transcript=available`);
+  await expect(page.getByRole("heading", { name: "No recordings match" })).toBeVisible();
   await workflow.finishTranscription();
+  await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   await expect(page.getByText(passage, { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText(passage, { exact: true })).toBeVisible();

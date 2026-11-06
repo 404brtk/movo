@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq, sql } from "drizzle-orm";
-import { Effect, type Scope } from "effect";
+import { Deferred, Effect, type Scope } from "effect";
 import { expect, it, onTestFinished } from "vitest";
 import { openDatabase, type AppDatabase } from "../../../../src/server/db/database.ts";
 import { createMediaLibrary } from "../../../../src/server/media/library.ts";
@@ -22,6 +22,8 @@ interface SearchFixture {
   library: ReturnType<typeof createMediaLibrary>;
   meeting: MediaItem;
   review: MediaItem;
+  transcriptions: ReturnType<typeof createTranscriptions>;
+  holdTranscriptions: () => Effect.Effect<Deferred.Deferred<void>>;
   transcribe: (media: MediaItem, words: Transcript["words"]) => Effect.Effect<void>;
 }
 
@@ -37,9 +39,12 @@ async function withLibrary(
         const tools = createMediaTools({ dataDirectory: directory });
         const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
         let nextTranscript: Transcript = { language: null, words: [] };
+        let release = yield* Deferred.make<void>();
+        yield* Deferred.succeed(release, undefined);
         const transcriptions = createTranscriptions(database, { dataDirectory: directory }, tools, {
           check: () => Effect.void,
-          transcribe: () => Effect.sync(() => nextTranscript),
+          transcribe: () =>
+            Effect.suspend(() => Deferred.await(release)).pipe(Effect.map(() => nextTranscript)),
         });
         yield* transcriptions.start();
         const meeting = yield* library.import(new Response(audio).body, "Łódź meeting.wav");
@@ -59,6 +64,12 @@ async function withLibrary(
           library,
           meeting: { ...meeting, importedAt: 1000 },
           review: { ...review, importedAt: 2000 },
+          transcriptions,
+          holdTranscriptions: () =>
+            Effect.gen(function* () {
+              release = yield* Deferred.make<void>();
+              return release;
+            }),
           transcribe: (media, words) =>
             Effect.gen(function* () {
               nextTranscript = { language: "pl", words };
@@ -186,6 +197,33 @@ it("keeps search results in step with renames, replacement transcripts and remov
       expect(database.all(sql`select media_id as id from media_search`)).toEqual([
         { id: meeting.id },
       ]);
+    }),
+  );
+});
+
+it("reports a running transcription even when its recording is filtered out", async ({
+  signal,
+}) => {
+  await withLibrary(signal, ({ library, meeting, transcriptions, holdTranscriptions }) =>
+    Effect.gen(function* () {
+      expect(yield* library.browse({ transcript: "available" })).toEqual({
+        items: [],
+        transcribing: false,
+      });
+      const held = yield* holdTranscriptions();
+      yield* transcriptions.enqueue(meeting.id);
+      expect(yield* library.browse({ transcript: "available" })).toEqual({
+        items: [],
+        transcribing: true,
+      });
+      yield* Deferred.succeed(held, undefined);
+      yield* Effect.promise(async () => {
+        await expect
+          .poll(async () => await Effect.runPromise(library.browse({ transcript: "available" })), {
+            timeout: 10000,
+          })
+          .toEqual({ items: [meeting], transcribing: false });
+      });
     }),
   );
 });

@@ -91,6 +91,7 @@ export const mediaListOptions = (query: LibraryQuery) =>
     queryFn: ({ signal }) =>
       readResponse(client.api.media.$get({ query }, { init: { signal } }), LibraryList),
     placeholderData: keepPreviousData,
+    refetchInterval: (listing) => (listing.state.data?.transcribing ? 2000 : false),
     retry: false,
   });
 

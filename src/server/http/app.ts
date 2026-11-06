@@ -172,7 +172,7 @@ export function createApp(
             `Use a search of up to ${maxSearchLength} characters and supported library filters.`,
           );
       }),
-      async (context) => context.json(await runMedia(library.list(context.req.valid("query")))),
+      async (context) => context.json(await runMedia(library.browse(context.req.valid("query")))),
     )
     .get("/media/:id", async (context) =>
       context.json(await runMedia(library.get(context.req.param("id")))),

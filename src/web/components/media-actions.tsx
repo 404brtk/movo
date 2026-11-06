@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
-import type { LibraryItem } from "../../shared/contracts/library.ts";
+import type { LibraryList } from "../../shared/contracts/library.ts";
 import type { MediaDeletion, MediaItem } from "../../shared/contracts/media.ts";
 import {
   deleteMedia,
@@ -56,8 +56,13 @@ export function MediaActions({ item }: { item: MediaItem }) {
       ]);
     },
     onSuccess: async (deleted) => {
-      client.setQueriesData<readonly LibraryItem[]>({ queryKey: mediaListKey }, (current) =>
-        current?.filter((entry) => entry.id !== item.id),
+      client.setQueriesData<LibraryList>(
+        { queryKey: mediaListKey },
+        (current) =>
+          current && {
+            ...current,
+            items: current.items.filter((entry) => entry.id !== item.id),
+          },
       );
       if (!deleted.cleanupError) await leaveRecording();
     },

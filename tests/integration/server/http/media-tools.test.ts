@@ -81,7 +81,7 @@ describe("media tools HTTP interface", () => {
               });
               expect(await readdir(directory)).toEqual([]);
               const library = await app.request("http://localhost:4310/api/media");
-              expect(await library.json()).toEqual([]);
+              expect(await library.json()).toEqual({ items: [], transcribing: false });
             });
           }),
         ),

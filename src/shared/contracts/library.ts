@@ -41,4 +41,8 @@ export const LibraryItem = Schema.Struct({
   match: Schema.optionalKey(LibraryMatch),
 });
 export type LibraryItem = typeof LibraryItem.Type;
-export const LibraryList = Schema.Array(LibraryItem);
+export const LibraryList = Schema.Struct({
+  items: Schema.Array(LibraryItem),
+  transcribing: Schema.Boolean,
+});
+export type LibraryList = typeof LibraryList.Type;
