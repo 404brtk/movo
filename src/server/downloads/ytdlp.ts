@@ -1,5 +1,5 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { Effect, Schema } from "effect";
 import {
   defaultDownloadPreset,
@@ -46,26 +46,23 @@ const baseArguments = [
   "2",
 ];
 
-export function createMediaDownloader(ytdlpPath: string, tools: MediaTools) {
-  const executable = /[/\\]/u.test(ytdlpPath) ? resolve(ytdlpPath) : ytdlpPath;
+export function createMediaDownloader(
+  resolveYtdlp: () => Effect.Effect<string, MediaError>,
+  tools: MediaTools,
+) {
   const run = (
     args: string[],
     options: Parameters<typeof runCommand>[2],
     unavailableMessage?: string,
   ) =>
-    runCommand(executable, args, options).pipe(
-      Effect.mapError((error) => {
-        const cause = error.cause;
-        return cause instanceof Error && "code" in cause && cause.code === "ENOENT"
-          ? new MediaError(
-              "unavailable",
-              "yt-dlp is unavailable. Install its official standalone executable and add it to PATH, or set YTDLP_PATH, then restart Movo.",
-              error,
-            )
-          : unavailableMessage && error.reason === "unavailable"
+    Effect.flatMap(resolveYtdlp(), (executable) =>
+      runCommand(executable, args, options).pipe(
+        Effect.mapError((error) =>
+          unavailableMessage && error.reason === "unavailable"
             ? new MediaError("unavailable", unavailableMessage, error)
-            : error;
-      }),
+            : error,
+        ),
+      ),
     );
   const inspect = (input: string) =>
     Effect.gen(function* () {

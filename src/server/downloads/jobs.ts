@@ -15,14 +15,13 @@ import { MediaError } from "../media/error.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { mediaItems } from "../media/media.schema.ts";
 import type { MediaTools, MediaToolsConfig } from "../media-tools/tools.ts";
+import type { YtdlpConfig } from "../media-tools/ytdlp.ts";
 import { downloadJobs } from "./downloads.schema.ts";
 import { downloadSource } from "./url.ts";
-import { createMediaDownloader } from "./ytdlp.ts";
+import type { MediaDownloader } from "./ytdlp.ts";
 import { queueTranscription } from "../transcriptions/queue.ts";
 
-export interface DownloadsConfig extends MediaToolsConfig {
-  ytdlpPath?: string | undefined;
-}
+export type DownloadsConfig = MediaToolsConfig & YtdlpConfig;
 
 const databaseOperation = <A>(operation: () => A) =>
   Effect.try({
@@ -41,7 +40,7 @@ export function createDownloads(
   database: AppDatabase,
   config: DownloadsConfig,
   tools: MediaTools,
-  downloader = createMediaDownloader(config.ytdlpPath ?? "yt-dlp", tools),
+  downloader: MediaDownloader,
 ) {
   const retryLock = Semaphore.makeUnsafe(1);
   const library = createMediaLibrary(database, config.dataDirectory, () =>
