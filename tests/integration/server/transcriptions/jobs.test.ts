@@ -289,6 +289,88 @@ it("persists interrupted and queued jobs across reopening SQLite and preserves c
   );
 });
 
+it("keeps the previous transcript through failed, cancelled and interrupted replacements until one completes", async ({
+  signal,
+}) => {
+  await withRecording(signal, (database, directory, tools, _library, media) =>
+    Effect.gen(function* () {
+      const replacement = {
+        language: "en",
+        segments: [{ startMs: 0, endMs: 1500, text: "A replacement passage." }],
+      };
+      let attempts = 0;
+      const attemptStarted = (attempt: number) =>
+        Effect.promise(async () => {
+          await expect.poll(() => attempts, { timeout: 10000 }).toBe(attempt);
+        });
+      const first = createTranscriptions(database, { dataDirectory: directory }, tools, {
+        check: () => Effect.void,
+        transcribe: (_path, _staging, _update, reportDevice) =>
+          Effect.gen(function* () {
+            attempts++;
+            reportDevice(device);
+            if (attempts === 1) return transcript;
+            if (attempts === 2)
+              return yield* Effect.fail(new MediaError("unavailable", "The engine stopped."));
+            return yield* Effect.never;
+          }),
+      });
+      expect(yield* Effect.result(first.retry(media.id))).toMatchObject({
+        _tag: "Failure",
+        failure: { reason: "invalid" },
+      });
+      yield* first.enqueue(media.id);
+      const worker = yield* first.start();
+      yield* waitFor(first, media.id, "completed");
+      expect(yield* first.enqueue(media.id)).toMatchObject({ status: "completed", transcript });
+      const retries = yield* Effect.all(
+        [Effect.result(first.retry(media.id)), Effect.result(first.retry(media.id))],
+        { concurrency: "unbounded" },
+      );
+      expect(retries.filter(Result.isSuccess)).toMatchObject([
+        { success: { transcript, device: null } },
+      ]);
+      expect(retries.filter(Result.isFailure)).toMatchObject([{ failure: { reason: "invalid" } }]);
+      yield* waitFor(first, media.id, "failed");
+      expect(yield* first.get(media.id)).toMatchObject({
+        transcript,
+        device,
+        error: "The engine stopped.",
+      });
+      yield* first.retry(media.id);
+      yield* attemptStarted(3);
+      expect(yield* first.get(media.id)).toMatchObject({ status: "running", transcript });
+      expect(yield* first.cancel(media.id)).toMatchObject({ status: "cancelled", transcript });
+      yield* first.retry(media.id);
+      yield* attemptStarted(4);
+      yield* Fiber.interrupt(worker);
+      const reopened = yield* openDatabase(join(directory, "app.sqlite"));
+      const restarted = createTranscriptions(reopened, { dataDirectory: directory }, tools, {
+        check: () => Effect.void,
+        transcribe: (_path, _staging, _update, reportDevice) =>
+          Effect.sync(() => {
+            reportDevice(device);
+            return replacement;
+          }),
+      });
+      expect(yield* restarted.get(media.id)).toMatchObject({ status: "interrupted", transcript });
+      expect(yield* restarted.retry(media.id)).toMatchObject({ status: "queued", transcript });
+      const next = yield* restarted.start();
+      yield* waitFor(restarted, media.id, "completed");
+      expect(yield* restarted.get(media.id)).toMatchObject({
+        transcript: replacement,
+        error: null,
+      });
+      yield* Fiber.interrupt(next);
+      expect(
+        yield* Effect.promise(() =>
+          stat(join(directory, "transcriptions", media.id)).catch(() => null),
+        ),
+      ).toBeNull();
+    }),
+  );
+});
+
 it.for(["completed", "failed"])(
   "isolates cleanup errors after a %s transcription and allows recovery",
   async (outcome, { signal }) => {
