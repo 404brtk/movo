@@ -251,3 +251,112 @@ test("keeps retry progress when an older failed status arrives after retry succe
     0,
   );
 });
+
+test("transcribes a completed recording again while keeping the previous transcript readable", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.wav` },
+  });
+  expect(uploaded.status()).toBe(201);
+  const media: { id: string } = await uploaded.json();
+  const previous = {
+    language: "en",
+    words: timedWords(0, 1000, "The previous transcript."),
+  };
+  let job: TranscriptionJob = {
+    mediaId: media.id,
+    modelId: "parakeet-ultra-q8",
+    status: "completed",
+    phase: "finished",
+    transcript: previous,
+    device: { backend: "cpu", name: "Test CPU" },
+    error: null,
+    cleanupError: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  let retries = 0;
+  await page.route(`**/api/media/${media.id}/transcription`, (route) => {
+    expect(route.request().method()).toBe("GET");
+    return route.fulfill({ json: job });
+  });
+  await page.route(`**/api/media/${media.id}/transcription/retry`, (route) => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postData()).toBeNull();
+    retries++;
+    job = { ...job, status: "running", phase: "transcribing", device: null, error: null };
+    return route.fulfill({ status: 202, json: job });
+  });
+  await page.addInitScript(() => {
+    let writes = 0;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async () => {
+          if (++writes === 2)
+            await new Promise((resolve) => {
+              window.addEventListener("release-copy", resolve, { once: true });
+            });
+        },
+      },
+    });
+  });
+  await page.goto(`/media/${media.id}`);
+  const panel = page.getByRole("region", { name: "Transcription", exact: true });
+  const previousText = panel.getByText("The previous transcript.", { exact: true });
+  const notice = panel.getByText("Showing the previous transcript until a new one completes.", {
+    exact: true,
+  });
+  await expect(previousText).toBeVisible();
+  await expect(notice).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Retry transcription", exact: true })).toHaveCount(
+    0,
+  );
+  await panel.getByRole("button", { name: "Transcribe again", exact: true }).click();
+  await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
+  await expect(previousText).toBeVisible();
+  await expect(notice).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Copy text", exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Transcribe again", exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(previousText).toBeVisible();
+  await expect(notice).toBeVisible();
+  job = { ...job, status: "failed", phase: "finished", error: "The new attempt failed." };
+  await expect(panel.getByRole("alert")).toHaveText("The new attempt failed.");
+  await expect(previousText).toBeVisible();
+  await expect(notice).toBeVisible();
+  const copyButton = panel.getByRole("button", { name: "Copy text", exact: true });
+  const copied = panel.getByText("Transcript copied.", { exact: true });
+  await copyButton.click();
+  await expect(copied).toBeVisible();
+  await copyButton.click();
+  await expect(copyButton).toBeDisabled();
+  await panel.getByRole("button", { name: "Retry transcription", exact: true }).click();
+  await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
+  job = {
+    ...job,
+    status: "completed",
+    phase: "finished",
+    transcript: {
+      language: "en",
+      words: timedWords(0, 1000, "The replacement transcript."),
+    },
+    device: { backend: "vulkan", name: "Test GPU" },
+  };
+  await expect(panel.getByText("The replacement transcript.", { exact: true })).toBeVisible();
+  await expect(previousText).toHaveCount(0);
+  await expect(notice).toHaveCount(0);
+  await expect(copied).toHaveCount(0);
+  await expect(panel.getByText("Transcribed on Test GPU · Vulkan", { exact: true })).toBeVisible();
+  await copyButton.click();
+  await expect(copied).toBeVisible();
+  await page.evaluate(async () => {
+    window.dispatchEvent(new Event("release-copy"));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+  await expect(copied).toBeVisible();
+  expect(retries).toBe(2);
+});

@@ -1,6 +1,6 @@
 # Media tools
 
-Movo's Node backend discovers and runs FFprobe and FFmpeg. The browser requests status or starts an explicit download; it does not install executables itself. Tool availability is independent of model weights.
+Movo's Node backend discovers and runs FFprobe, FFmpeg and yt-dlp. The browser requests status or starts an explicit download; it does not install executables itself. Tool availability is independent of model weights.
 
 ## Discovery and configuration
 
@@ -10,7 +10,7 @@ For each executable, discovery checks these locations in order:
 2. The installation referenced by `MOVO_DATA_DIR/tools/ffmpeg/active.json`.
 3. Absolute directories on the application's `PATH`.
 
-Each candidate must successfully run `-version` and identify itself as the requested tool within five seconds. Missing and broken tools have separate statuses. A broken explicit override must be corrected or removed and Movo restarted. A damaged managed installation can be repaired by downloading the tools again. FFprobe alone is sufficient for local imports.
+Each candidate must successfully run `-version` and identify itself as the requested tool within 30 seconds. Missing and broken tools have separate statuses. A broken explicit override must be corrected or removed and Movo restarted. A damaged managed installation can be repaired by downloading the tools again. FFprobe alone is sufficient for local imports.
 
 ## Managed downloads
 
@@ -27,17 +27,32 @@ One installation runs per backend. The backend's system lock on its data directo
 
 Managed installations live outside the repository. Completed directories are retained so an in-flight operation holding an executable path can finish; this feature does not prune previous installations. Model downloads are separate explicit actions.
 
+## yt-dlp
+
+Link downloads use yt-dlp through the same managed-tool installer. Discovery checks `YTDLP_PATH`, then `MOVO_DATA_DIR/tools/yt-dlp/active.json`, then `yt-dlp` (`yt-dlp.exe` on Windows) in absolute `PATH` directories. A candidate must print a date-based version for `--version`. The downloader resolves yt-dlp before every run, so an installation completed while Movo runs is used immediately. Startup, imports and library browsing do not need yt-dlp.
+
+The release is pinned in `src/server/media-tools/ytdlp.ts`, separately from the FFmpeg catalog:
+
+- Windows x64: `yt-dlp.exe` 2026.10.26, 23,575,744 bytes.
+- Linux x64 with glibc 2.17 or newer: `yt-dlp_linux` 2026.10.26, 41,166,968 bytes.
+
+Both are standalone executables from the [official 2026.10.26 release](https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.26). Their hashes come from the release's `SHA2-256SUMS`, whose signature was verified with the [yt-dlp signing key](https://github.com/yt-dlp/yt-dlp#release-files) before pinning. When updating the release, verify `SHA2-256SUMS.sig` the same way. The download needs no unpacking: after the size and SHA-256 checks, the file is moved into a new managed directory, made executable on Linux, checked with `--version` and activated atomically. Movo never runs yt-dlp's self-updater; a new release is a reviewed source change. Other platforms need a manual installation on `PATH` or `YTDLP_PATH`.
+
 ## HTTP interface
 
 - `GET /api/media-tools` returns uncached per-tool availability, optional download metadata and the current installation phase/progress.
 - `POST /api/media-tools/install` starts or joins an installation and returns status with HTTP 202. It never accepts an executable path or arbitrary download URL from the request. Unavailable platforms and broken explicit configuration return an actionable error.
 
-The existing loopback-host and same-origin checks apply to both routes. Status responses use the Effect schemas in `src/shared/contracts/media-tools.ts`; frontend caching and polling belong to TanStack Query. Installation state is held by the backend, while executable discovery after restart reads and checks the managed files.
+- `GET /api/ytdlp` and `POST /api/ytdlp/install` provide the same status and installation behavior for yt-dlp.
+
+The existing loopback-host and same-origin checks apply to all of these routes. Status responses use the Effect schemas in `src/shared/contracts/media-tools.ts`; frontend caching and polling belong to TanStack Query. Installation state is held by the backend, while executable discovery after restart reads and checks the managed files.
 
 ## Verification
 
 Ordinary Vitest tests use real temporary files, a local HTTP download server and small TAR archives. Only executable launches for those generated fixtures are substituted; a separate test checks the actual system executables. Coverage includes failed integrity checks, truncated/oversized transfers, corrupt archives, shutdown cleanup, concurrent requests, configuration precedence, invalid activation pointers, failed repair and rediscovery after restart.
 
-Playwright checks explicit setup, failed-request retry, progress after page reload, keyboard focus and the upload preflight. Those UI failure states use controlled HTTP responses; actual package installation is verified separately.
+yt-dlp tests serve a small file over loopback HTTP and cover activation without restart, rediscovery, system discovery, a broken `YTDLP_PATH` and a download that is not a working yt-dlp.
 
-Run `bun run test:tools:real` to download the pinned package and verify real managed executables, local audio import, conversion and rediscovery in an isolated temporary directory. This test requires a supported platform, network access, `tar` and Linux XZ support. It is excluded from normal checks and CI, and removes its temporary data afterward.
+Playwright checks explicit setup, failed-request retry, progress after page reload, keyboard focus and the upload preflight. For yt-dlp it checks that **Check link** opens setup before any preview request and works once setup completes. Those UI failure states use controlled HTTP responses; actual package installation is verified separately.
+
+Run `bun run test:tools:real` to download the pinned packages and verify real managed executables, local audio import, conversion, rediscovery and the managed yt-dlp version in an isolated temporary directory. This test requires a supported platform, network access, `tar` and Linux XZ support. It is excluded from normal checks and CI, and removes its temporary data afterward.

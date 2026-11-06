@@ -8,10 +8,12 @@ import { RenameMediaRequest } from "../../shared/contracts/media.ts";
 import { TranscriptExportFormat } from "../../shared/contracts/transcriptions.ts";
 import { exportTranscript } from "../../shared/transcript-export.ts";
 import { createDownloads, type Downloads, type DownloadsConfig } from "../downloads/jobs.ts";
+import { createMediaDownloader } from "../downloads/ytdlp.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError, type MediaErrorReason } from "../media/error.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { createMediaTools, type MediaTools } from "../media-tools/tools.ts";
+import { createYtdlp, type Ytdlp } from "../media-tools/ytdlp.ts";
 import { createModels, type Models } from "../models/models.ts";
 import { createTranscriptions, type Transcriptions } from "../transcriptions/jobs.ts";
 import { createTranscriptionEngine } from "../transcriptions/engine.ts";
@@ -53,7 +55,13 @@ export function createApp(
   staticDirectory?: string,
   {
     tools = createMediaTools(config),
-    downloads = createDownloads(database, config, tools),
+    ytdlp = createYtdlp(config),
+    downloads = createDownloads(
+      database,
+      config,
+      tools,
+      createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools),
+    ),
     models = createModels(),
     transcriptions = createTranscriptions(
       database,
@@ -63,6 +71,7 @@ export function createApp(
     ),
   }: {
     tools?: MediaTools;
+    ytdlp?: Ytdlp;
     downloads?: Downloads;
     models?: Models;
     transcriptions?: Transcriptions;
@@ -104,6 +113,11 @@ export function createApp(
     .post("/media-tools/install", async (context) =>
       context.json(await runMedia(tools.install()), 202),
     )
+    .get("/ytdlp", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(ytdlp.status()));
+    })
+    .post("/ytdlp/install", async (context) => context.json(await runMedia(ytdlp.install()), 202))
     .get("/models", async (context) => {
       context.header("Cache-Control", "no-store");
       return context.json(await runMedia(models.list()));
@@ -187,7 +201,7 @@ export function createApp(
         throw new MediaError("invalid", "Choose TXT, SRT or VTT for the transcript export.", cause);
       }
       const job = await runMedia(transcriptions.get(context.req.param("id")));
-      if (job?.status !== "completed" || !job.transcript)
+      if (!job?.transcript)
         throw new MediaError("invalid", "Complete the transcription before downloading it.");
       const item = await runMedia(library.get(job.mediaId));
       const contentTypes = {

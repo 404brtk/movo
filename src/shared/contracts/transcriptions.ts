@@ -61,8 +61,9 @@ export const TranscriptionJob = Schema.Struct({
 }).check(
   Schema.makeFilter(
     (job) =>
-      (job.status === "completed") === (job.transcript !== null) ||
-      "Only completed transcriptions contain a transcript.",
+      job.status !== "completed" ||
+      job.transcript !== null ||
+      "Completed transcriptions contain a transcript.",
   ),
 );
 export type TranscriptionJob = typeof TranscriptionJob.Type;

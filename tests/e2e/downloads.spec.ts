@@ -3,10 +3,16 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { Schema } from "effect";
 import type { DownloadJob } from "../../src/shared/contracts/downloads.ts";
+import type { YtdlpStatus } from "../../src/shared/contracts/media-tools.ts";
 import { MediaItem } from "../../src/shared/contracts/media.ts";
 
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
 const wave = readFileSync(new URL("../fixtures/tone.wav", import.meta.url));
+const readyYtdlp: YtdlpStatus = {
+  ytdlp: { state: "ready", source: "system", version: "2026.10.26" },
+  download: null,
+  installation: { phase: "idle", downloadedBytes: 0, error: null },
+};
 const jobFixture = (): DownloadJob => ({
   id: randomUUID(),
   url,
@@ -22,6 +28,10 @@ const jobFixture = (): DownloadJob => ({
   mediaId: null,
   createdAt: Date.now(),
   updatedAt: Date.now(),
+});
+
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/ytdlp", (route) => route.fulfill({ json: readyYtdlp }));
 });
 
 test("keeps saved media available when temporary download cleanup fails", async ({ page }) => {

@@ -251,12 +251,9 @@ export function createTranscriptions(
     retry: (id: string) =>
       Effect.gen(function* () {
         const job = yield* get(id);
-        if (!job || !["failed", "cancelled", "interrupted"].includes(job.status))
+        if (!job || ["queued", "running"].includes(job.status))
           return yield* Effect.fail(
-            new MediaError(
-              "invalid",
-              "Only failed, cancelled or interrupted transcriptions can be retried.",
-            ),
+            new MediaError("invalid", "Only finished transcriptions can be started again."),
           );
         if (active?.mediaId === id) yield* Fiber.interrupt(active.fiber);
         yield* library.file(id);
@@ -269,7 +266,6 @@ export function createTranscriptions(
             .set({
               status: "queued",
               phase: "queued",
-              transcript: null,
               device: null,
               error: null,
               updatedAt: Date.now(),

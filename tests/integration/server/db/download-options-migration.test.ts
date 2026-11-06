@@ -5,6 +5,7 @@ import { Effect } from "effect";
 import { expect, it } from "vitest";
 import { openDatabase } from "../../../../src/server/db/database.ts";
 import { createDownloads } from "../../../../src/server/downloads/jobs.ts";
+import { createMediaDownloader } from "../../../../src/server/downloads/ytdlp.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { openLegacyDatabase } from "../../../helpers/legacy-database.ts";
 
@@ -40,10 +41,12 @@ it("preserves legacy jobs and media while allowing new variants of their URL", a
         Effect.scoped(
           Effect.gen(function* () {
             const database = yield* openDatabase(path);
+            const tools = createMediaTools({ dataDirectory: directory });
             const jobs = createDownloads(
               database,
               { dataDirectory: directory },
-              createMediaTools({ dataDirectory: directory }),
+              tools,
+              createMediaDownloader(() => Effect.succeed("yt-dlp"), tools),
             );
             expect(yield* jobs.get(id)).toMatchObject({
               id,

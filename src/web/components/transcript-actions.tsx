@@ -11,16 +11,27 @@ export function TranscriptActions({
   mediaId: string;
   transcript: Transcript;
 }) {
-  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "failed">("idle");
+  const [copy, setCopy] = useState<{
+    state: "copying" | "copied" | "failed";
+    transcript: Transcript;
+  } | null>(null);
+  const copyState = copy?.transcript === transcript ? copy.state : "idle";
 
   async function copyText() {
-    setCopyState("copying");
+    const copied = transcript;
+    setCopy({ state: "copying", transcript: copied });
     try {
-      await navigator.clipboard.writeText(transcriptText(transcript));
-      setCopyState("copied");
+      await navigator.clipboard.writeText(transcriptText(copied));
+      finishCopy(copied, "copied");
     } catch {
-      setCopyState("failed");
+      finishCopy(copied, "failed");
     }
+  }
+
+  function finishCopy(copied: Transcript, state: "copied" | "failed") {
+    setCopy((current) =>
+      current?.transcript === copied ? { state, transcript: copied } : current,
+    );
   }
 
   return (

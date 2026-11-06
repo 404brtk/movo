@@ -9,7 +9,12 @@ import {
   MediaDeletion,
   MediaList,
 } from "../../shared/contracts/media.ts";
-import { activeInstallationPhases, MediaToolsStatus } from "../../shared/contracts/media-tools.ts";
+import {
+  activeInstallationPhases,
+  MediaToolsStatus,
+  type ToolInstallation,
+  YtdlpStatus,
+} from "../../shared/contracts/media-tools.ts";
 import {
   DownloadJob,
   DownloadJobList,
@@ -95,17 +100,33 @@ export const mediaItemOptions = (id: string) =>
     retry: false,
   });
 
+const pollWhileInstalling = (query: {
+  state: { data?: { installation: ToolInstallation } | undefined };
+}) =>
+  activeInstallationPhases.includes(query.state.data?.installation.phase ?? "") ? 1000 : false;
+
 export const mediaToolsOptions = queryOptions({
   queryKey: ["media-tools"],
   queryFn: ({ signal }) =>
     readResponse(client.api["media-tools"].$get({}, { init: { signal } }), MediaToolsStatus),
-  refetchInterval: (query) =>
-    activeInstallationPhases.includes(query.state.data?.installation.phase ?? "") ? 1000 : false,
+  refetchInterval: pollWhileInstalling,
   retry: false,
 });
 
 export function installMediaTools() {
   return readResponse(client.api["media-tools"].install.$post(), MediaToolsStatus);
+}
+
+export const ytdlpOptions = queryOptions({
+  queryKey: ["ytdlp"],
+  queryFn: ({ signal }) =>
+    readResponse(client.api.ytdlp.$get({}, { init: { signal } }), YtdlpStatus),
+  refetchInterval: pollWhileInstalling,
+  retry: false,
+});
+
+export function installYtdlp() {
+  return readResponse(client.api.ytdlp.install.$post(), YtdlpStatus);
 }
 
 export async function importMedia(file: File) {
