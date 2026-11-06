@@ -41,6 +41,15 @@ describe("transcript passages", () => {
     expect(texts(paused)).toEqual(["First part", "Second part continues."]);
   });
 
+  it("measures a silence from the latest end of overlapping words", () => {
+    const overlapping = [
+      { startMs: 0, endMs: 2000, text: "Held" },
+      { startMs: 100, endMs: 300, text: "inside" },
+      { startMs: 3400, endMs: 3600, text: "after." },
+    ];
+    expect(texts(overlapping)).toEqual(["Held inside after."]);
+  });
+
   it("ends a passage after each sentence, including closing quotes and brackets", () => {
     expect(texts(words('Is it? Yes! "Done." (Really.) Wait… And the rest'))).toEqual([
       "Is it?",
