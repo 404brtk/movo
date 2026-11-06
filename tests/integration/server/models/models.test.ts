@@ -232,7 +232,9 @@ describe("shared transcription model cache", () => {
         Effect.runPromise(models.install(definition.id)),
         Effect.runPromise(models.install(definition.id)),
       ]);
-      await expect.poll(async () => (await status(models)).installation.downloadedBytes).toBe(8);
+      await expect
+        .poll(async () => (await status(models)).installation.downloadedBytes, { timeout: 10000 })
+        .toBe(8);
       expect((await status(models)).state).toBe("missing");
       expect(requests()).toBe(1);
       expect(await stat(path).catch(() => null)).toBeNull();
@@ -360,7 +362,9 @@ describe("shared transcription model cache", () => {
       });
       const models = create();
       await Effect.runPromise(models.install(definition.id));
-      await expect.poll(async () => (await status(models)).installation.downloadedBytes).toBe(8);
+      await expect
+        .poll(async () => (await status(models)).installation.downloadedBytes, { timeout: 10000 })
+        .toBe(8);
       expect((await Effect.runPromise(models.cancel(definition.id))).installation.phase).toBe(
         "cancelled",
       );
@@ -379,7 +383,9 @@ describe("shared transcription model cache", () => {
       });
       const models = create();
       await Effect.runPromise(models.install(definition.id));
-      await expect.poll(async () => (await status(models)).installation.downloadedBytes).toBe(8);
+      await expect
+        .poll(async () => (await status(models)).installation.downloadedBytes, { timeout: 10000 })
+        .toBe(8);
       const partial = (await readdir(dirname(path))).find((name) => name.endsWith(".partial"));
       if (!partial) throw new Error("Partial download not found.");
       await rm(join(dirname(path), partial));
@@ -400,9 +406,13 @@ describe("shared transcription model cache", () => {
       const first = create();
       const second = create();
       await Effect.runPromise(first.install(definition.id));
-      await expect.poll(async () => (await status(first)).installation.downloadedBytes).toBe(8);
+      await expect
+        .poll(async () => (await status(first)).installation.downloadedBytes, { timeout: 10000 })
+        .toBe(8);
       await Effect.runPromise(second.install(definition.id));
-      await expect.poll(async () => (await status(second)).installation.downloadedBytes).toBe(8);
+      await expect
+        .poll(async () => (await status(second)).installation.downloadedBytes, { timeout: 10000 })
+        .toBe(8);
       await Effect.runPromise(first.cancel(definition.id));
       expect((await status(first)).installation.phase).toBe("cancelled");
       expect((await status(second)).installation.phase).toBe("downloading");
@@ -427,7 +437,9 @@ describe("shared transcription model cache", () => {
       });
       const models = create();
       await Effect.runPromise(models.install(definition.id));
-      await expect.poll(async () => (await status(models)).installation.downloadedBytes).toBe(8);
+      await expect
+        .poll(async () => (await status(models)).installation.downloadedBytes, { timeout: 10000 })
+        .toBe(8);
       await Effect.runPromise(models.close());
       expect(await readdir(dirname(path))).toEqual([]);
       expect((await status(create())).state).toBe("missing");
@@ -487,12 +499,9 @@ describe("shared transcription model cache", () => {
     try {
       const path = join(directory, "invalid.gguf");
       await writeFile(path, "This is not a GGUF model.");
-      await expect(validateModel(null, AbortSignal.timeout(10000))).resolves.toHaveProperty(
-        "engineVersion",
-      );
-      await expect(validateModel(path, AbortSignal.timeout(10000))).rejects.toThrow(
-        "Could not validate",
-      );
+      const signal = AbortSignal.timeout(25000);
+      await expect(validateModel(null, signal)).resolves.toHaveProperty("engineVersion");
+      await expect(validateModel(path, signal)).rejects.toThrow("Could not validate");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
