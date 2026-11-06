@@ -8,6 +8,8 @@ import { openDatabase } from "./db/database.ts";
 import { createApp } from "./http/app.ts";
 import { createMediaTools } from "./media-tools/tools.ts";
 import { createDownloads } from "./downloads/jobs.ts";
+import { createMediaDownloader } from "./downloads/ytdlp.ts";
+import { createYtdlp } from "./media-tools/ytdlp.ts";
 import { createModels } from "./models/models.ts";
 import { acquireDataDirectory } from "./instance.ts";
 import { createTranscriptions } from "./transcriptions/jobs.ts";
@@ -31,7 +33,16 @@ const program = Effect.gen(function* () {
   yield* createMediaLibrary(database, config.dataDirectory, () =>
     tools.resolve("ffprobe"),
   ).recoverDeletions();
-  const downloads = createDownloads(database, config, tools);
+  const ytdlp = yield* Effect.acquireRelease(
+    Effect.sync(() => createYtdlp(config)),
+    (managedYtdlp) => managedYtdlp.close(),
+  );
+  const downloads = createDownloads(
+    database,
+    config,
+    tools,
+    createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools),
+  );
   const models = yield* Effect.acquireRelease(
     Effect.sync(() => createModels()),
     (manager) => manager.close(),
@@ -46,6 +57,7 @@ const program = Effect.gen(function* () {
   const transcriptionWorker = yield* transcriptions.start();
   const app = createApp(database, config, staticDirectory, {
     tools,
+    ytdlp,
     downloads,
     models,
     transcriptions,

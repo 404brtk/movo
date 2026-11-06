@@ -10,6 +10,7 @@ import { openDatabase } from "../../src/server/db/database.ts";
 import { createMediaLibrary } from "../../src/server/media/library.ts";
 import { probeMedia } from "../../src/server/media/probe.ts";
 import { createMediaTools } from "../../src/server/media-tools/tools.ts";
+import { createYtdlp } from "../../src/server/media-tools/ytdlp.ts";
 
 const execute = promisify(execFile);
 
@@ -76,6 +77,35 @@ it("downloads the pinned tools, imports audio and converts it using only the man
     }
   } finally {
     await Effect.runPromise(tools.close());
+    await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});
+
+it("downloads the pinned yt-dlp and runs the managed executable", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "movo-real-ytdlp-"));
+  const ytdlp = createYtdlp({ dataDirectory: directory }, { environment: { PATH: "" } });
+  try {
+    const initial = await Effect.runPromise(ytdlp.status());
+    expect(initial.ytdlp.state).toBe("missing");
+    await Effect.runPromise(ytdlp.install());
+    await expect
+      .poll(
+        async () => {
+          const status = await Effect.runPromise(ytdlp.status());
+          if (status.installation.phase === "failed")
+            throw new Error(status.installation.error ?? "Installation failed");
+          return activeInstallationPhases.includes(status.installation.phase);
+        },
+        { timeout: 9 * 60 * 1000, interval: 500 },
+      )
+      .toBe(false);
+    expect((await Effect.runPromise(ytdlp.status())).ytdlp).toEqual({
+      state: "ready",
+      source: "managed",
+      version: initial.download?.version,
+    });
+  } finally {
+    await Effect.runPromise(ytdlp.close());
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 });

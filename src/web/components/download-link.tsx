@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Schema } from "effect";
@@ -8,15 +8,19 @@ import {
   DownloadPreset,
   getDownloadPreset,
 } from "../../shared/contracts/downloads.ts";
-import { downloadsOptions, enqueueDownload, previewOptions } from "../lib/api.ts";
+import { downloadsOptions, enqueueDownload, previewOptions, ytdlpOptions } from "../lib/api.ts";
 import { formatDuration } from "../lib/format.ts";
 import { Button } from "./ui/button.tsx";
+import { YtdlpSetup } from "./ytdlp-setup.tsx";
 
 export function DownloadLink() {
   const [url, setUrl] = useState("");
   const [checkedUrl, setCheckedUrl] = useState("");
   const [preset, setPreset] = useState<DownloadPreset>(defaultDownloadPreset);
   const [transcribe, setTranscribe] = useState(false);
+  const [showYtdlp, setShowYtdlp] = useState(false);
+  const checkTrigger = useRef<HTMLButtonElement>(null);
+  const ytdlp = useQuery(ytdlpOptions);
   const selected = getDownloadPreset(preset);
   const preview = useQuery(previewOptions(checkedUrl));
   const queryClient = useQueryClient();
@@ -36,6 +40,11 @@ export function DownloadLink() {
         onSubmit={(event) => {
           event.preventDefault();
           download.reset();
+          if (ytdlp.data?.ytdlp.state !== "ready") {
+            setShowYtdlp(true);
+            return;
+          }
+          setShowYtdlp(false);
           if (checkedUrl === url.trim()) void preview.refetch();
           else setCheckedUrl(url.trim());
         }}
@@ -63,9 +72,11 @@ export function DownloadLink() {
             className="h-11 min-w-0 flex-1 rounded-md border bg-transparent px-3 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
           <Button
+            ref={checkTrigger}
             type="submit"
             className="h-11 px-4 text-sm"
-            disabled={preview.isFetching || download.isPending}
+            aria-controls={showYtdlp ? "ytdlp-setup" : undefined}
+            disabled={ytdlp.isPending || preview.isFetching || download.isPending}
           >
             Check link
           </Button>
@@ -82,6 +93,14 @@ export function DownloadLink() {
             ? "Adding download…"
             : ""}
       </output>
+      {showYtdlp ? (
+        <YtdlpSetup
+          onClose={() => {
+            setShowYtdlp(false);
+            checkTrigger.current?.focus();
+          }}
+        />
+      ) : null}
       {checkedUrl && preview.data && !preview.isError ? (
         <div className="mt-5 space-y-4 border-t pt-5">
           <div className="min-w-0 space-y-1">

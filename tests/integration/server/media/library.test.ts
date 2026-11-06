@@ -18,6 +18,7 @@ import { openDatabase, type AppDatabase } from "../../../../src/server/db/databa
 import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { createDownloads } from "../../../../src/server/downloads/jobs.ts";
+import { createMediaDownloader } from "../../../../src/server/downloads/ytdlp.ts";
 import { downloadJobs } from "../../../../src/server/downloads/downloads.schema.ts";
 import { transcriptionJobs } from "../../../../src/server/transcriptions/transcriptions.schema.ts";
 import { transcriptionModel } from "../../../../src/server/models/catalog.ts";
@@ -137,10 +138,14 @@ describe("managed media library", () => {
       expect(readFileSync((await Effect.runPromise(library.file(other.id))).path)).toEqual(wave);
       await expect(Effect.runPromise(library.remove(item.id))).rejects.toThrow("Media not found");
       const config = { dataDirectory: directory };
+      const tools = createMediaTools(config);
       const requeued = await Effect.runPromise(
-        createDownloads(database, config, createMediaTools(config)).enqueue(
-          "https://www.youtube.com/watch?v=abcdefghijk",
-        ),
+        createDownloads(
+          database,
+          config,
+          tools,
+          createMediaDownloader(() => Effect.succeed("yt-dlp"), tools),
+        ).enqueue("https://www.youtube.com/watch?v=abcdefghijk"),
       );
       expect(requeued.id).not.toBe(item.id);
       expect(requeued.status).toBe("queued");
