@@ -5,6 +5,7 @@ import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
 import {
   Transcript,
   TranscriptionJob,
+  type TranscriptionDevice,
   type TranscriptionPhase,
 } from "../../shared/contracts/transcriptions.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
@@ -21,6 +22,7 @@ export interface TranscriptionEngine {
     path: string,
     directory: string,
     update: (phase: TranscriptionPhase) => void,
+    reportDevice: (device: TranscriptionDevice) => void,
   ) => Effect.Effect<Transcript, MediaError>;
 }
 
@@ -115,11 +117,17 @@ export function createTranscriptions(
             catch: (cause) =>
               new MediaError("storage", "Could not prepare transcription files.", cause),
           });
-          const result = yield* engine.transcribe(path, directory, (phase) => {
+          const report = (changes: Partial<typeof transcriptionJobs.$inferInsert>) => {
             if (row(job.mediaId)?.status !== "running")
               throw new MediaError("invalid", "Transcription was cancelled.");
-            updateRunning(job.mediaId, { phase });
-          });
+            updateRunning(job.mediaId, changes);
+          };
+          const result = yield* engine.transcribe(
+            path,
+            directory,
+            (phase) => report({ phase }),
+            (device) => report({ device }),
+          );
           yield* storage(() => {
             const transcript = Schema.decodeUnknownSync(Transcript)(result);
             if (
@@ -262,6 +270,7 @@ export function createTranscriptions(
               status: "queued",
               phase: "queued",
               transcript: null,
+              device: null,
               error: null,
               updatedAt: Date.now(),
             })

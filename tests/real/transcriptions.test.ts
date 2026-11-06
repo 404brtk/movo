@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
+import { getAvailableBackendsAsync } from "transcribe-cpp";
 import { expect, it } from "vitest";
 import { openDatabase } from "../../src/server/db/database.ts";
 import { createMediaLibrary } from "../../src/server/media/library.ts";
@@ -77,6 +78,10 @@ it.for([1, 7])(
             const job = yield* jobs.get(media.id);
             if (job?.error) throw new Error(job.error);
             expect(job?.status).toBe("completed");
+            const accelerated = (yield* Effect.promise(getAvailableBackendsAsync)).some(
+              (entry) => entry.deviceType !== "cpu",
+            );
+            expect(job?.device?.backend === "cpu").toBe(!accelerated);
             const passages = job?.transcript?.segments ?? [];
             expect(passages.length).toBeGreaterThan(0);
             expect(passages.at(-1)?.startMs ?? 0).toBeGreaterThanOrEqual(

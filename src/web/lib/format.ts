@@ -1,3 +1,5 @@
+import type { TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
+
 export function formatDuration(seconds: number) {
   const total = Math.max(0, Math.floor(seconds));
   const hours = Math.floor(total / 3600);
@@ -17,3 +19,14 @@ export function formatBytes(bytes: number) {
 
 export const formatImportDate = (timestamp: number) =>
   new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(timestamp);
+
+const backendNames: Record<string, string> = {
+  cpu: "CPU",
+  cuda: "CUDA",
+  metal: "Metal",
+  rocm: "ROCm",
+  vulkan: "Vulkan",
+};
+
+export const formatDevice = (device: TranscriptionDevice) =>
+  `${device.name} · ${backendNames[device.backend] ?? device.backend}`;

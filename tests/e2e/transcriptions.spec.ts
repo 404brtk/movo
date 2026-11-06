@@ -32,6 +32,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
         status: "running",
         phase: "transcribing",
         transcript: null,
+        device: null,
         error: null,
         cleanupError: null,
         createdAt: Date.now(),
@@ -67,6 +68,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
         { startMs: 1000, endMs: 1800, text: "Second saved passage." },
       ],
     },
+    device: { backend: "vulkan", name: "Test GPU" },
     error: null,
     cleanupError: null,
     createdAt: Date.now(),
@@ -74,6 +76,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   };
   await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   await expect(panel.getByText("Second saved passage.", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Transcribed on Test GPU · Vulkan", { exact: true })).toBeVisible();
   await page.reload();
   await expect(panel.getByText("First saved passage.", { exact: true })).toBeVisible();
   await panel.getByRole("button", { name: "Go to 0:01", exact: true }).click();
@@ -99,6 +102,7 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
     status: "running",
     phase: "loading",
     transcript: null,
+    device: null,
     error: null,
     cleanupError: null,
     createdAt: Date.now(),
@@ -175,6 +179,7 @@ test("keeps retry progress when an older failed status arrives after retry succe
     status: "failed",
     phase: "finished",
     transcript: null,
+    device: null,
     error: "The previous transcription failed.",
     cleanupError: null,
     createdAt: Date.now(),

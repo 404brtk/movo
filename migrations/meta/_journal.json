@@ -50,6 +50,13 @@
       "when": 1793909389825,
       "tag": "0006_download_transcription",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793968104429,
+      "tag": "0007_transcription_device",
+      "breakpoints": true
     }
   ]
 }
