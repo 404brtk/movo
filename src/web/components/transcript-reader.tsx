@@ -1,6 +1,10 @@
 import { Fragment, memo, useMemo } from "react";
 import type { Transcript } from "../../shared/contracts/transcriptions.ts";
-import { transcriptPassages, type TranscriptPassage } from "../../shared/transcript-passages.ts";
+import {
+  currentWordIndex,
+  transcriptPassages,
+  type TranscriptPassage,
+} from "../../shared/transcript-passages.ts";
 import { formatDuration } from "../lib/format.ts";
 import { cn } from "../lib/utils.ts";
 
@@ -55,7 +59,7 @@ export function TranscriptReader({
   onSeek: (milliseconds: number) => void;
 }) {
   const passages = useMemo(() => transcriptPassages(transcript.words), [transcript.words]);
-  const currentWord = transcript.words.findLastIndex((word) => word.startMs <= positionMs);
+  const currentWord = currentWordIndex(transcript.words, positionMs);
   return (
     <ol aria-label="Timestamped passages" className="divide-y overflow-hidden rounded-xl border">
       {passages.map((passage) => {

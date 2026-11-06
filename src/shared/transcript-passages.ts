@@ -28,19 +28,22 @@ export function transcriptPassages(words: readonly TranscriptWord[]) {
   const passages: TranscriptPassage[] = [];
   let firstWord = 0;
   let characters = 0;
+  let endMs = 0;
   words.forEach((word, index) => {
     const start = words[firstWord];
     if (
       start &&
       index > firstWord &&
       (characters + 1 + word.text.length > maxPassageCharacters ||
-        word.endMs - start.startMs > maxPassageMs)
+        Math.max(endMs, word.endMs) - start.startMs > maxPassageMs)
     ) {
       passages.push(passage(words.slice(firstWord, index), firstWord));
       firstWord = index;
       characters = 0;
     }
-    characters += (index > firstWord ? 1 : 0) + word.text.length;
+    const opensPassage = index === firstWord;
+    characters += (opensPassage ? 0 : 1) + word.text.length;
+    endMs = opensPassage ? word.endMs : Math.max(endMs, word.endMs);
     if (sentenceEnding.test(word.text)) {
       passages.push(passage(words.slice(firstWord, index + 1), firstWord));
       firstWord = index + 1;
@@ -49,4 +52,16 @@ export function transcriptPassages(words: readonly TranscriptWord[]) {
   });
   if (firstWord < words.length) passages.push(passage(words.slice(firstWord), firstWord));
   return passages;
+}
+
+export function currentWordIndex(words: readonly TranscriptWord[], positionMs: number) {
+  let started = 0;
+  let notStarted = words.length;
+  while (started < notStarted) {
+    const middle = Math.floor((started + notStarted) / 2);
+    const word = words[middle];
+    if (word && word.startMs <= positionMs) started = middle + 1;
+    else notStarted = middle;
+  }
+  return started - 1;
 }
