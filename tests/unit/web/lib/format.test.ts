@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatDuration } from "../../../../src/web/lib/format.ts";
+import { formatBytes, formatDevice, formatDuration } from "../../../../src/web/lib/format.ts";
 
 describe("media display formatting", () => {
   it.each([
@@ -19,5 +19,12 @@ describe("media display formatting", () => {
     [10 * 1024 ** 3, "10 GiB"],
   ] as const)("formats file size %s", (bytes, expected) => {
     expect(formatBytes(bytes)).toBe(expected);
+  });
+  it.each([
+    [{ backend: "vulkan", name: "Test GPU" }, "Test GPU · Vulkan"],
+    [{ backend: "cpu", name: "Test CPU" }, "Test CPU · CPU"],
+    [{ backend: "future", name: "Accelerator" }, "Accelerator · future"],
+  ] as const)("formats transcription device %o", (device, expected) => {
+    expect(formatDevice(device)).toBe(expected);
   });
 });

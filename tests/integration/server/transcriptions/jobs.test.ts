@@ -25,6 +25,7 @@ const transcript = {
     { startMs: 1000, endMs: 1800, text: "Another passage." },
   ],
 };
+const device = { backend: "cpu", name: "Test CPU" };
 
 async function withRecording(
   signal: AbortSignal,
@@ -156,10 +157,11 @@ it("stops active inference before cleanup, continues the queue and accepts only 
       let stopped = false;
       const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
         check: () => Effect.void,
-        transcribe: (_path, staging, update) =>
+        transcribe: (_path, staging, update, reportDevice) =>
           Effect.gen(function* () {
             attempts++;
             yield* Effect.promise(() => writeFile(join(staging, "audio.f32"), "partial audio"));
+            reportDevice(device);
             update("transcribing");
             if (attempts === 1) {
               yield* Deferred.succeed(began, undefined);
@@ -181,7 +183,7 @@ it("stops active inference before cleanup, continues the queue and accepts only 
       expect((yield* jobs.get(second.id))?.status).toBe("queued");
       yield* jobs.cancel(media.id);
       expect(stopped).toBe(true);
-      expect((yield* jobs.get(media.id))?.status).toBe("cancelled");
+      expect(yield* jobs.get(media.id)).toMatchObject({ status: "cancelled", device });
       expect(
         yield* Effect.promise(() =>
           stat(join(directory, "transcriptions", media.id)).catch(() => null),
@@ -192,11 +194,11 @@ it("stops active inference before cleanup, continues the queue and accepts only 
         [Effect.result(jobs.retry(media.id)), Effect.result(jobs.retry(media.id))],
         { concurrency: "unbounded" },
       );
-      expect(retries.filter(Result.isSuccess)).toHaveLength(1);
+      expect(retries.filter(Result.isSuccess)).toMatchObject([{ success: { device: null } }]);
       expect(retries.filter(Result.isFailure)).toMatchObject([{ failure: { reason: "invalid" } }]);
       yield* waitFor(jobs, media.id, "completed");
       expect(attempts).toBe(3);
-      expect((yield* jobs.get(media.id))?.transcript).toEqual(transcript);
+      expect(yield* jobs.get(media.id)).toMatchObject({ transcript, device });
       yield* Fiber.interrupt(worker);
     }),
   );

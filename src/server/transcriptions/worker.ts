@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { Schema } from "effect";
-import { getAvailableBackendsAsync, TranscribeModel } from "transcribe-cpp";
-import { Transcript } from "../../shared/contracts/transcriptions.ts";
+import { TranscribeModel } from "transcribe-cpp";
+import { Transcript, TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
 
 const ownerDisconnected = () => process.exit(1);
 process.once("disconnect", ownerDisconnected);
@@ -12,11 +12,13 @@ try {
   if (!modelPath || !audioPath || !resultPath)
     throw new Error("Missing transcription worker arguments.");
   console.log("MOVO_PHASE:loading");
-  const devices = await getAvailableBackendsAsync();
-  const device = devices.find((entry) => entry.deviceType === "cpu");
-  if (!device) throw new Error("No CPU inference backend is available.");
-  const model = await TranscribeModel.load(modelPath, { device });
+  const model = await TranscribeModel.load(modelPath, { backend: "auto" });
   try {
+    const device = Schema.decodeUnknownSync(TranscriptionDevice)({
+      backend: model.device.kind,
+      name: model.device.description.trim() || model.device.name,
+    });
+    console.log(`MOVO_DEVICE:${JSON.stringify(device)}`);
     if (
       model.arch !== "parakeet" ||
       !model.roles.includes("asr") ||

@@ -1,6 +1,6 @@
 # Local transcription
 
-Movo transcribes a saved library recording with the installed Parakeet Ultra Q8_0 model. The initial implementation uses the CPU and automatic language behavior from the model. It does not translate, identify speakers or call a paid API. Model installation and transcription are separate explicit actions.
+Movo transcribes a saved library recording with the installed Parakeet Ultra Q8_0 model. The engine selects the processing hardware automatically, and language behavior comes from the model. It does not translate, identify speakers or call a paid API. Model installation and transcription are separate explicit actions.
 
 ## Processing
 
@@ -11,6 +11,12 @@ Downloads can also request transcription explicitly with **Transcribe after down
 FFmpeg selects the first audio track, resamples to 16 kHz mono and writes raw float32 audio to the job's temporary directory. Inputs are restricted to supported local file containers and the `file,pipe` protocol whitelist. A video with no readable audio track fails explicitly.
 
 A separate Node process loads the model through `transcribe-cpp` and requests segment timestamps. [Parakeet Ultra performs its own voice-activity segmentation for long recordings](https://github.com/handy-computer/transcribe.cpp/blob/main/docs/models/parakeet-ultra.md); Movo does not split audio at arbitrary time boundaries. Aborted or truncated output is rejected. The result is validated with Effect Schema, including finite nonnegative timestamps, ordered passages and passage ends within the recording's duration plus a one-second allowance for model padding.
+
+## Hardware selection
+
+The worker loads the model with the engine's [automatic backend policy](https://github.com/handy-computer/transcribe.cpp/blob/main/bindings/typescript/README.md#backend-selection): the best accelerator supported by the installed native package, otherwise the CPU. The engine falls back to the CPU without an error when, for example, the Vulkan loader or driver is missing. Movo does not add its own fallback or offer a device setting. A failure to initialize or run on the selected device fails the job and publishes no transcript.
+
+After loading, the worker reports the device the model actually runs on. The job stores it as `device` with the engine's backend (`cpu`, `vulkan`, `cuda`, `rocm` or `metal`) and the device name. The transcription panel shows it while the job runs and after it finishes; a CPU fallback therefore appears as the CPU. Failed, cancelled and interrupted attempts keep the device they ran on. Retry clears it until the next attempt reports one. Transcripts completed before this field existed have no device. A worker result without a device report is rejected.
 
 The model worker is connected to its backend through Node IPC and exits if the owner disappears. Cancellation and ordinary shutdown stop the owned process before removing its temporary files. This is process isolation for lifecycle and fault handling, not an operating-system security sandbox.
 
@@ -38,7 +44,7 @@ Copying runs only after an explicit action using the browser's Clipboard API. A 
 
 Decoded float32 mono audio uses 64,000 bytes per second, approximately 230 MB per hour on disk. The isolated worker reads that prepared audio into memory, in addition to the model and inference workspace. Longer recordings therefore need proportionally more free memory and disk space. Preparation has a 30-minute timeout and inference a six-hour timeout. Memory allocation or native runtime errors fail the job; they do not silently publish partial text.
 
-The initial implementation keeps native long-form segmentation and does not add a custom streaming decoder. Native GPU selection, speaker labels, multiple transcript versions and editing are outside this implementation.
+The initial implementation keeps native long-form segmentation and does not add a custom streaming decoder. Manual device selection, speaker labels, multiple transcript versions and editing are outside this implementation.
 
 ## HTTP interface
 
@@ -58,4 +64,4 @@ Normal tests use real temporary SQLite and filesystem storage, real local FFmpeg
 
 Export tests cover literal text, Unicode, millisecond/hour boundaries, overlaps, zero-duration cues and empty results. HTTP tests exercise real saved transcripts and reject exports before completion. Browser export tests use an isolated real backend and database with a controlled inference result, save all three formats, parse the exported WebVTT with Chromium, and verify keyboard actions, narrow layout and clipboard failures. Clipboard tests replace the browser API without changing the system clipboard.
 
-`bun run test:transcriptions:real` is an opt-in test requiring FFmpeg, FFprobe and the pinned model already installed in the configured Hugging Face cache. It never downloads or modifies weights. It transcribes a small synthetic speech fixture, repeats it locally to exercise native long-form segmentation beyond 30 seconds, checks recognized words and timestamp offsets, and removes its isolated library and prepared audio. Existing `HF_HUB_CACHE`, `HF_HOME` and `XDG_CACHE_HOME` settings select the cache as usual.
+`bun run test:transcriptions:real` is an opt-in test requiring FFmpeg, FFprobe and the pinned model already installed in the configured Hugging Face cache. It never downloads or modifies weights. It transcribes a small synthetic speech fixture, repeats it locally to exercise native long-form segmentation beyond 30 seconds, checks recognized words and timestamp offsets, requires an accelerator to be selected when the engine reports one and the CPU otherwise, and removes its isolated library and prepared audio. Existing `HF_HUB_CACHE`, `HF_HOME` and `XDG_CACHE_HOME` settings select the cache as usual.

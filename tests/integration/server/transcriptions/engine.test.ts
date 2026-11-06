@@ -25,6 +25,7 @@ it.for(["tone.wav", "sample.webm"])(
       segments: [{ startMs: 50, endMs: 1500, text: "Prepared audio." }],
     };
     const phases: string[] = [];
+    const devices: unknown[] = [];
     let prepared = Buffer.alloc(0);
     const tools = createMediaTools({ dataDirectory: directory });
     const engine = createTranscriptionEngine(
@@ -35,6 +36,7 @@ it.for(["tone.wav", "sample.webm"])(
           ? Effect.promise(async () => {
               prepared = await readFile(args[2] ?? "");
               options.onLine?.("MOVO_PHASE:loading");
+              options.onLine?.('MOVO_DEVICE:{"backend":"vulkan","name":"Test GPU"}');
               options.onLine?.("MOVO_PHASE:transcribing");
               await writeFile(args[3] ?? "", JSON.stringify(expected), { flag: "wx" });
               return "";
@@ -43,10 +45,16 @@ it.for(["tone.wav", "sample.webm"])(
     );
     await Effect.runPromise(engine.check());
     const result = await Effect.runPromise(
-      engine.transcribe(fileURLToPath(source), staging, (phase) => phases.push(phase)),
+      engine.transcribe(
+        fileURLToPath(source),
+        staging,
+        (phase) => phases.push(phase),
+        (device) => devices.push(device),
+      ),
     );
     expect(result).toEqual(expected);
     expect(phases).toEqual(["preparing", "loading", "transcribing"]);
+    expect(devices).toEqual([{ backend: "vulkan", name: "Test GPU" }]);
     expect(prepared.length).toBe(2 * 16000 * 4);
     const samples = new Float32Array(prepared.buffer, prepared.byteOffset, prepared.byteLength / 4);
     expect(samples.every((sample) => Number.isFinite(sample) && Math.abs(sample) <= 1)).toBe(true);
@@ -56,6 +64,10 @@ it.for(["tone.wav", "sample.webm"])(
 );
 
 it.for([
+  {
+    name: "a result without a reported device",
+    payload: JSON.stringify({ language: null, segments: [] }),
+  },
   { name: "unreadable JSON", payload: "{" },
   {
     name: "reversed timestamps",
@@ -90,7 +102,14 @@ it.for([
       }),
   );
   await expect(
-    Effect.runPromise(engine.transcribe("recording.wav", directory, () => undefined)),
+    Effect.runPromise(
+      engine.transcribe(
+        "recording.wav",
+        directory,
+        () => undefined,
+        () => undefined,
+      ),
+    ),
   ).rejects.toMatchObject({
     reason: "unsupported",
     message: "The transcription engine returned an invalid result.",

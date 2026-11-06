@@ -3,6 +3,7 @@ import {
   transcriptionPhases,
   transcriptionStates,
   type Transcript,
+  type TranscriptionDevice,
 } from "../../shared/contracts/transcriptions.ts";
 import { mediaItems } from "../media/media.schema.ts";
 
@@ -16,6 +17,7 @@ export const transcriptionJobs = sqliteTable(
     status: text("status", { enum: transcriptionStates }).notNull(),
     phase: text("phase", { enum: transcriptionPhases }).notNull(),
     transcript: text("transcript", { mode: "json" }).$type<Transcript>(),
+    device: text("device", { mode: "json" }).$type<TranscriptionDevice>(),
     error: text("error"),
     cleanupError: text("cleanup_error"),
     createdAt: integer("created_at").notNull(),

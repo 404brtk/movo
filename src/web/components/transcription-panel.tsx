@@ -7,7 +7,7 @@ import {
   retryTranscription,
   transcriptionOptions,
 } from "../lib/api.ts";
-import { formatDuration } from "../lib/format.ts";
+import { formatDevice, formatDuration } from "../lib/format.ts";
 import { MediaToolsSetup } from "./media-tools-setup.tsx";
 import { TranscriptActions } from "./transcript-actions.tsx";
 import { Button } from "./ui/button.tsx";
@@ -113,6 +113,16 @@ export function TranscriptionPanel({
         <output className="block text-sm text-muted-foreground">
           {phaseLabels[job.phase]} You can browse other recordings while it runs. Keep Movo running.
         </output>
+      ) : null}
+      {job?.device ? (
+        <p className="text-sm wrap-anywhere text-muted-foreground">
+          {job.status === "completed"
+            ? "Transcribed on"
+            : active
+              ? "Running on"
+              : "Last attempt ran on"}{" "}
+          {formatDevice(job.device)}
+        </p>
       ) : null}
       {job?.status === "cancelled" ? (
         <output className="block text-sm text-muted-foreground">Transcription cancelled.</output>

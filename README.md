@@ -99,7 +99,7 @@ New downloads use unique temporary files and publish verified weights without ov
 
 ## Transcribe a recording
 
-Open a saved recording and choose **Transcribe**. Movo uses Parakeet Ultra locally on the CPU, preparing audio with FFmpeg. If either is missing, use **Models** or **Media tools** in the transcription panel to complete setup. Transcribing never downloads a model automatically.
+Open a saved recording and choose **Transcribe**. Movo uses Parakeet Ultra locally on a supported GPU when one is available, otherwise on the CPU, and shows which device processed the recording. Audio is prepared with FFmpeg. If either is missing, use **Models** or **Media tools** in the transcription panel to complete setup. Transcribing never downloads a model automatically.
 
 One transcription runs at a time; other recordings wait in the persistent queue. You can navigate away or reload while it runs. Choose **Cancel transcription** to stop it, or **Retry transcription** after failure, cancellation or interruption. A recording has one saved transcript. Click a passage's timestamp to seek its player. A successful recording without recognized speech shows an explicit empty result.
 

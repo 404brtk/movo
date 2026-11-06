@@ -2,7 +2,11 @@ import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect, Schema } from "effect";
-import { Transcript, type TranscriptionPhase } from "../../shared/contracts/transcriptions.ts";
+import {
+  Transcript,
+  TranscriptionDevice,
+  type TranscriptionPhase,
+} from "../../shared/contracts/transcriptions.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
 import { transcriptionModel } from "../models/catalog.ts";
@@ -20,7 +24,12 @@ export function createTranscriptionEngine(
     Effect.all({ ffmpeg: tools.resolve("ffmpeg"), model: models.resolve(transcriptionModel.id) });
   return {
     check: () => resources().pipe(Effect.asVoid),
-    transcribe: (path: string, directory: string, update: (phase: TranscriptionPhase) => void) =>
+    transcribe: (
+      path: string,
+      directory: string,
+      update: (phase: TranscriptionPhase) => void,
+      reportDevice: (device: TranscriptionDevice) => void,
+    ) =>
       Effect.gen(function* () {
         const { ffmpeg, model } = yield* resources();
         const pcm = join(directory, "audio.f32");
@@ -70,10 +79,20 @@ export function createTranscriptionEngine(
           import.meta.url.endsWith(".ts") ? "./worker.ts" : "./worker.js",
           import.meta.url,
         );
+        let deviceReported = false;
         yield* run(process.execPath, [fileURLToPath(worker), model, pcm, resultPath], {
           timeoutMs: 6 * 60 * 60 * 1000,
           ipc: true,
           onLine: (line) => {
+            if (line.startsWith("MOVO_DEVICE:")) {
+              reportDevice(
+                Schema.decodeUnknownSync(TranscriptionDevice)(
+                  JSON.parse(line.slice("MOVO_DEVICE:".length)),
+                ),
+              );
+              deviceReported = true;
+              return;
+            }
             if (!line.startsWith("MOVO_PHASE:")) return;
             const phase = line.slice("MOVO_PHASE:".length);
             if (!Schema.is(EnginePhase)(phase))
@@ -95,6 +114,7 @@ export function createTranscriptionEngine(
         );
         return yield* Effect.tryPromise({
           try: async () => {
+            if (!deviceReported) throw new Error("The engine did not report its device.");
             const file = await lstat(resultPath);
             if (!file.isFile() || file.size < 1 || file.size > 32 * 1024 * 1024)
               throw new Error("Invalid transcription result file.");

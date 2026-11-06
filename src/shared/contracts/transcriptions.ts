@@ -45,6 +45,11 @@ export const Transcript = Schema.Struct({
   ),
 );
 export type Transcript = typeof Transcript.Type;
+export const TranscriptionDevice = Schema.Struct({
+  backend: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+});
+export type TranscriptionDevice = typeof TranscriptionDevice.Type;
 export const transcriptExportFormats = ["txt", "srt", "vtt"] as const;
 export const TranscriptExportFormat = Schema.Literals(transcriptExportFormats);
 export type TranscriptExportFormat = typeof TranscriptExportFormat.Type;
@@ -54,6 +59,7 @@ export const TranscriptionJob = Schema.Struct({
   status: Schema.Literals(transcriptionStates),
   phase: Schema.Literals(transcriptionPhases),
   transcript: Schema.NullOr(Transcript),
+  device: Schema.NullOr(TranscriptionDevice),
   error: Schema.NullOr(Schema.String),
   cleanupError: Schema.NullOr(Schema.String),
   createdAt: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
