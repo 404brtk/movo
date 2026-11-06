@@ -1,7 +1,16 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer, type RequestListener } from "node:http";
-import { chmod, link, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
@@ -113,7 +122,7 @@ describe("media tools", () => {
       const shadow = join(directory, "shadow");
       await mkdir(shadow);
       const executable = join(shadow, `tar${suffix}`);
-      if (process.platform === "win32") await link(process.execPath, executable);
+      if (process.platform === "win32") await copyFile(process.execPath, executable);
       else {
         await writeFile(executable, "#!/bin/sh\nexit 1\n");
         await chmod(executable, 0o700);
