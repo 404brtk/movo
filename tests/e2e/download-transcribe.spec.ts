@@ -12,6 +12,7 @@ import { MediaError } from "../../src/server/media/error.ts";
 import { createMediaTools } from "../../src/server/media-tools/tools.ts";
 import { createModels } from "../../src/server/models/models.ts";
 import { createTranscriptions } from "../../src/server/transcriptions/jobs.ts";
+import { timedWords } from "../helpers/timed-words.ts";
 
 const sourceUrl = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
 const title = "Download and transcribe example";
@@ -50,7 +51,7 @@ const test = base.extend<{
                   yield* Deferred.await(finish);
                   return {
                     language: "en",
-                    segments: [{ startMs: 100, endMs: 900, text: passage }],
+                    words: [...timedWords(100, 900, passage)],
                   };
                 }),
             });

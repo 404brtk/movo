@@ -5,9 +5,11 @@ import { mediaFileUrl } from "../lib/api.ts";
 export function MediaPlayer({
   item,
   playerRef,
+  onPositionChange,
 }: {
   item: MediaItem;
   playerRef?: (element: HTMLMediaElement | null) => void;
+  onPositionChange?: (milliseconds: number) => void;
 }) {
   const [failed, setFailed] = useState(false);
   return (
@@ -22,6 +24,7 @@ export function MediaPlayer({
             preload="metadata"
             aria-label={item.title}
             onError={() => setFailed(true)}
+            onTimeUpdate={(event) => onPositionChange?.(event.currentTarget.currentTime * 1000)}
           />
         </div>
       ) : (
@@ -34,6 +37,7 @@ export function MediaPlayer({
             preload="metadata"
             aria-label={item.title}
             onError={() => setFailed(true)}
+            onTimeUpdate={(event) => onPositionChange?.(event.currentTarget.currentTime * 1000)}
           />
         </div>
       )}

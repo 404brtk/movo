@@ -57,6 +57,13 @@
       "when": 1793968104429,
       "tag": "0007_transcription_device",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793975755737,
+      "tag": "0008_clear_passage_transcripts",
+      "breakpoints": true
     }
   ]
 }

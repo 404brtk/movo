@@ -10,7 +10,7 @@ Downloads can also request transcription explicitly with **Transcribe after down
 
 FFmpeg selects the first audio track, resamples to 16 kHz mono and writes raw float32 audio to the job's temporary directory. Inputs are restricted to supported local file containers and the `file,pipe` protocol whitelist. A video with no readable audio track fails explicitly.
 
-A separate Node process loads the model through `transcribe-cpp` and requests segment timestamps. [Parakeet Ultra performs its own voice-activity segmentation for long recordings](https://github.com/handy-computer/transcribe.cpp/blob/main/docs/models/parakeet-ultra.md); Movo does not split audio at arbitrary time boundaries. Aborted or truncated output is rejected. The result is validated with Effect Schema, including finite nonnegative timestamps, ordered passages and passage ends within the recording's duration plus a one-second allowance for model padding.
+A separate Node process loads the model through `transcribe-cpp` and requests word timestamps. [Parakeet Ultra performs its own voice-activity segmentation for long recordings](https://github.com/handy-computer/transcribe.cpp/blob/main/docs/models/parakeet-ultra.md); Movo does not split audio at arbitrary time boundaries. Aborted or truncated output is rejected. The result is validated with Effect Schema, including word timestamps, word text without whitespace, words ordered by start time and word ends within the recording's duration plus a one-second allowance for model padding.
 
 ## Hardware selection
 
@@ -22,7 +22,7 @@ The model worker is connected to its backend through Node IPC and exits if the o
 
 ## Storage and lifecycle
 
-The `transcription_jobs` table in `MOVO_DATA_DIR/app.sqlite` stores one job per media ID, the model ID, state, timestamps, errors and the completed transcript. Passages contain `startMs`, `endMs` and `text`; the result also has a nullable detected language. Native model output that does not provide a language leaves it unset.
+The `transcription_jobs` table in `MOVO_DATA_DIR/app.sqlite` stores one job per media ID, the model ID, state, timestamps, errors and the completed transcript. The transcript stores the recognized words, each with `startMs`, `endMs` and `text`, plus a nullable detected language. Passages are not stored; they are derived from the words wherever they are shown or exported, so their rules can change without transcribing again. Transcripts saved before word timestamps were removed by a migration; transcribe those recordings again. Native model output that does not provide a language leaves it unset.
 
 Work files live in `MOVO_DATA_DIR/transcriptions/<media-id>/`. Stored library media and shared Hugging Face weights are read-only during transcription. Results become visible through one database update; partial inference is not published as a completed transcript.
 
@@ -30,11 +30,17 @@ Jobs move through queued, running, completed, failed, cancelled or interrupted s
 
 Startup marks persisted running jobs interrupted and clears terminal staging directories. Queued jobs continue automatically. Interrupted jobs require an explicit retry. Cleanup failures are saved separately on the affected job and do not stop other recordings or discard a completed transcript. Retrying requires successful cleanup. Restart attempts cleanup again.
 
+## Passages and reading along
+
+`src/shared/transcript-passages.ts` groups words into passages. A passage ends after a word that ends a sentence (`.`, `?`, `!` or `…`, optionally followed by closing quotes or brackets). A new passage also starts before a word that would make the passage longer than 84 characters or 7 seconds, the length of a two-line subtitle. A single word longer than either limit forms its own passage. The model's own long-form segments are internal processing chunks of up to 30 seconds and are not used for display.
+
+While the recording plays, the passage containing the current word is highlighted and marked with `aria-current="time"`, and the current word is wrapped in `<mark>`. The current word is the last word that started at or before the player's position. Only the passages whose state changes re-render. Word timestamps come in 80 ms steps and can be off by a word or two; selecting a passage's timestamp seeks to its first word.
+
 ## Copy and export
 
-Completed, nonempty transcripts show **Copy text**, **Download TXT**, **Download SRT** and **Download VTT** above the passages. Copying and TXT use the same plain text, with a blank line between passages and no timestamps. Downloads use UTF-8. The server supplies the recording title with the selected extension in `Content-Disposition`, so normal links and direct export URLs use the same filename. The header includes an ASCII `filename` fallback and UTF-8 `filename*`; path separators and control characters are replaced with underscores.
+Completed, nonempty transcripts show **Copy text**, **Download TXT**, **Download SRT** and **Download VTT** above the passages. Copying and TXT use the same plain text, one passage per line and no timestamps. Downloads use UTF-8. The server supplies the recording title with the selected extension in `Content-Disposition`, so normal links and direct export URLs use the same filename. The header includes an ASCII `filename` fallback and UTF-8 `filename*`; path separators and control characters are replaced with underscores.
 
-SRT and WebVTT export one subtitle cue per passage with millisecond timestamps. Subtitle text collapses whitespace into spaces so blank lines cannot split a cue, and escapes `&`, `<` and `>` so recognized text remains literal. Existing overlaps are preserved. A zero-duration passage receives a one-millisecond cue so its text is retained with a valid end time. See the [SubRip description](https://www.loc.gov/preservation/digital/formats/fdd/fdd000569.shtml) and [WebVTT specification](https://www.w3.org/TR/webvtt1/).
+SRT and WebVTT export one subtitle cue per passage with millisecond timestamps. Words never contain whitespace, so a cue cannot be split by blank lines. Subtitle text escapes `&`, `<` and `>` so recognized text remains literal. Existing overlaps are preserved. A zero-duration passage receives a one-millisecond cue so its text is retained with a valid end time. See the [SubRip description](https://www.loc.gov/preservation/digital/formats/fdd/fdd000569.shtml) and [WebVTT specification](https://www.w3.org/TR/webvtt1/).
 
 Exports read the saved result on demand. They do not start inference, require an installed model, write additional managed files or modify the stored transcript. The empty-speech message has no copy/download actions; the API can still export that completed empty result.
 
@@ -60,7 +66,7 @@ An invalid or missing media ID returns HTTP 404. Model/tool unavailability retur
 
 ## Verification
 
-Normal tests use real temporary SQLite and filesystem storage, real local FFmpeg conversion and controlled substitutes only at inference/process boundaries. Browser tests verify explicit initiation, setup errors, navigation during work, cancellation/retry, saved passages, reload, empty output and seeking. They never download weights or inspect the user's model cache.
+Normal tests use real temporary SQLite and filesystem storage, real local FFmpeg conversion and controlled substitutes only at inference/process boundaries. Browser tests verify explicit initiation, setup errors, navigation during work, cancellation/retry, saved passages, reload, empty output, seeking and the highlighted passage and word. They never download weights or inspect the user's model cache.
 
 Export tests cover literal text, Unicode, millisecond/hour boundaries, overlaps, zero-duration cues and empty results. HTTP tests exercise real saved transcripts and reject exports before completion. Browser export tests use an isolated real backend and database with a controlled inference result, save all three formats, parse the exported WebVTT with Chromium, and verify keyboard actions, narrow layout and clipboard failures. Clipboard tests replace the browser API without changing the system clipboard.
 

@@ -7,9 +7,10 @@ import {
   retryTranscription,
   transcriptionOptions,
 } from "../lib/api.ts";
-import { formatDevice, formatDuration } from "../lib/format.ts";
+import { formatDevice } from "../lib/format.ts";
 import { MediaToolsSetup } from "./media-tools-setup.tsx";
 import { TranscriptActions } from "./transcript-actions.tsx";
+import { TranscriptReader } from "./transcript-reader.tsx";
 import { Button } from "./ui/button.tsx";
 
 const phaseLabels = {
@@ -22,10 +23,12 @@ const phaseLabels = {
 
 export function TranscriptionPanel({
   mediaId,
+  positionMs,
   onSeek,
 }: {
   mediaId: string;
-  onSeek: (seconds: number) => void;
+  positionMs: number;
+  onSeek: (milliseconds: number) => void;
 }) {
   const options = transcriptionOptions(mediaId);
   const query = useQuery(options);
@@ -128,28 +131,12 @@ export function TranscriptionPanel({
         <output className="block text-sm text-muted-foreground">Transcription cancelled.</output>
       ) : null}
       {job?.status === "completed" && job.transcript ? (
-        job.transcript.segments.length === 0 ? (
+        job.transcript.words.length === 0 ? (
           <p className="text-sm text-muted-foreground">No speech was detected in this recording.</p>
         ) : (
           <>
             <TranscriptActions mediaId={mediaId} transcript={job.transcript} />
-            <ol aria-label="Timestamped passages" className="divide-y rounded-xl border px-5">
-              {job.transcript.segments.map((segment, index) => (
-                <li key={index} className="flex gap-4 py-4 sm:gap-6">
-                  <button
-                    type="button"
-                    aria-label={`Go to ${formatDuration(segment.startMs / 1000)}`}
-                    className="min-h-10 shrink-0 self-start rounded-sm text-sm text-muted-foreground tabular-nums underline underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-                    onClick={() => onSeek(segment.startMs / 1000)}
-                  >
-                    {formatDuration(segment.startMs / 1000)}
-                  </button>
-                  <p className="min-w-0 py-2 text-sm leading-7 wrap-anywhere whitespace-pre-wrap">
-                    {segment.text}
-                  </p>
-                </li>
-              ))}
-            </ol>
+            <TranscriptReader transcript={job.transcript} positionMs={positionMs} onSeek={onSeek} />
           </>
         )
       ) : null}

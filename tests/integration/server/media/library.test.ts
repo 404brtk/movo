@@ -22,6 +22,7 @@ import { downloadJobs } from "../../../../src/server/downloads/downloads.schema.
 import { transcriptionJobs } from "../../../../src/server/transcriptions/transcriptions.schema.ts";
 import { transcriptionModel } from "../../../../src/server/models/catalog.ts";
 import { blockCleanup } from "../../../helpers/block-cleanup.ts";
+import { timedWords } from "../../../helpers/timed-words.ts";
 
 const wave = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
 const body = () => new Response(new Uint8Array(wave)).body;
@@ -102,7 +103,7 @@ describe("managed media library", () => {
           phase: "finished",
           transcript: {
             language: "pl",
-            segments: [{ startMs: 0, endMs: 1000, text: "Saved speech." }],
+            words: [...timedWords(0, 1000, "Saved speech.")],
           },
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -218,7 +219,7 @@ describe("managed media library", () => {
           modelId: transcriptionModel.id,
           status: "completed",
           phase: "finished",
-          transcript: { language: null, segments: [] },
+          transcript: { language: null, words: [] },
           createdAt: Date.now(),
           updatedAt: Date.now(),
         })
@@ -235,7 +236,7 @@ describe("managed media library", () => {
       expect(await Effect.runPromise(library.get(item.id))).toEqual(item);
       expect(database.select().from(transcriptionJobs).get()?.transcript).toEqual({
         language: null,
-        segments: [],
+        words: [],
       });
       const stored = await Effect.runPromise(library.file(item.id));
       expect(readFileSync(stored.path)).toEqual(wave);
@@ -326,7 +327,7 @@ describe("managed media library", () => {
           modelId: transcriptionModel.id,
           status: "completed",
           phase: "finished",
-          transcript: { language: null, segments: [] },
+          transcript: { language: null, words: [] },
           createdAt: Date.now(),
           updatedAt: Date.now(),
         })
@@ -341,7 +342,7 @@ describe("managed media library", () => {
         expect(await Effect.runPromise(library.get(item.id))).toEqual(item);
         expect(database.select().from(transcriptionJobs).get()?.transcript).toEqual({
           language: null,
-          segments: [],
+          words: [],
         });
         expect(readFileSync((await Effect.runPromise(library.file(item.id))).path)).toEqual(wave);
       } finally {

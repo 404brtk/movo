@@ -16,13 +16,14 @@ import {
 import { blockCleanup } from "../../../helpers/block-cleanup.ts";
 import { eq } from "drizzle-orm";
 import { transcriptionJobs } from "../../../../src/server/transcriptions/transcriptions.schema.ts";
+import { timedWords } from "../../../helpers/timed-words.ts";
 
 const audio = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
 const transcript = {
   language: "en",
-  segments: [
-    { startMs: 100, endMs: 900, text: "A saved passage." },
-    { startMs: 1000, endMs: 1800, text: "Another passage." },
+  words: [
+    ...timedWords(100, 900, "A saved passage."),
+    ...timedWords(1000, 1800, "Another passage."),
   ],
 };
 const device = { backend: "cpu", name: "Test CPU" };
@@ -221,7 +222,7 @@ it("rejects missing prerequisites without queuing and rejects malformed engine r
             ++attempts === 1
               ? {
                   language: null,
-                  segments: [{ startMs: 1000, endMs: 100, text: "Invalid timing" }],
+                  words: [{ startMs: 1000, endMs: 100, text: "Invalid" }],
                 }
               : transcript,
           ),

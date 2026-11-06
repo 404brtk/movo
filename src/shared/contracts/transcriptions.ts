@@ -19,29 +19,23 @@ export const transcriptionPhases = [
 ] as const;
 export type TranscriptionPhase = (typeof transcriptionPhases)[number];
 const Milliseconds = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
-export const TranscriptSegment = Schema.Struct({
+export const TranscriptWord = Schema.Struct({
   startMs: Milliseconds,
   endMs: Milliseconds,
-  text: Schema.String.check(
-    Schema.isMinLength(1),
-    Schema.isMaxLength(65536),
-    Schema.isPattern(/\S/u),
-  ),
+  text: Schema.String.check(Schema.isMaxLength(1024), Schema.isPattern(/^\S+$/u)),
 }).check(
-  Schema.makeFilter(
-    (segment) => segment.endMs >= segment.startMs || "A passage ends before it starts.",
-  ),
+  Schema.makeFilter((word) => word.endMs >= word.startMs || "A word ends before it starts."),
 );
+export type TranscriptWord = typeof TranscriptWord.Type;
 export const Transcript = Schema.Struct({
   language: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))),
-  segments: Schema.Array(TranscriptSegment).check(Schema.isMaxLength(200000)),
+  words: Schema.Array(TranscriptWord).check(Schema.isMaxLength(1000000)),
 }).check(
   Schema.makeFilter(
     (transcript) =>
-      transcript.segments.every(
-        (segment, index) =>
-          index === 0 || segment.startMs >= (transcript.segments[index - 1]?.startMs ?? 0),
-      ) || "Passages are not in time order.",
+      transcript.words.every(
+        (word, index) => index === 0 || word.startMs >= (transcript.words[index - 1]?.startMs ?? 0),
+      ) || "Words are not in time order.",
   ),
 );
 export type Transcript = typeof Transcript.Type;

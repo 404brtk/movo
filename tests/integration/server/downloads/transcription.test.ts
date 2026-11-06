@@ -11,12 +11,13 @@ import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { downloadJobs } from "../../../../src/server/downloads/downloads.schema.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
+import { timedWords } from "../../../helpers/timed-words.ts";
 
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
 const audio = new URL("../../../fixtures/tone.wav", import.meta.url);
 const transcript = {
   language: "en",
-  segments: [{ startMs: 100, endMs: 900, text: "A downloaded recording." }],
+  words: [...timedWords(100, 900, "A downloaded recording.")],
 };
 const downloader = {
   preview: (sourceUrl: string) =>

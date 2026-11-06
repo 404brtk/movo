@@ -23,28 +23,26 @@ try {
       model.arch !== "parakeet" ||
       !model.roles.includes("asr") ||
       model.capabilities.nativeSampleRate !== 16000 ||
-      model.capabilities.maxTimestampKind === "none"
+      !["word", "token"].includes(model.capabilities.maxTimestampKind)
     )
-      throw new Error("The model does not support the required transcription and timestamps.");
+      throw new Error("The model does not support the required transcription and word timestamps.");
     const pcm = await readFile(audioPath);
     if (pcm.length === 0 || pcm.length % 4 !== 0)
       throw new Error("Prepared audio is empty or incomplete.");
     console.log("MOVO_PHASE:transcribing");
-    const result = await model.transcribe(pcm, { timestamps: "segment" });
+    const result = await model.transcribe(pcm, { timestamps: "word" });
     if (result.aborted || result.truncated)
       throw new Error("The engine did not transcribe the whole recording.");
+    if (result.timestampKind !== "word")
+      throw new Error("The engine did not return word timestamps.");
     const transcript = Schema.decodeUnknownSync(Transcript)({
       language: result.language.trim() || null,
-      segments: result.segments
-        .filter((segment) => segment.text.trim())
-        .map((segment) => ({
-          startMs: segment.t0Ms,
-          endMs: segment.t1Ms,
-          text: segment.text.trim(),
-        })),
+      words: result.words
+        .filter((word) => word.text.trim())
+        .map((word) => ({ startMs: word.t0Ms, endMs: word.t1Ms, text: word.text.trim() })),
     });
-    if (result.text.trim() && transcript.segments.length === 0)
-      throw new Error("The engine returned text without timestamped passages.");
+    if (result.text.trim() && transcript.words.length === 0)
+      throw new Error("The engine returned text without timestamped words.");
     await writeFile(resultPath, JSON.stringify(transcript), { flag: "wx" });
   } finally {
     model.dispose();

@@ -14,6 +14,11 @@ import { transcriptionModel } from "../../src/server/models/catalog.ts";
 import { createTranscriptions } from "../../src/server/transcriptions/jobs.ts";
 import { createTranscriptionEngine } from "../../src/server/transcriptions/engine.ts";
 import { runCommand } from "../../src/server/process/command.ts";
+import {
+  maxPassageCharacters,
+  maxPassageMs,
+  transcriptPassages,
+} from "../../src/shared/transcript-passages.ts";
 
 it.for([1, 7])(
   "transcribes real speech repeated %s times and preserves source and shared weights",
@@ -82,23 +87,33 @@ it.for([1, 7])(
               (entry) => entry.deviceType !== "cpu",
             );
             expect(job?.device?.backend === "cpu").toBe(!accelerated);
-            const passages = job?.transcript?.segments ?? [];
-            expect(passages.length).toBeGreaterThan(0);
-            expect(passages.at(-1)?.startMs ?? 0).toBeGreaterThanOrEqual(
+            const words = job?.transcript?.words ?? [];
+            expect(words.length).toBeGreaterThan(0);
+            expect(words.at(-1)?.startMs ?? 0).toBeGreaterThanOrEqual(
               repetitions === 1 ? 0 : 25000,
             );
-            const text = passages
-              .map((segment) => segment.text)
+            const text = words
+              .map((word) => word.text)
               .join(" ")
               .toLowerCase();
             expect(text).toContain("transcription");
             expect(text).toContain("computer");
             expect(
+              words.every(
+                (word) =>
+                  word.startMs >= 0 &&
+                  word.endMs >= word.startMs &&
+                  word.endMs <= media.durationSeconds * 1000 + 1000,
+              ),
+            ).toBe(true);
+            const passages = transcriptPassages(words);
+            expect(passages.length).toBeGreaterThanOrEqual(2 * repetitions);
+            expect(
               passages.every(
-                (segment) =>
-                  segment.startMs >= 0 &&
-                  segment.endMs >= segment.startMs &&
-                  segment.endMs <= media.durationSeconds * 1000 + 1000,
+                (passage) =>
+                  passage.words.length === 1 ||
+                  (passage.text.length <= maxPassageCharacters &&
+                    passage.endMs - passage.startMs <= maxPassageMs),
               ),
             ).toBe(true);
             const stored = yield* library.file(media.id);

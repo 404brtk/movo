@@ -1,7 +1,10 @@
 import type { Transcript, TranscriptExportFormat } from "./contracts/transcriptions.ts";
+import { transcriptPassages } from "./transcript-passages.ts";
 
 export function transcriptText(transcript: Transcript) {
-  return transcript.segments.map((segment) => segment.text.trim()).join("\n\n");
+  return transcriptPassages(transcript.words)
+    .map((passage) => passage.text)
+    .join("\n");
 }
 
 function timestamp(milliseconds: number, separator: "," | ".") {
@@ -18,12 +21,10 @@ function timestamp(milliseconds: number, separator: "," | ".") {
 export function exportTranscript(transcript: Transcript, format: TranscriptExportFormat) {
   if (format === "txt") return transcriptText(transcript);
   const separator = format === "srt" ? "," : ".";
-  const cues = transcript.segments.map((segment, index) => {
-    const start = timestamp(segment.startMs, separator);
-    const end = timestamp(Math.max(segment.endMs, segment.startMs + 1), separator);
-    const text = segment.text
-      .trim()
-      .replace(/\s+/gu, " ")
+  const cues = transcriptPassages(transcript.words).map((passage, index) => {
+    const start = timestamp(passage.startMs, separator);
+    const end = timestamp(Math.max(passage.endMs, passage.startMs + 1), separator);
+    const text = passage.text
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;");

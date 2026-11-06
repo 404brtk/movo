@@ -4,29 +4,32 @@ import { exportTranscript, transcriptText } from "../../../src/shared/transcript
 
 const transcript: Transcript = {
   language: "pl",
-  segments: [
-    { startMs: 125, endMs: 59999, text: "Zażółć gęślą jaźń." },
-    { startMs: 3600001, endMs: 3602345, text: "Second passage." },
+  words: [
+    { startMs: 125, endMs: 59999, text: "Zażółć." },
+    { startMs: 3600001, endMs: 3601000, text: "Second" },
+    { startMs: 3601000, endMs: 3602345, text: "passage." },
   ],
 };
 
 describe("transcript export", () => {
-  it("uses the same plain text for copying and TXT, preserving paragraphs and literal markup", () => {
+  it("uses the same plain text for copying and TXT, one passage per line with literal markup", () => {
     const value: Transcript = {
       language: null,
-      segments: [
-        { startMs: 0, endMs: 1000, text: "  A & <b>B</b>\n\nAnother paragraph.  " },
-        { startMs: 1000, endMs: 2000, text: " Zażółć. " },
+      words: [
+        { startMs: 0, endMs: 300, text: "A" },
+        { startMs: 300, endMs: 600, text: "&" },
+        { startMs: 600, endMs: 1000, text: "<b>B</b>." },
+        { startMs: 1000, endMs: 2000, text: "Zażółć." },
       ],
     };
-    const expected = "A & <b>B</b>\n\nAnother paragraph.\n\nZażółć.";
+    const expected = "A & <b>B</b>.\nZażółć.";
     expect(transcriptText(value)).toBe(expected);
     expect(exportTranscript(value, "txt")).toBe(expected);
   });
 
   it("writes numbered SRT cues with millisecond precision and hour boundaries", () => {
     expect(exportTranscript(transcript, "srt")).toBe(
-      "1\n00:00:00,125 --> 00:00:59,999\nZażółć gęślą jaźń.\n\n" +
+      "1\n00:00:00,125 --> 00:00:59,999\nZażółć.\n\n" +
         "2\n01:00:00,001 --> 01:00:02,345\nSecond passage.\n\n",
     );
   });
@@ -34,28 +37,29 @@ describe("transcript export", () => {
   it("writes a WebVTT header and dot-separated milliseconds", () => {
     expect(exportTranscript(transcript, "vtt")).toBe(
       "WEBVTT\n\n" +
-        "1\n00:00:00.125 --> 00:00:59.999\nZażółć gęślą jaźń.\n\n" +
+        "1\n00:00:00.125 --> 00:00:59.999\nZażółć.\n\n" +
         "2\n01:00:00.001 --> 01:00:02.345\nSecond passage.\n\n",
     );
   });
 
-  it.each(["srt", "vtt"] as const)(
-    "escapes subtitle markup and flattens cue-breaking whitespace in %s",
-    (format) => {
-      const value: Transcript = {
-        language: null,
-        segments: [{ startMs: 0, endMs: 1000, text: " A & <b>B</b>\r\n \r\n--> C. " }],
-      };
-      expect(exportTranscript(value, format)).toContain(
-        "A &amp; &lt;b&gt;B&lt;/b&gt; --&gt; C.\n\n",
-      );
-    },
-  );
+  it.each(["srt", "vtt"] as const)("escapes subtitle markup in %s", (format) => {
+    const value: Transcript = {
+      language: null,
+      words: [
+        { startMs: 0, endMs: 200, text: "A" },
+        { startMs: 200, endMs: 400, text: "&" },
+        { startMs: 400, endMs: 600, text: "<b>B</b>" },
+        { startMs: 600, endMs: 800, text: "-->" },
+        { startMs: 800, endMs: 1000, text: "C." },
+      ],
+    };
+    expect(exportTranscript(value, format)).toContain("A &amp; &lt;b&gt;B&lt;/b&gt; --&gt; C.\n\n");
+  });
 
   it("keeps long durations, overlaps and zero-duration passage text", () => {
     const value: Transcript = {
       language: null,
-      segments: [
+      words: [
         { startMs: 90000000, endMs: 90002000, text: "First." },
         { startMs: 90001000, endMs: 90001000, text: "Second." },
       ],
@@ -67,7 +71,7 @@ describe("transcript export", () => {
   });
 
   it("exports an empty result without inventing cues or text", () => {
-    const empty: Transcript = { language: null, segments: [] };
+    const empty: Transcript = { language: null, words: [] };
     expect(transcriptText(empty)).toBe("");
     expect(exportTranscript(empty, "txt")).toBe("");
     expect(exportTranscript(empty, "srt")).toBe("");

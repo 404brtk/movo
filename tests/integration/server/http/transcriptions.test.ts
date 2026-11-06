@@ -13,6 +13,7 @@ import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { createTranscriptions } from "../../../../src/server/transcriptions/jobs.ts";
 import { createApp } from "../../../../src/server/http/app.ts";
+import { timedWords } from "../../../helpers/timed-words.ts";
 
 it("runs transcription beyond the initiating request and exposes status, cancel and retry", async () => {
   const directory = await mkdtemp(join(tmpdir(), "movo-transcription-http-"));
@@ -34,7 +35,7 @@ it("runs transcription beyond the initiating request and exposes status, cancel 
           const transcriptions = createTranscriptions(database, config, tools, {
             check: () => Effect.void,
             transcribe: () =>
-              complete ? Effect.succeed({ language: null, segments: [] }) : Effect.never,
+              complete ? Effect.succeed({ language: null, words: [] }) : Effect.never,
           });
           const app = createApp(database, config, undefined, { tools, transcriptions });
           const worker = yield* transcriptions.start();
@@ -75,7 +76,7 @@ it("runs transcription beyond the initiating request and exposes status, cancel 
             expect(
               Schema.decodeUnknownSync(TranscriptionJob)(await (await app.request(base)).json())
                 .transcript,
-            ).toEqual({ language: null, segments: [] });
+            ).toEqual({ language: null, words: [] });
             expect(await (await app.request(`${base}/export/vtt`)).text()).toBe("WEBVTT\n\n");
           });
           yield* Fiber.interrupt(worker);
@@ -105,9 +106,9 @@ it("downloads completed transcripts as UTF-8 attachments without starting anothe
           );
           const transcript: Transcript = {
             language: "pl",
-            segments: [
-              { startMs: 125, endMs: 999, text: "Zażółć." },
-              { startMs: 1000, endMs: 1800, text: "Second & <b>passage</b>." },
+            words: [
+              ...timedWords(125, 999, "Zażółć."),
+              ...timedWords(1000, 1800, "Second & <b>passage</b>."),
             ],
           };
           let attempts = 0;
@@ -145,7 +146,7 @@ it("downloads completed transcripts as UTF-8 attachments without starting anothe
               {
                 format: "txt",
                 type: "text/plain; charset=utf-8",
-                text: "Zażółć.\n\nSecond & <b>passage</b>.",
+                text: "Zażółć.\nSecond & <b>passage</b>.",
               },
               {
                 format: "srt",
