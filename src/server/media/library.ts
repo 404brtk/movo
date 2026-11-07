@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { createWriteStream, lstatSync, readdirSync, renameSync, rmSync, unlinkSync } from "node:fs";
-import { lstat, mkdir, realpath, rename, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, open, realpath, rename, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, parse, relative } from "node:path";
-import { Transform } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { and, eq, getTableColumns, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { Effect, Result, Schema } from "effect";
@@ -302,6 +302,80 @@ export function createMediaLibrary(
     }));
   };
 
+  const importMedia = (
+    body: ReadableStream<Uint8Array> | Readable | null,
+    originalName: string,
+    declaredSize?: number,
+  ) =>
+    Effect.gen(function* () {
+      if (
+        !body ||
+        originalName === "." ||
+        originalName === ".." ||
+        Result.isFailure(Schema.decodeUnknownResult(MediaFileName)(originalName))
+      ) {
+        return yield* Effect.fail(
+          new MediaError("invalid", "Choose an audio or video file with a valid filename."),
+        );
+      }
+      if (declaredSize !== undefined && (!Number.isSafeInteger(declaredSize) || declaredSize < 1)) {
+        return yield* Effect.fail(
+          new MediaError("invalid", "The media file is empty or its size is invalid."),
+        );
+      }
+      if (declaredSize !== undefined && declaredSize > maxImportBytes) {
+        return yield* Effect.fail(new MediaError("tooLarge", "Files must be 10 GiB or smaller."));
+      }
+      yield* resolveProbe();
+      const id = randomUUID();
+      const temporaryPath = join(mediaDirectory, `${id}.part`);
+      let temporaryCreated = false;
+      return yield* Effect.gen(function* () {
+        const byteSize = yield* Effect.tryPromise({
+          try: async () => {
+            await mkdir(mediaDirectory, { recursive: true });
+            let bytes = 0;
+            const counter = new Transform({
+              transform(chunk: Buffer, _encoding, callback) {
+                bytes += chunk.byteLength;
+                callback(
+                  bytes > maxImportBytes
+                    ? new MediaError("tooLarge", "Files must be 10 GiB or smaller.")
+                    : null,
+                  chunk,
+                );
+              },
+            });
+            const output = createWriteStream(temporaryPath, { flags: "wx" });
+            output.once("open", () => {
+              temporaryCreated = true;
+            });
+            await pipeline(body instanceof Readable ? body : uploadChunks(body), counter, output);
+            if (bytes === 0 || (declaredSize !== undefined && bytes !== declaredSize))
+              throw new MediaError(
+                "invalid",
+                "The upload was incomplete. Choose the file and try again.",
+              );
+            return bytes;
+          },
+          catch: storageError,
+        });
+        return yield* save(
+          temporaryPath,
+          originalName,
+          parse(originalName).name.trim() || originalName,
+          null,
+          byteSize,
+          id,
+        );
+      }).pipe(
+        Effect.ensuring(
+          Effect.promise(async () => {
+            if (temporaryCreated) await rm(temporaryPath, { force: true });
+          }),
+        ),
+      );
+    });
   return {
     recoverDeletions: () =>
       Effect.try({
@@ -495,81 +569,31 @@ export function createMediaLibrary(
         });
         return { item, path };
       }),
-    import: (
-      body: ReadableStream<Uint8Array> | null,
-      originalName: string,
-      declaredSize?: number,
-    ) =>
+    import: importMedia,
+    importPath: (path: string) =>
       Effect.gen(function* () {
-        if (
-          !body ||
-          originalName === "." ||
-          originalName === ".." ||
-          Result.isFailure(Schema.decodeUnknownResult(MediaFileName)(originalName))
-        ) {
+        if (!isAbsolute(path))
           return yield* Effect.fail(
-            new MediaError("invalid", "Choose an audio or video file with a valid filename."),
+            new MediaError("invalid", "Provide an absolute path to an audio or video file."),
           );
-        }
-        if (
-          declaredSize !== undefined &&
-          (!Number.isSafeInteger(declaredSize) || declaredSize < 1)
-        ) {
+        const file = yield* Effect.tryPromise({
+          try: () => stat(path),
+          catch: (cause) =>
+            new MediaError("notFound", "The file does not exist or cannot be read.", cause),
+        });
+        if (!file.isFile())
           return yield* Effect.fail(
-            new MediaError("invalid", "The media file is empty or its size is invalid."),
+            new MediaError("invalid", "The path must point to an audio or video file."),
           );
-        }
-        if (declaredSize !== undefined && declaredSize > maxImportBytes) {
-          return yield* Effect.fail(new MediaError("tooLarge", "Files must be 10 GiB or smaller."));
-        }
-        yield* resolveProbe();
-        const id = randomUUID();
-        const temporaryPath = join(mediaDirectory, `${id}.part`);
-        let temporaryCreated = false;
-        return yield* Effect.gen(function* () {
-          const byteSize = yield* Effect.tryPromise({
-            try: async () => {
-              await mkdir(mediaDirectory, { recursive: true });
-              let bytes = 0;
-              const counter = new Transform({
-                transform(chunk: Buffer, _encoding, callback) {
-                  bytes += chunk.byteLength;
-                  callback(
-                    bytes > maxImportBytes
-                      ? new MediaError("tooLarge", "Files must be 10 GiB or smaller.")
-                      : null,
-                    chunk,
-                  );
-                },
-              });
-              const output = createWriteStream(temporaryPath, { flags: "wx" });
-              output.once("open", () => {
-                temporaryCreated = true;
-              });
-              await pipeline(uploadChunks(body), counter, output);
-              if (bytes === 0 || (declaredSize !== undefined && bytes !== declaredSize))
-                throw new MediaError(
-                  "invalid",
-                  "The upload was incomplete. Choose the file and try again.",
-                );
-              return bytes;
-            },
-            catch: storageError,
-          });
-          return yield* save(
-            temporaryPath,
-            originalName,
-            parse(originalName).name.trim() || originalName,
-            null,
-            byteSize,
-            id,
-          );
-        }).pipe(
-          Effect.ensuring(
-            Effect.promise(async () => {
-              if (temporaryCreated) await rm(temporaryPath, { force: true });
-            }),
-          ),
+        return yield* Effect.acquireUseRelease(
+          Effect.tryPromise({
+            try: () => open(path, "r"),
+            catch: (cause) =>
+              new MediaError("notFound", "The file does not exist or cannot be read.", cause),
+          }),
+          (handle) =>
+            importMedia(handle.createReadStream({ autoClose: false }), basename(path), file.size),
+          (handle) => Effect.promise(() => handle.close()),
         );
       }),
   };
