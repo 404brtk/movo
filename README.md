@@ -119,6 +119,10 @@ Completed transcripts with speech offer **Copy text**, **Download TXT**, **Downl
 
 Completed transcripts survive restarts. Queued work resumes; an active operation interrupted by shutdown needs an explicit retry. Temporary audio is separate from saved media and shared model weights. Long recordings need additional disk space and memory for decoded audio. See [local transcription](docs/transcriptions.md) for storage, resource use and HTTP endpoints.
 
+## Use Movo from an AI agent
+
+The running backend also serves an MCP endpoint at `http://127.0.0.1:4310/mcp`. Register it in any MCP client that supports Streamable HTTP, for example `claude mcp add --transport http movo http://127.0.0.1:4310/mcp` or `codex mcp add movo --url http://127.0.0.1:4310/mcp`. Agents can search the library, read transcripts, download links, import local files by absolute path, start, cancel and retry transcriptions, rename recordings and remove them. Installing the model, FFmpeg/FFprobe or yt-dlp stays in the app. The endpoint has the same local-only access rules as the HTTP API. See [MCP access](docs/mcp.md) for the tools and client setup.
+
 ## Verification
 
 ```sh
