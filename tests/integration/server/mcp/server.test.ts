@@ -380,6 +380,58 @@ describe("MCP endpoint", () => {
   );
 
   it(
+    "pages through downloads and recordings beyond the first page",
+    withMovo(readyEngine, async (app) => {
+      const queued = [];
+      for (const videoId of ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"])
+        queued.push(
+          await toolSuccess(DownloadJob, app, "download_link", {
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+          }),
+        );
+      const imported = [];
+      for (let copy = 0; copy < 3; copy++)
+        imported.push(await toolSuccess(MediaItem, app, "import_file", { path: fixture }));
+
+      const DownloadPage = Schema.Struct({
+        jobs: Schema.Array(Schema.Struct({ id: Schema.String })),
+        total: Schema.Number,
+      });
+      const RecordingPage = Schema.Struct({
+        items: Schema.Array(Schema.Struct({ id: Schema.String })),
+        total: Schema.Number,
+      });
+      const downloadPages = [
+        await toolSuccess(DownloadPage, app, "list_downloads", { limit: 2 }),
+        await toolSuccess(DownloadPage, app, "list_downloads", { limit: 2, offset: 2 }),
+      ];
+      const recordingPages = [
+        await toolSuccess(RecordingPage, app, "search_library", { limit: 2 }),
+        await toolSuccess(RecordingPage, app, "search_library", { limit: 2, offset: 2 }),
+      ];
+
+      expect(downloadPages.map((page) => [page.jobs.length, page.total])).toEqual([
+        [2, 3],
+        [1, 3],
+      ]);
+      expect(downloadPages.flatMap((page) => page.jobs.map((job) => job.id)).toSorted()).toEqual(
+        queued.map((job) => job.id).toSorted(),
+      );
+      expect(recordingPages.map((page) => [page.items.length, page.total])).toEqual([
+        [2, 3],
+        [1, 3],
+      ]);
+      expect(
+        recordingPages.flatMap((page) => page.items.map((item) => item.id)).toSorted(),
+      ).toEqual(imported.map((item) => item.id).toSorted());
+      expect(await toolSuccess(DownloadPage, app, "list_downloads", { offset: 3 })).toEqual({
+        jobs: [],
+        total: 3,
+      });
+    }),
+  );
+
+  it(
     "logs storage failures on the server while returning the readable message",
     withMovo(readyEngine, async (app, directory) => {
       await writeFile(join(directory, "media"), "a file where the media folder belongs");

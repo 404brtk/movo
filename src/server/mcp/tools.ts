@@ -20,6 +20,7 @@ export const TranscriptionSummary = Schema.NullOr(
     ),
   }),
 );
+const Page = { limit: limit(100), offset: Schema.optional(Count) };
 const Recording = Schema.Struct({ mediaId: MediaId });
 const Download = Schema.Struct({ downloadId: MediaId });
 const failure = Schema.instanceOf(MediaError);
@@ -47,8 +48,8 @@ const changes = (hint: { destructive?: boolean; idempotent: boolean; openWorld?:
 export const movoTools = Toolkit.make(
   Tool.make("search_library", {
     description:
-      "Search saved recordings by title and transcript text, or list them when q is empty. Every word of q must match; words also match longer words that start with them. Optional filters: kind (audio, video), transcript (available, missing), sort (relevance, newest, oldest, title). Transcript matches include up to three passages with startMs, which read_transcript accepts as fromMs. Returns at most limit recordings (default 20) and the total number of matches.",
-    parameters: Schema.Struct({ ...LibraryQuery.fields, limit: limit(100) }),
+      "Search saved recordings by title and transcript text, or list them when q is empty. Every word of q must match; words also match longer words that start with them. Optional filters: kind (audio, video), transcript (available, missing), sort (relevance, newest, oldest, title). Transcript matches include up to three passages with startMs, which read_transcript accepts as fromMs. Returns at most limit recordings (default 20, up to 100) after skipping offset (default 0), and the total number of matches.",
+    parameters: Schema.Struct({ ...LibraryQuery.fields, ...Page }),
     success: Schema.Struct({
       items: Schema.Array(LibraryItem),
       total: Count,
@@ -81,8 +82,8 @@ export const movoTools = Toolkit.make(
   }).annotateMerge(reads),
   Tool.make("list_downloads", {
     description:
-      "List link downloads, newest first. Returns at most limit jobs (default 20) and the total number of jobs.",
-    parameters: Schema.Struct({ limit: limit(100) }),
+      "List link downloads, newest first. Returns at most limit jobs (default 20, up to 100) after skipping offset (default 0), and the total number of jobs.",
+    parameters: Schema.Struct(Page),
     success: Schema.Struct({ jobs: Schema.Array(DownloadJob), total: Count }),
     failure,
   }).annotateMerge(reads),

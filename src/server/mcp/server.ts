@@ -35,11 +35,11 @@ const reported = <A>(operation: Effect.Effect<A, MediaError>) =>
 
 const handlers = ({ library, downloads, transcriptions }: McpServices) =>
   movoTools.toLayer({
-    search_library: ({ limit = defaultListLimit, ...query }) =>
+    search_library: ({ limit = defaultListLimit, offset = 0, ...query }) =>
       reported(
         library.browse(query).pipe(
           Effect.map(({ items, transcribing }) => ({
-            items: items.slice(0, limit),
+            items: items.slice(offset, offset + limit),
             total: items.length,
             transcribing,
           })),
@@ -65,11 +65,14 @@ const handlers = ({ library, downloads, transcriptions }: McpServices) =>
               ),
         ),
       ),
-    list_downloads: ({ limit = defaultListLimit }) =>
+    list_downloads: ({ limit = defaultListLimit, offset = 0 }) =>
       reported(
-        downloads
-          .list()
-          .pipe(Effect.map((jobs) => ({ jobs: jobs.slice(0, limit), total: jobs.length }))),
+        downloads.list().pipe(
+          Effect.map((jobs) => ({
+            jobs: jobs.slice(offset, offset + limit),
+            total: jobs.length,
+          })),
+        ),
       ),
     get_download: ({ downloadId }) => reported(downloads.get(downloadId)),
     preview_link: ({ url }) => reported(downloads.preview(url)),
