@@ -8,6 +8,7 @@ import {
   DownloadJob,
   DownloadJobList,
   DownloadPreset,
+  type DownloadRequest,
 } from "../../shared/contracts/downloads.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
 import type { AppDatabase } from "../db/database.ts";
@@ -20,6 +21,7 @@ import { downloadJobs } from "./downloads.schema.ts";
 import { downloadSource } from "./url.ts";
 import type { MediaDownloader } from "./ytdlp.ts";
 import { queueTranscription } from "../transcriptions/queue.ts";
+import type { Transcriptions } from "../transcriptions/jobs.ts";
 
 export type DownloadsConfig = MediaToolsConfig & YtdlpConfig;
 
@@ -370,3 +372,13 @@ export function createDownloads(
 }
 
 export type Downloads = ReturnType<typeof createDownloads>;
+
+export const requestDownload = (
+  downloads: Pick<Downloads, "enqueue">,
+  transcriptions: Pick<Transcriptions, "check">,
+  request: DownloadRequest,
+) =>
+  Effect.gen(function* () {
+    if (request.transcribe) yield* transcriptions.check();
+    return yield* downloads.enqueue(request.url, request.preset, request.transcribe);
+  });

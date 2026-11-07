@@ -9,7 +9,12 @@ import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts
 import { RenameMediaRequest } from "../../shared/contracts/media.ts";
 import { TranscriptExportFormat } from "../../shared/contracts/transcriptions.ts";
 import { exportTranscript } from "../../shared/transcript-export.ts";
-import { createDownloads, type Downloads, type DownloadsConfig } from "../downloads/jobs.ts";
+import {
+  createDownloads,
+  requestDownload,
+  type Downloads,
+  type DownloadsConfig,
+} from "../downloads/jobs.ts";
 import { createMediaDownloader } from "../downloads/ytdlp.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError, type MediaErrorReason } from "../media/error.ts";
@@ -142,18 +147,14 @@ export function createApp(
         ),
       ),
     )
-    .post("/downloads", async (context) => {
-      const request = await readDownloadRequest(context.req.json());
-      return context.json(
+    .post("/downloads", async (context) =>
+      context.json(
         await runMedia(
-          Effect.gen(function* () {
-            if (request.transcribe) yield* transcriptions.check();
-            return yield* downloads.enqueue(request.url, request.preset, request.transcribe);
-          }),
+          requestDownload(downloads, transcriptions, await readDownloadRequest(context.req.json())),
         ),
         202,
-      );
-    })
+      ),
+    )
     .get("/downloads/:id", async (context) =>
       context.json(await runMedia(downloads.get(context.req.param("id")))),
     )
