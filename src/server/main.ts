@@ -15,6 +15,7 @@ import { acquireDataDirectory } from "./instance.ts";
 import { createTranscriptions } from "./transcriptions/jobs.ts";
 import { createTranscriptionEngine } from "./transcriptions/engine.ts";
 import { createMediaLibrary } from "./media/library.ts";
+import { createMcpHandler } from "./mcp/server.ts";
 
 const program = Effect.gen(function* () {
   const config = yield* Effect.try(() => readServerConfig(process.env));
@@ -57,12 +58,17 @@ const program = Effect.gen(function* () {
   );
   const downloadWorker = yield* downloads.start();
   const transcriptionWorker = yield* transcriptions.start();
+  const mcp = yield* Effect.acquireRelease(
+    Effect.sync(() => createMcpHandler({ library, downloads, transcriptions, port: config.port })),
+    (handler) => Effect.promise(() => handler.dispose()),
+  );
   const app = createApp(database, config, staticDirectory, {
     tools,
     ytdlp,
     downloads,
     models,
     transcriptions,
+    mcp,
   });
   yield* Effect.acquireRelease(
     Effect.tryPromise(

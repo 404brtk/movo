@@ -24,6 +24,7 @@ import { createYtdlp, type Ytdlp } from "../media-tools/ytdlp.ts";
 import { createModels, type Models } from "../models/models.ts";
 import { createTranscriptions, type Transcriptions } from "../transcriptions/jobs.ts";
 import { createTranscriptionEngine } from "../transcriptions/engine.ts";
+import type { McpHandler } from "../mcp/server.ts";
 import { attachmentDisposition } from "./attachment.ts";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -76,12 +77,14 @@ export function createApp(
       tools,
       createTranscriptionEngine(tools, models),
     ),
+    mcp,
   }: {
     tools?: MediaTools;
     ytdlp?: Ytdlp;
     downloads?: Downloads;
     models?: Models;
     transcriptions?: Transcriptions;
+    mcp?: Pick<McpHandler, "handler">;
   } = {},
 ) {
   const library = createMediaLibrary(database, config.dataDirectory, () =>
@@ -107,6 +110,16 @@ export function createApp(
   });
   app.use("/api/downloads", downloadBodyLimit);
   app.use("/api/downloads/*", downloadBodyLimit);
+  if (mcp)
+    app.all(
+      "/mcp",
+      bodyLimit({
+        maxSize: 64 * 1024,
+        onError: (context) =>
+          context.json({ error: "MCP requests must be 64 KiB or smaller." }, 413),
+      }),
+      (context) => mcp.handler(context.req.raw),
+    );
 
   const api = new Hono()
     .get("/health", (context) => {
