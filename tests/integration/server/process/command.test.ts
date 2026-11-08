@@ -157,11 +157,20 @@ describe("owned background processes", () => {
       ),
     ).rejects.toThrow("timed out");
   });
+  it("accepts a single metadata line as large as a video with many caption languages", async () => {
+    const output = await Effect.runPromise(
+      runCommand(process.execPath, ["-e", "process.stdout.write('x'.repeat(12 * 1024 * 1024))"], {
+        timeoutMs: 10000,
+      }),
+    );
+    expect(output.length).toBe(12 * 1024 * 1024 + 1);
+  });
   it("rejects oversized output", async () => {
     await expect(
       Effect.runPromise(
-        runCommand(process.execPath, ["-e", "process.stdout.write('x'.repeat(9 * 1024 * 1024))"], {
+        runCommand(process.execPath, ["-e", "process.stdout.write('x'.repeat(1025))"], {
           timeoutMs: 5000,
+          maxOutputBytes: 1024,
         }),
       ),
     ).rejects.toThrow("oversized output line");
@@ -169,8 +178,9 @@ describe("owned background processes", () => {
   it("bounds stderr progress lines before invoking the callback", async () => {
     await expect(
       Effect.runPromise(
-        runCommand(process.execPath, ["-e", "process.stderr.write('x'.repeat(9 * 1024 * 1024))"], {
+        runCommand(process.execPath, ["-e", "process.stderr.write('x'.repeat(1025))"], {
           timeoutMs: 5000,
+          maxOutputBytes: 1024,
           onLine: () => undefined,
         }),
       ),

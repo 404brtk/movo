@@ -15,12 +15,14 @@ export function runCommand(
     environment,
     onLine,
     ipc = false,
+    maxOutputBytes = 20 * 1024 * 1024,
   }: {
     timeoutMs: number;
     cwd?: string;
     environment?: NodeJS.ProcessEnv;
     onLine?: (line: string) => void;
     ipc?: boolean;
+    maxOutputBytes?: number;
   },
 ) {
   return Effect.acquireUseRelease(
@@ -95,7 +97,7 @@ export function runCommand(
         if (onLine) onLine(line);
         else if (stream === "stdout") {
           stdout += `${line}\n`;
-          if (stdout.length > 8 * 1024 * 1024)
+          if (stdout.length > maxOutputBytes)
             throw new MediaError("unsupported", "The media source returned too much metadata.");
         }
       };
@@ -106,17 +108,19 @@ export function runCommand(
         }
         if (failure) return;
         try {
+          let searchFrom = pending[stream].length;
           pending[stream] += chunk;
-          if (pending[stream].length > 8 * 1024 * 1024)
+          let newline: number;
+          while ((newline = pending[stream].indexOf("\n", searchFrom)) >= 0) {
+            receive(pending[stream].slice(0, newline).replace(/\r$/u, ""), stream);
+            pending[stream] = pending[stream].slice(newline + 1);
+            searchFrom = 0;
+          }
+          if (pending[stream].length > maxOutputBytes)
             throw new MediaError(
               "unsupported",
               "The media source returned an oversized output line.",
             );
-          let newline: number;
-          while ((newline = pending[stream].indexOf("\n")) >= 0) {
-            receive(pending[stream].slice(0, newline).replace(/\r$/u, ""), stream);
-            pending[stream] = pending[stream].slice(newline + 1);
-          }
         } catch (cause) {
           failure = cause;
           void stop().catch((error: unknown) => {
