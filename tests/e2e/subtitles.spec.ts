@@ -58,7 +58,17 @@ const subtitleTracks = (player: Locator) =>
     })),
   );
 
-test("shows the transcript as video subtitles and replaces them after transcribing again", async ({
+const singleCueTrack = (mode: TextTrackMode, text: string | null) => [
+  {
+    kind: "subtitles",
+    label: "Transcript",
+    language: "pl",
+    mode,
+    cues: text === null ? [] : [{ start: 0, end: 1.5, text }],
+  },
+];
+
+test("shows the transcript as video subtitles and replaces them after transcribing again, also while turned off", async ({
   page,
   request,
 }) => {
@@ -84,33 +94,38 @@ test("shows the transcript as video subtitles and replaces them after transcribi
         ],
       },
     ]);
-  await video.evaluate((element: HTMLMediaElement) => {
-    const [track] = element.textTracks;
-    if (!track) throw new Error("Expected a subtitle track.");
-    track.mode = "hidden";
-  });
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
-  await panel.getByRole("button", { name: "Transcribe again", exact: true }).click();
-  await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
-  job.value = {
-    ...job.value,
-    status: "completed",
-    phase: "finished",
-    transcript: { language: "pl", words: timedWords(0, 1500, "Nowa transkrypcja.") },
-    updatedAt: Date.now(),
+  const transcribeAgain = async (text: string) => {
+    await panel.getByRole("button", { name: "Transcribe again", exact: true }).click();
+    await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
+    job.value = {
+      ...job.value,
+      status: "completed",
+      phase: "finished",
+      transcript: { language: "pl", words: timedWords(0, 1500, text) },
+      updatedAt: Date.now(),
+    };
+    await expect(panel.getByText(text, { exact: true })).toBeVisible();
   };
-  await expect(panel.getByText("Nowa transkrypcja.", { exact: true })).toBeVisible();
+  const setSubtitleMode = (mode: TextTrackMode) =>
+    video.evaluate((element: HTMLMediaElement, nextMode: TextTrackMode) => {
+      const [track] = element.textTracks;
+      if (!track) throw new Error("Expected a subtitle track.");
+      track.mode = nextMode;
+    }, mode);
+
+  await transcribeAgain("Nowa transkrypcja.");
   await expect
     .poll(() => subtitleTracks(video))
-    .toEqual([
-      {
-        kind: "subtitles",
-        label: "Transcript",
-        language: "pl",
-        mode: "hidden",
-        cues: [{ start: 0, end: 1.5, text: "Nowa transkrypcja." }],
-      },
-    ]);
+    .toEqual(singleCueTrack("showing", "Nowa transkrypcja."));
+
+  await setSubtitleMode("disabled");
+  await transcribeAgain("Kolejna wersja.");
+  expect(await subtitleTracks(video)).toEqual(singleCueTrack("disabled", null));
+  await setSubtitleMode("showing");
+  await expect
+    .poll(() => subtitleTracks(video))
+    .toEqual(singleCueTrack("showing", "Kolejna wersja."));
 });
 
 test("adds no subtitle track to audio recordings", async ({ page, request }) => {

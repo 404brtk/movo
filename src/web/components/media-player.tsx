@@ -1,23 +1,34 @@
-import { type SyntheticEvent, useCallback, useMemo, useState } from "react";
+import { type RefObject, type SyntheticEvent, useCallback, useMemo, useRef, useState } from "react";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import type { Transcript } from "../../shared/contracts/transcriptions.ts";
 import { exportTranscript } from "../../shared/transcript-export.ts";
 import { mediaFileUrl } from "../lib/api.ts";
 
-function SubtitleTrack({ content, language }: { content: string; language: string | null }) {
+function SubtitleTrack({
+  content,
+  language,
+  mode,
+}: {
+  content: string;
+  language: string | null;
+  mode: RefObject<TextTrackMode>;
+}) {
   const attachContent = useCallback(
     (track: HTMLTrackElement | null) => {
       if (!track) return undefined;
       const url = URL.createObjectURL(new Blob([content], { type: "text/vtt" }));
       track.src = url;
-      return () => URL.revokeObjectURL(url);
+      track.track.mode = mode.current;
+      return () => {
+        mode.current = track.track.mode;
+        URL.revokeObjectURL(url);
+      };
     },
-    [content],
+    [content, mode],
   );
   return (
     <track
       ref={attachContent}
-      default
       kind="subtitles"
       label="Transcript"
       srcLang={language ?? undefined}
@@ -46,6 +57,7 @@ export function MediaPlayer({
         : undefined,
     [item.kind, transcript],
   );
+  const subtitleMode = useRef<TextTrackMode>("showing");
   const seekToStart = (event: SyntheticEvent<HTMLMediaElement>) => {
     if (startMs !== undefined) event.currentTarget.currentTime = startMs / 1000;
   };
@@ -65,7 +77,12 @@ export function MediaPlayer({
             onTimeUpdate={(event) => onPositionChange?.(event.currentTarget.currentTime * 1000)}
           >
             {subtitles === undefined ? null : (
-              <SubtitleTrack content={subtitles} language={transcript?.language ?? null} />
+              <SubtitleTrack
+                key={subtitles}
+                content={subtitles}
+                language={transcript?.language ?? null}
+                mode={subtitleMode}
+              />
             )}
           </video>
         </div>
