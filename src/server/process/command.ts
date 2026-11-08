@@ -6,6 +6,11 @@ import { MediaError } from "../media/error.ts";
 
 const execute = promisify(execFile);
 
+function rejectOversizedLine(length: number, maxOutputBytes: number) {
+  if (length > maxOutputBytes)
+    throw new MediaError("unsupported", "The media source returned an oversized output line.");
+}
+
 export function runCommand(
   file: string,
   args: string[],
@@ -112,15 +117,12 @@ export function runCommand(
           pending[stream] += chunk;
           let newline: number;
           while ((newline = pending[stream].indexOf("\n", searchFrom)) >= 0) {
+            rejectOversizedLine(newline, maxOutputBytes);
             receive(pending[stream].slice(0, newline).replace(/\r$/u, ""), stream);
             pending[stream] = pending[stream].slice(newline + 1);
             searchFrom = 0;
           }
-          if (pending[stream].length > maxOutputBytes)
-            throw new MediaError(
-              "unsupported",
-              "The media source returned an oversized output line.",
-            );
+          rejectOversizedLine(pending[stream].length, maxOutputBytes);
         } catch (cause) {
           failure = cause;
           void stop().catch((error: unknown) => {
