@@ -38,6 +38,8 @@ Startup marks persisted running jobs interrupted and clears terminal staging dir
 
 While the recording plays, the passage containing the current word is highlighted and marked with `aria-current="time"`, and the current word is wrapped in `<mark>`. The current word is the last word that started at or before the player's position. Only the passages whose state changes re-render. Word timestamps come in 80 ms steps and can be off by a word or two; selecting a passage's timestamp seeks to its first word.
 
+A video with a saved, nonempty transcript also shows it as subtitles: one cue per passage in a `Transcript` subtitle track, shown by default and turned off through the player's caption control. The browser builds the track from the transcript it already loaded, using the same WebVTT text as **Download VTT**, so no extra request is made. When a new transcript completes, the track's content is replaced and the viewer's subtitle choice is kept. Audio recordings have no subtitle track.
+
 ## Copy and export
 
 Saved, nonempty transcripts show **Copy text**, **Download TXT**, **Download SRT** and **Download VTT** above the passages. Copying and TXT use the same plain text, one passage per line and no timestamps. Downloads use UTF-8. The server supplies the recording title with the selected extension in `Content-Disposition`, so normal links and direct export URLs use the same filename. The header includes an ASCII `filename` fallback and UTF-8 `filename*`; path separators and control characters are replaced with underscores.

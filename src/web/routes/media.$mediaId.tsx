@@ -9,7 +9,7 @@ import { MediaPlayer } from "../components/media-player.tsx";
 import { MediaActions } from "../components/media-actions.tsx";
 import { TranscriptionPanel } from "../components/transcription-panel.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
-import { ApiError, mediaFileUrl, mediaItemOptions } from "../lib/api.ts";
+import { ApiError, mediaFileUrl, mediaItemOptions, transcriptionOptions } from "../lib/api.ts";
 import { formatBytes, formatDuration, formatImportDate } from "../lib/format.ts";
 import { searchParams } from "../lib/search-params.ts";
 
@@ -46,6 +46,7 @@ function PlaybackWithTranscript({
 function PlaybackWithPlayer({ item, startMs }: { item: MediaItem; startMs: number | undefined }) {
   const player = useRef<HTMLMediaElement | null>(null);
   const [positionMs, setPositionMs] = useState(startMs ?? 0);
+  const transcription = useQuery(transcriptionOptions(item.id));
   const playerRef = useCallback((element: HTMLMediaElement | null) => {
     player.current = element;
   }, []);
@@ -56,6 +57,7 @@ function PlaybackWithPlayer({ item, startMs }: { item: MediaItem; startMs: numbe
     <>
       <MediaPlayer
         item={item}
+        transcript={transcription.data?.transcript}
         playerRef={playerRef}
         startMs={startMs}
         onPositionChange={setPositionMs}
