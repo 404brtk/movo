@@ -228,7 +228,7 @@ export const enqueueDownload = (request: DownloadRequest) =>
       {},
       { init: { body: JSON.stringify(request), headers: { "content-type": "application/json" } } },
     ),
-    DownloadJob,
+    DownloadJobList,
   );
 export const cancelDownload = (id: string) =>
   readResponse(client.api.downloads[":id"].cancel.$post({ param: { id } }), DownloadJob);

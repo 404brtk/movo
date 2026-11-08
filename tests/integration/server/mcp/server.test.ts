@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect, Fiber, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
-import { DownloadJob } from "../../../../src/shared/contracts/downloads.ts";
+import { DownloadJobList } from "../../../../src/shared/contracts/downloads.ts";
 import { MediaDeletion, MediaItem } from "../../../../src/shared/contracts/media.ts";
 import { openDatabase } from "../../../../src/server/db/database.ts";
 import { createDownloads } from "../../../../src/server/downloads/jobs.ts";
@@ -29,6 +29,7 @@ const words = [
   ...timedWords(1200, 1700, "Third sentence."),
 ];
 
+const DownloadJobs = Schema.Struct({ jobs: DownloadJobList });
 const ToolResult = Schema.Struct({
   isError: Schema.Boolean,
   content: Schema.Array(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String })),
@@ -173,7 +174,7 @@ describe("MCP endpoint", () => {
         "list_downloads",
         "get_download",
         "preview_link",
-        "download_link",
+        "download_links",
         "cancel_download",
         "retry_download",
         "import_file",
@@ -202,7 +203,7 @@ describe("MCP endpoint", () => {
       ]);
       expect(names((hints) => hints.openWorldHint)).toEqual([
         "preview_link",
-        "download_link",
+        "download_links",
         "retry_download",
       ]);
 
@@ -356,8 +357,8 @@ describe("MCP endpoint", () => {
         "Complete the transcription before reading it.",
       );
       expect(
-        await toolError(app, "download_link", {
-          url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        await toolError(app, "download_links", {
+          urls: ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
           transcribe: true,
         }),
       ).toBe("Install the transcription model first.");
@@ -365,10 +366,20 @@ describe("MCP endpoint", () => {
         jobs: [],
         total: 0,
       });
-      const queued = await toolSuccess(DownloadJob, app, "download_link", {
-        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      const { jobs } = await toolSuccess(DownloadJobs, app, "download_links", {
+        urls: ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ"],
       });
-      expect(queued).toMatchObject({ status: "queued", preset: "video-1080p", transcribe: false });
+      expect(jobs).toHaveLength(2);
+      expect(jobs[1]?.id).toBe(jobs[0]?.id);
+      expect(jobs[0]).toMatchObject({ status: "queued", preset: "video-1080p", transcribe: false });
+      expect(
+        await toolError(app, "download_links", {
+          urls: ["https://www.youtube.com/watch?v=aaaaaaaaaaa", "https://example.com/video"],
+        }),
+      ).toMatch(/^Link 2: /u);
+      expect((await callTool(app, "list_downloads", {})).structuredContent).toMatchObject({
+        total: 1,
+      });
 
       expect(
         await toolError(app, "get_recording", { mediaId: "00000000-0000-4000-8000-000000000000" }),
@@ -382,13 +393,11 @@ describe("MCP endpoint", () => {
   it(
     "pages through downloads and recordings beyond the first page",
     withMovo(readyEngine, async (app) => {
-      const queued = [];
-      for (const videoId of ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"])
-        queued.push(
-          await toolSuccess(DownloadJob, app, "download_link", {
-            url: `https://www.youtube.com/watch?v=${videoId}`,
-          }),
-        );
+      const { jobs: queued } = await toolSuccess(DownloadJobs, app, "download_links", {
+        urls: ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"].map(
+          (videoId) => `https://www.youtube.com/watch?v=${videoId}`,
+        ),
+      });
       const imported = [];
       for (let copy = 0; copy < 3; copy++)
         imported.push(await toolSuccess(MediaItem, app, "import_file", { path: fixture }));

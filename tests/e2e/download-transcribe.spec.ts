@@ -111,7 +111,7 @@ test("downloads and transcribes once, reports missing prerequisites and shows th
 }) => {
   await page.setViewportSize({ width: 320, height: 760 });
   await page.goto(workflow.origin);
-  await page.getByRole("textbox", { name: "Video link" }).fill(sourceUrl);
+  await page.getByRole("textbox", { name: "Video links" }).fill(sourceUrl);
   await page.getByRole("button", { name: "Check link", exact: true }).click();
   const checkbox = page.getByRole("checkbox", { name: "Transcribe after download" });
   await expect(checkbox).not.toBeChecked();

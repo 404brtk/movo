@@ -1,6 +1,11 @@
 import { Context, Schema, Struct } from "effect";
 import { Tool, Toolkit } from "effect/ai";
-import { DownloadJob, DownloadPreview, DownloadRequest } from "../../shared/contracts/downloads.ts";
+import {
+  DownloadJob,
+  DownloadPreview,
+  DownloadPreviewRequest,
+  DownloadRequest,
+} from "../../shared/contracts/downloads.ts";
 import { LibraryItem, LibraryQuery } from "../../shared/contracts/library.ts";
 import { MediaDeletion, MediaId, MediaItem, MediaTitle } from "../../shared/contracts/media.ts";
 import { Transcript, TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
@@ -97,17 +102,17 @@ export const movoTools = Toolkit.make(
   Tool.make("preview_link", {
     description:
       "Check a YouTube video or X post link and return its title and duration without downloading it.",
-    parameters: Schema.Struct({ url: DownloadRequest.fields.url }),
+    parameters: DownloadPreviewRequest,
     success: DownloadPreview,
     failure,
   }).annotateMerge(
     hints({ readOnly: true, destructive: false, idempotent: true, openWorld: true }),
   ),
-  Tool.make("download_link", {
+  Tool.make("download_links", {
     description:
-      "Queue a download of a YouTube video or X post into the library. preset is video-480p, video-720p, video-1080p (default), video-best or audio. Set transcribe to transcribe the recording once it is saved. The same link and preset return the existing job. The download runs in the background; check it with get_download every few seconds.",
+      "Queue downloads of YouTube videos or X posts into the library, in the given order. Returns one job per link. If any link is unsupported, nothing is queued. preset is video-480p, video-720p, video-1080p (default), video-best or audio and applies to every link; video presets set a maximum height and use the best lower resolution a source offers. Set transcribe to transcribe each recording once it is saved. The same link and preset return the existing job. Downloads run one at a time in the background; check them with get_download every few seconds.",
     parameters: DownloadRequest,
-    success: DownloadJob,
+    success: Schema.Struct({ jobs: Schema.Array(DownloadJob) }),
     failure,
   }).annotateMerge(changes({ idempotent: true, openWorld: true })),
   Tool.make("cancel_download", {

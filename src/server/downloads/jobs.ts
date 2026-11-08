@@ -38,6 +38,59 @@ const databaseOperation = <A>(operation: () => A) =>
           ),
   });
 
+const checkOptions = (preset: DownloadPreset, transcribe: boolean) => {
+  if (!Schema.is(DownloadPreset)(preset))
+    throw new MediaError("invalid", "Choose a supported download option.");
+  if (!Schema.is(Schema.Boolean)(transcribe))
+    throw new MediaError("invalid", "Choose whether to transcribe after downloading.");
+};
+const insertJob = (
+  transaction: Pick<AppDatabase, "insert" | "update" | "select">,
+  url: string,
+  preset: DownloadPreset,
+  transcribe: boolean,
+  now: number,
+) => {
+  transaction
+    .insert(downloadJobs)
+    .values({
+      id: randomUUID(),
+      url,
+      preset,
+      transcribe,
+      status: "queued",
+      phase: "queued",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoNothing({ target: [downloadJobs.url, downloadJobs.preset] })
+    .run();
+  if (transcribe)
+    transaction
+      .update(downloadJobs)
+      .set({ transcribe: true })
+      .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
+      .run();
+  const job = Schema.decodeUnknownSync(DownloadJob)(
+    transaction
+      .select()
+      .from(downloadJobs)
+      .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
+      .get(),
+  );
+  if (job.status === "completed" && job.transcribe && job.mediaId)
+    queueTranscription(transaction, job.mediaId);
+  return job;
+};
+const linkUrl = (input: string, index: number, count: number) => {
+  try {
+    return downloadSource(input).url;
+  } catch (cause) {
+    if (count === 1 || !(cause instanceof MediaError)) throw cause;
+    throw new MediaError(cause.reason, `Link ${index + 1}: ${cause.message}`, cause);
+  }
+};
+
 export function createDownloads(
   database: AppDatabase,
   config: DownloadsConfig,
@@ -255,42 +308,21 @@ export function createDownloads(
     enqueue: (input: string, preset: DownloadPreset = defaultDownloadPreset, transcribe = false) =>
       databaseOperation(() =>
         database.transaction((transaction) => {
-          if (!Schema.is(DownloadPreset)(preset))
-            throw new MediaError("invalid", "Choose a supported download option.");
-          if (!Schema.is(Schema.Boolean)(transcribe))
-            throw new MediaError("invalid", "Choose whether to transcribe after downloading.");
-          const { url } = downloadSource(input);
+          checkOptions(preset, transcribe);
+          return insertJob(transaction, downloadSource(input).url, preset, transcribe, Date.now());
+        }),
+      ),
+    enqueueAll: (
+      inputs: readonly string[],
+      preset: DownloadPreset = defaultDownloadPreset,
+      transcribe = false,
+    ) =>
+      databaseOperation(() =>
+        database.transaction((transaction) => {
+          checkOptions(preset, transcribe);
+          const urls = inputs.map((input, index) => linkUrl(input, index, inputs.length));
           const now = Date.now();
-          transaction
-            .insert(downloadJobs)
-            .values({
-              id: randomUUID(),
-              url,
-              preset,
-              transcribe,
-              status: "queued",
-              phase: "queued",
-              createdAt: now,
-              updatedAt: now,
-            })
-            .onConflictDoNothing({ target: [downloadJobs.url, downloadJobs.preset] })
-            .run();
-          if (transcribe)
-            transaction
-              .update(downloadJobs)
-              .set({ transcribe: true })
-              .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
-              .run();
-          const job = Schema.decodeUnknownSync(DownloadJob)(
-            transaction
-              .select()
-              .from(downloadJobs)
-              .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
-              .get(),
-          );
-          if (job.status === "completed" && job.transcribe && job.mediaId)
-            queueTranscription(transaction, job.mediaId);
-          return job;
+          return urls.map((url) => insertJob(transaction, url, preset, transcribe, now));
         }),
       ),
     cancel: (id: string) =>
@@ -374,11 +406,11 @@ export function createDownloads(
 export type Downloads = ReturnType<typeof createDownloads>;
 
 export const requestDownload = (
-  downloads: Pick<Downloads, "enqueue">,
+  downloads: Pick<Downloads, "enqueueAll">,
   transcriptions: Pick<Transcriptions, "check">,
   request: DownloadRequest,
 ) =>
   Effect.gen(function* () {
     if (request.transcribe) yield* transcriptions.check();
-    return yield* downloads.enqueue(request.url, request.preset, request.transcribe);
+    return yield* downloads.enqueueAll(request.urls, request.preset, request.transcribe);
   });
