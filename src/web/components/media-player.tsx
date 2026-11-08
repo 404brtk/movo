@@ -1,19 +1,51 @@
-import { type SyntheticEvent, useState } from "react";
+import { type SyntheticEvent, useCallback, useMemo, useState } from "react";
 import type { MediaItem } from "../../shared/contracts/media.ts";
+import type { Transcript } from "../../shared/contracts/transcriptions.ts";
+import { exportTranscript } from "../../shared/transcript-export.ts";
 import { mediaFileUrl } from "../lib/api.ts";
+
+function SubtitleTrack({ content, language }: { content: string; language: string | null }) {
+  const attachContent = useCallback(
+    (track: HTMLTrackElement | null) => {
+      if (!track) return undefined;
+      const url = URL.createObjectURL(new Blob([content], { type: "text/vtt" }));
+      track.src = url;
+      return () => URL.revokeObjectURL(url);
+    },
+    [content],
+  );
+  return (
+    <track
+      ref={attachContent}
+      default
+      kind="subtitles"
+      label="Transcript"
+      srcLang={language ?? undefined}
+    />
+  );
+}
 
 export function MediaPlayer({
   item,
+  transcript,
   playerRef,
   startMs,
   onPositionChange,
 }: {
   item: MediaItem;
+  transcript?: Transcript | null | undefined;
   playerRef?: (element: HTMLMediaElement | null) => void;
   startMs?: number | undefined;
   onPositionChange?: (milliseconds: number) => void;
 }) {
   const [failed, setFailed] = useState(false);
+  const subtitles = useMemo(
+    () =>
+      item.kind === "video" && transcript?.words.length
+        ? exportTranscript(transcript, "vtt")
+        : undefined,
+    [item.kind, transcript],
+  );
   const seekToStart = (event: SyntheticEvent<HTMLMediaElement>) => {
     if (startMs !== undefined) event.currentTarget.currentTime = startMs / 1000;
   };
@@ -31,7 +63,11 @@ export function MediaPlayer({
             onLoadedMetadata={seekToStart}
             onError={() => setFailed(true)}
             onTimeUpdate={(event) => onPositionChange?.(event.currentTarget.currentTime * 1000)}
-          />
+          >
+            {subtitles === undefined ? null : (
+              <SubtitleTrack content={subtitles} language={transcript?.language ?? null} />
+            )}
+          </video>
         </div>
       ) : (
         <div className="rounded-xl border bg-muted/40 px-4 py-8 sm:px-8">
