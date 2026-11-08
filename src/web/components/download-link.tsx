@@ -11,6 +11,8 @@ import {
 import { downloadsOptions, enqueueDownload, previewOptions, ytdlpOptions } from "../lib/api.ts";
 import { formatDuration } from "../lib/format.ts";
 import { Button } from "./ui/button.tsx";
+import { Textarea } from "./ui/textarea.tsx";
+import { NativeSelect, NativeSelectOption } from "./ui/native-select.tsx";
 import { YtdlpSetup } from "./ytdlp-setup.tsx";
 
 export function DownloadLink() {
@@ -57,7 +59,7 @@ export function DownloadLink() {
           Video links
         </label>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-          <textarea
+          <Textarea
             id="download-url"
             name="urls"
             required
@@ -78,7 +80,7 @@ export function DownloadLink() {
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? "download-link-error" : "download-link-help"}
             placeholder="Paste YouTube or X links, one per line"
-            className="field-sizing-content max-h-60 min-h-11 min-w-0 flex-1 resize-y rounded-md border bg-transparent px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="max-h-60 min-h-11 min-w-0 flex-1 resize-y"
           />
           <Button
             ref={checkTrigger}
@@ -134,7 +136,7 @@ export function DownloadLink() {
               <label htmlFor="download-mode" className="block text-sm font-medium">
                 Save as
               </label>
-              <select
+              <NativeSelect
                 id="download-mode"
                 value={selected.kind}
                 disabled={download.isPending}
@@ -144,18 +146,18 @@ export function DownloadLink() {
                   );
                   download.reset();
                 }}
-                className="h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="w-full"
               >
-                <option value="video">Video</option>
-                <option value="audio">Audio</option>
-              </select>
+                <NativeSelectOption value="video">Video</NativeSelectOption>
+                <NativeSelectOption value="audio">Audio</NativeSelectOption>
+              </NativeSelect>
             </div>
             {selected.kind === "video" ? (
               <div className="min-w-40 flex-1 space-y-2">
                 <label htmlFor="download-quality" className="block text-sm font-medium">
                   Video quality
                 </label>
-                <select
+                <NativeSelect
                   id="download-quality"
                   value={preset}
                   disabled={download.isPending}
@@ -163,16 +165,16 @@ export function DownloadLink() {
                     setPreset(Schema.decodeUnknownSync(DownloadPreset)(event.currentTarget.value));
                     download.reset();
                   }}
-                  className="h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  className="w-full"
                 >
                   {downloadPresets
                     .filter((option) => option.kind === "video")
                     .map((option) => (
-                      <option key={option.id} value={option.id}>
+                      <NativeSelectOption key={option.id} value={option.id}>
                         {option.label}
-                      </option>
+                      </NativeSelectOption>
                     ))}
-                </select>
+                </NativeSelect>
               </div>
             ) : null}
           </div>
