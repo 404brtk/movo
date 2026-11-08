@@ -124,14 +124,17 @@ it("validates HTTP input, queues independently of its request and exposes cancel
               Schema.decodeUnknownSync(DownloadJobList)(await list.json()).map((item) => item.id),
             ).toEqual([job.id]);
             const secondUrl = "https://youtu.be/bbbbbbbbbbb";
-            const rejected = await app.request(
-              base,
-              json({ urls: [secondUrl, "https://example.com/video"] }),
-            );
-            expect(rejected.status).toBe(400);
-            expect(await rejected.json()).toEqual({
-              error: expect.stringMatching(/^Link 2: /u),
-            });
+            for (const invalid of [
+              "https://example.com/video",
+              "",
+              `${url}&t=${"1".repeat(2048)}`,
+            ]) {
+              const rejected = await app.request(base, json({ urls: [secondUrl, invalid] }));
+              expect(rejected.status).toBe(400);
+              expect(await rejected.json()).toEqual({
+                error: expect.stringMatching(/^Link 2: /u),
+              });
+            }
             expect(await Effect.runPromise(downloads.list())).toHaveLength(1);
             expect((await app.request(base, json({ urls: [] }))).status).toBe(400);
             const batch = Schema.decodeUnknownSync(DownloadJobList)(

@@ -70,6 +70,11 @@ export function DownloadLink() {
               setCheckedUrls([]);
               download.reset();
             }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              checkTrigger.current?.click();
+            }}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? "download-link-error" : "download-link-help"}
             placeholder="Paste YouTube or X links, one per line"
@@ -86,8 +91,8 @@ export function DownloadLink() {
           </Button>
         </div>
         <p id="download-link-help" className="text-xs text-muted-foreground">
-          Public YouTube videos or X posts with one video, separated by spaces or new lines. Choose
-          video quality or audio after checking. Sign-in is not supported.
+          Public YouTube videos or X posts with one video, separated by spaces or new lines
+          (Shift+Enter). Choose video quality or audio after checking. Sign-in is not supported.
         </p>
       </form>
       <output className="block text-sm text-muted-foreground">

@@ -125,8 +125,12 @@ test("queues several pasted links without previewing them", async ({ page }) => 
     return route.fulfill({ json: queued ? jobs : [] });
   });
   await page.goto("/");
-  await page.getByRole("textbox", { name: "Video links" }).fill(` ${urls.join("\n\n")} `);
-  await page.getByRole("button", { name: "Check links", exact: true }).click();
+  const links = page.getByRole("textbox", { name: "Video links" });
+  await links.fill(` ${urls[0]}`);
+  await links.press("Shift+Enter");
+  await links.pressSequentially(`${urls[1]} `);
+  await expect(links).toHaveValue(` ${urls.join("\n")} `);
+  await links.press("Enter");
   await expect(page.getByText("2 links", { exact: true })).toBeVisible();
   await page.getByLabel("Save as", { exact: true }).selectOption("audio");
   await page.getByRole("button", { name: "Download all 2", exact: true }).click();
