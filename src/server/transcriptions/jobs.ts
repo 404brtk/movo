@@ -5,17 +5,29 @@ import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
 import {
   Transcript,
   TranscriptionJob,
+  type PassageEdit,
+  type TranscriptChangeSource,
   type TranscriptionDevice,
   type TranscriptionPhase,
+  type TranscriptReplace,
+  type TranscriptRestore,
 } from "../../shared/contracts/transcriptions.ts";
+import { applyPatch, editWords, replaceWords } from "../../shared/transcript-edits.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
 import { setSearchTranscript } from "../media/search.ts";
+import {
+  clearHistory,
+  listChanges,
+  patchesBackTo,
+  recordChange,
+  transcriptRevision,
+} from "./history.ts";
 import { queueTranscription } from "./queue.ts";
-import { transcriptionJobs } from "./transcriptions.schema.ts";
+import { transcriptionJobs, type transcriptChanges } from "./transcriptions.schema.ts";
 
 export interface TranscriptionEngine {
   check: () => Effect.Effect<void, MediaError>;
@@ -54,10 +66,15 @@ export function createTranscriptions(
   let started = false;
   const row = (id: string) =>
     database.select().from(transcriptionJobs).where(eq(transcriptionJobs.mediaId, id)).get();
+  const decodeJob = (job: typeof transcriptionJobs.$inferSelect) =>
+    Schema.decodeUnknownSync(TranscriptionJob)({
+      ...job,
+      revision: transcriptRevision(database, job.mediaId),
+    });
   const read = (id: string) =>
     storage(() => {
       const job = row(id);
-      return job ? Schema.decodeUnknownSync(TranscriptionJob)(job) : null;
+      return job ? decodeJob(job) : null;
     });
   const updateRunning = (
     id: string,
@@ -150,7 +167,9 @@ export function createTranscriptions(
                 { status: "completed", phase: "finished", transcript, error: null },
                 transaction,
               );
-              if (completed.changes > 0) setSearchTranscript(transaction, job.mediaId, transcript);
+              if (completed.changes === 0) return;
+              clearHistory(transaction, job.mediaId);
+              setSearchTranscript(transaction, job.mediaId, transcript);
             });
           });
         }),
@@ -200,7 +219,7 @@ export function createTranscriptions(
         yield* Effect.sleep("300 millis");
         return;
       }
-      const job = yield* storage(() => Schema.decodeUnknownSync(TranscriptionJob)(claimed));
+      const job = yield* storage(() => decodeJob(claimed));
       const fiber = yield* Effect.forkChild(perform(job));
       active = { mediaId: job.mediaId, fiber };
       const exit = yield* Fiber.await(fiber);
@@ -220,6 +239,63 @@ export function createTranscriptions(
       yield* library.get(id);
       return yield* read(id);
     });
+  const change = (
+    id: string,
+    revision: number,
+    source: TranscriptChangeSource,
+    plan: (
+      transcript: Transcript,
+    ) => Effect.Effect<
+      Pick<typeof transcriptChanges.$inferInsert, "kind" | "restoredRevision" | "patches">,
+      MediaError
+    >,
+  ) =>
+    Effect.gen(function* () {
+      const job = yield* get(id);
+      if (!job?.transcript)
+        return yield* Effect.fail(
+          new MediaError("invalid", "Complete the transcription before editing it."),
+        );
+      if (["queued", "running"].includes(job.status))
+        return yield* Effect.fail(
+          new MediaError(
+            "conflict",
+            "Cancel the new transcription before editing. Its result would replace your changes.",
+          ),
+        );
+      if (job.revision !== revision)
+        return yield* Effect.fail(
+          new MediaError(
+            "conflict",
+            "The transcript changed since it was loaded. Reload it and make the change again.",
+          ),
+        );
+      const { patches, ...description } = yield* plan(job.transcript);
+      if (patches.every((patch) => patch.length === 0)) return job;
+      const previous = job.transcript;
+      yield* storage(() => {
+        const transcript = Schema.decodeUnknownSync(Transcript)({
+          ...previous,
+          words: patches.reduce(applyPatch, previous.words),
+        });
+        database.transaction((transaction) => {
+          transaction
+            .update(transcriptionJobs)
+            .set({ transcript, updatedAt: Date.now() })
+            .where(eq(transcriptionJobs.mediaId, id))
+            .run();
+          recordChange(transaction, {
+            mediaId: id,
+            revision: revision + 1,
+            source,
+            patches,
+            ...description,
+          });
+          setSearchTranscript(transaction, id, transcript);
+        });
+      });
+      return yield* read(id);
+    }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions));
   return {
     check: engine.check,
     get,
@@ -230,6 +306,39 @@ export function createTranscriptions(
           yield* Fiber.interrupt(active.fiber);
         return yield* library.remove(id);
       }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
+    history: (id: string, page: { limit: number; offset: number }) =>
+      Effect.gen(function* () {
+        yield* get(id);
+        return yield* storage(() => listChanges(database, id, page));
+      }),
+    edit: (id: string, request: PassageEdit, source: TranscriptChangeSource) =>
+      change(id, request.revision, source, ({ words }) =>
+        request.firstWord + request.wordCount > words.length
+          ? Effect.fail(new MediaError("invalid", "Choose words inside the transcript."))
+          : Effect.succeed({
+              kind: "edit",
+              restoredRevision: null,
+              patches: [editWords(words, request.firstWord, request.wordCount, request.text)],
+            }),
+      ),
+    replace: (id: string, request: TranscriptReplace, source: TranscriptChangeSource) =>
+      change(id, request.revision, source, ({ words }) =>
+        Effect.succeed({
+          kind: "replace",
+          restoredRevision: null,
+          patches: [replaceWords(words, request.find, request.replacement)],
+        }),
+      ),
+    restore: (id: string, request: TranscriptRestore, source: TranscriptChangeSource) =>
+      change(id, request.revision, source, () =>
+        request.target > request.revision
+          ? Effect.fail(new MediaError("invalid", "Choose a version from the transcript history."))
+          : storage(() => ({
+              kind: "restore",
+              restoredRevision: request.target,
+              patches: patchesBackTo(database, id, request.target),
+            })),
+      ),
     removeMediaFile: (id: string) =>
       library.removeFile(id).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
     enqueue: (id: string) =>
@@ -240,7 +349,9 @@ export function createTranscriptions(
         yield* engine.check();
         return yield* storage(() => {
           queueTranscription(database, id);
-          return Schema.decodeUnknownSync(TranscriptionJob)(row(id));
+          const queued = row(id);
+          if (!queued) throw new MediaError("storage", "The queued transcription is missing.");
+          return decodeJob(queued);
         });
       }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
     cancel: (id: string) =>

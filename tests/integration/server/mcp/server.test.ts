@@ -181,6 +181,10 @@ describe("MCP endpoint", () => {
         "transcribe_recording",
         "cancel_transcription",
         "retry_transcription",
+        "edit_transcript",
+        "replace_in_transcript",
+        "list_transcript_changes",
+        "restore_transcript",
         "rename_recording",
         "remove_saved_copy",
         "delete_recording",
@@ -195,6 +199,7 @@ describe("MCP endpoint", () => {
         "list_downloads",
         "get_download",
         "preview_link",
+        "list_transcript_changes",
       ]);
       expect(names((hints) => hints.destructiveHint)).toEqual([
         "retry_transcription",
@@ -310,9 +315,53 @@ describe("MCP endpoint", () => {
           .structuredContent,
       ).toEqual({
         language: "en",
-        passages: [{ startMs: 600, endMs: 1100, text: "Second sentence." }],
+        revision: 0,
+        passages: [
+          { startMs: 600, endMs: 1100, text: "Second sentence.", firstWord: 2, wordCount: 2 },
+        ],
         nextFromMs: 1200,
       });
+
+      const edited = await toolSuccess(TranscriptionSummary, app, "edit_transcript", {
+        mediaId: item.id,
+        revision: 0,
+        firstWord: 2,
+        wordCount: 2,
+        text: "Second line.",
+      });
+      expect(edited?.revision).toBe(1);
+      expect(
+        await toolError(app, "edit_transcript", {
+          mediaId: item.id,
+          revision: 0,
+          firstWord: 0,
+          wordCount: 1,
+          text: "One",
+        }),
+      ).toBe("The transcript changed since it was loaded. Reload it and make the change again.");
+      const replaced = await toolSuccess(TranscriptionSummary, app, "replace_in_transcript", {
+        mediaId: item.id,
+        revision: 1,
+        find: "sentence",
+        replacement: "line",
+      });
+      expect(replaced?.revision).toBe(2);
+      expect(
+        (await callTool(app, "list_transcript_changes", { mediaId: item.id })).structuredContent,
+      ).toMatchObject({
+        total: 2,
+        changes: [
+          { revision: 2, kind: "replace", source: "mcp", replacementCount: 2 },
+          { revision: 1, kind: "edit", source: "mcp", before: "sentence.", after: "line." },
+        ],
+      });
+      expect(
+        await toolSuccess(TranscriptionSummary, app, "restore_transcript", {
+          mediaId: item.id,
+          revision: 2,
+          target: 0,
+        }),
+      ).toMatchObject({ revision: 3 });
 
       const renamed = await toolSuccess(MediaItem, app, "rename_recording", {
         mediaId: item.id,

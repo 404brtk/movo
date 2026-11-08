@@ -26,6 +26,7 @@ import { searchTerms } from "../../shared/search-text.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { downloadJobs } from "../downloads/downloads.schema.ts";
 import { transcriptionJobs } from "../transcriptions/transcriptions.schema.ts";
+import { clearHistory } from "../transcriptions/history.ts";
 import { MediaError } from "./error.ts";
 import { mediaItems } from "./media.schema.ts";
 import { probeMedia } from "./probe.ts";
@@ -497,6 +498,7 @@ export function createMediaLibrary(
                 ),
               ])
                 rmSync(directory, { recursive: true, force: true });
+              clearHistory(transaction, id);
               transaction.delete(transcriptionJobs).where(eq(transcriptionJobs.mediaId, id)).run();
               transaction
                 .delete(downloadJobs)

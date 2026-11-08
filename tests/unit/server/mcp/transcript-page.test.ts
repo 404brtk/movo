@@ -12,13 +12,15 @@ describe("transcript page", () => {
   it("continues from the next passage until the end", () => {
     expect(transcriptPage(sentences, 0, 2)).toEqual({
       passages: [
-        { startMs: 0, endMs: 900, text: "First sentence." },
-        { startMs: 1000, endMs: 1900, text: "Second sentence." },
+        { startMs: 0, endMs: 900, text: "First sentence.", firstWord: 0, wordCount: 2 },
+        { startMs: 1000, endMs: 1900, text: "Second sentence.", firstWord: 2, wordCount: 2 },
       ],
       nextFromMs: 2000,
     });
     expect(transcriptPage(sentences, 2000, 2)).toEqual({
-      passages: [{ startMs: 2000, endMs: 2900, text: "Third sentence." }],
+      passages: [
+        { startMs: 2000, endMs: 2900, text: "Third sentence.", firstWord: 4, wordCount: 2 },
+      ],
       nextFromMs: null,
     });
   });

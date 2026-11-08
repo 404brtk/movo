@@ -1,9 +1,12 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import {
+  transcriptChangeKinds,
+  transcriptChangeSources,
   transcriptionPhases,
   transcriptionStates,
   type Transcript,
   type TranscriptionDevice,
+  type TranscriptPatch,
 } from "../../shared/contracts/transcriptions.ts";
 import { mediaItems } from "../media/media.schema.ts";
 
@@ -24,4 +27,20 @@ export const transcriptionJobs = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [index("transcription_queue_order").on(table.status, table.updatedAt)],
+);
+
+export const transcriptChanges = sqliteTable(
+  "transcript_changes",
+  {
+    mediaId: text("media_id")
+      .notNull()
+      .references(() => transcriptionJobs.mediaId),
+    revision: integer("revision").notNull(),
+    kind: text("kind", { enum: transcriptChangeKinds }).notNull(),
+    source: text("source", { enum: transcriptChangeSources }).notNull(),
+    restoredRevision: integer("restored_revision"),
+    patches: text("patches", { mode: "json" }).$type<TranscriptPatch[]>().notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.mediaId, table.revision] })],
 );

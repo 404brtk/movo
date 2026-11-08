@@ -17,7 +17,13 @@ export function transcriptPage(
   return {
     passages: passages
       .slice(first, end)
-      .map(({ startMs, endMs, text }) => ({ startMs, endMs, text })),
+      .map(({ startMs, endMs, text, firstWord, words: passageWords }) => ({
+        startMs,
+        endMs,
+        text,
+        firstWord,
+        wordCount: passageWords.length,
+      })),
     nextFromMs: passages[end]?.startMs ?? null,
   };
 }

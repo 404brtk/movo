@@ -58,6 +58,7 @@ const handlers = ({ library, downloads, transcriptions }: McpServices) =>
           job?.transcript
             ? Effect.succeed({
                 language: job.transcript.language,
+                revision: job.revision,
                 ...transcriptPage(job.transcript.words, fromMs, maxPassages),
               })
             : Effect.fail(
@@ -89,6 +90,14 @@ const handlers = ({ library, downloads, transcriptions }: McpServices) =>
       reported(transcriptions.cancel(mediaId).pipe(Effect.map(summarize))),
     retry_transcription: ({ mediaId }) =>
       reported(transcriptions.retry(mediaId).pipe(Effect.map(summarize))),
+    edit_transcript: ({ mediaId, ...request }) =>
+      reported(transcriptions.edit(mediaId, request, "mcp").pipe(Effect.map(summarize))),
+    replace_in_transcript: ({ mediaId, ...request }) =>
+      reported(transcriptions.replace(mediaId, request, "mcp").pipe(Effect.map(summarize))),
+    list_transcript_changes: ({ mediaId, limit = defaultListLimit, offset = 0 }) =>
+      reported(transcriptions.history(mediaId, { limit, offset })),
+    restore_transcript: ({ mediaId, ...request }) =>
+      reported(transcriptions.restore(mediaId, request, "mcp").pipe(Effect.map(summarize))),
     rename_recording: ({ mediaId, title }) => reported(library.rename(mediaId, title)),
     remove_saved_copy: ({ mediaId }) => reported(transcriptions.removeMediaFile(mediaId)),
     delete_recording: ({ mediaId }) => reported(transcriptions.removeMedia(mediaId)),

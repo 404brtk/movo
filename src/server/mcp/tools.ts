@@ -8,7 +8,14 @@ import {
 } from "../../shared/contracts/downloads.ts";
 import { LibraryItem, LibraryQuery } from "../../shared/contracts/library.ts";
 import { MediaDeletion, MediaId, MediaItem, MediaTitle } from "../../shared/contracts/media.ts";
-import { Transcript, TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
+import {
+  PassageEdit,
+  Transcript,
+  TranscriptHistory,
+  TranscriptionJob,
+  TranscriptReplace,
+  TranscriptRestore,
+} from "../../shared/contracts/transcriptions.ts";
 import { MediaError } from "../media/error.ts";
 import { maxPagePassages } from "./transcript-page.ts";
 
@@ -70,7 +77,7 @@ export const movoTools = Toolkit.make(
     failure,
   }).annotateMerge(reads),
   Tool.make("read_transcript", {
-    description: `Read a saved transcript as timestamped passages, starting at the first passage that begins at or after fromMs (default 0). Returns at most maxPassages passages (default 200, up to ${maxPagePassages}); continue with nextFromMs until it is null.`,
+    description: `Read a saved transcript as timestamped passages, starting at the first passage that begins at or after fromMs (default 0). Returns at most maxPassages passages (default 200, up to ${maxPagePassages}); continue with nextFromMs until it is null. Each passage has the firstWord and wordCount that edit_transcript accepts, and revision identifies the transcript version that edits must name.`,
     parameters: Schema.Struct({
       ...Recording.fields,
       fromMs: Schema.optional(Milliseconds),
@@ -78,8 +85,15 @@ export const movoTools = Toolkit.make(
     }),
     success: Schema.Struct({
       language: Transcript.fields.language,
+      revision: Count,
       passages: Schema.Array(
-        Schema.Struct({ startMs: Milliseconds, endMs: Milliseconds, text: Schema.String }),
+        Schema.Struct({
+          startMs: Milliseconds,
+          endMs: Milliseconds,
+          text: Schema.String,
+          firstWord: Count,
+          wordCount: Count,
+        }),
       ),
       nextFromMs: Schema.NullOr(Milliseconds),
     }),
@@ -149,11 +163,39 @@ export const movoTools = Toolkit.make(
   }).annotateMerge(changes({ idempotent: true })),
   Tool.make("retry_transcription", {
     description:
-      "Transcribe a recording again after its transcription completed, failed, was cancelled or was interrupted. A completed transcript is kept until the new attempt completes and then replaced.",
+      "Transcribe a recording again after its transcription completed, failed, was cancelled or was interrupted. A completed transcript is kept until the new attempt completes and then replaced, together with its edits and change history.",
     parameters: Recording,
     success: TranscriptionSummary,
     failure,
   }).annotateMerge(changes({ destructive: true, idempotent: false })),
+  Tool.make("edit_transcript", {
+    description:
+      "Replace the text of consecutive transcript words, usually a passage from read_transcript given by its firstWord and wordCount. revision must be the current one from read_transcript or get_recording; after any other change the edit is rejected, so read the transcript again. Unchanged words keep their timestamps and new words share the time of the words they replace. Empty text removes the words. Editing is not possible while a new transcription attempt is queued or running. Returns the transcription with its new revision.",
+    parameters: Schema.Struct({ ...Recording.fields, ...PassageEdit.fields }),
+    success: TranscriptionSummary,
+    failure,
+  }).annotateMerge(changes({ idempotent: false })),
+  Tool.make("replace_in_transcript", {
+    description:
+      "Replace every whole-word occurrence of find in a transcript, ignoring case but not accents, for example a consistently misrecognized name. find can span several words, punctuation around each match is kept and an empty replacement removes the matches. revision must be the current one. The revision stays the same when nothing matched.",
+    parameters: Schema.Struct({ ...Recording.fields, ...TranscriptReplace.fields }),
+    success: TranscriptionSummary,
+    failure,
+  }).annotateMerge(changes({ idempotent: false })),
+  Tool.make("list_transcript_changes", {
+    description:
+      "List a transcript's saved changes, newest first, with the first replaced text of each as before and after. Revision 0 is the transcription result. Returns at most limit changes (default 20, up to 100) after skipping offset (default 0), and the total number of changes.",
+    parameters: Schema.Struct({ ...Recording.fields, ...Page }),
+    success: TranscriptHistory,
+    failure,
+  }).annotateMerge(reads),
+  Tool.make("restore_transcript", {
+    description:
+      "Return a transcript to an earlier revision; target 0 is the transcription result. The restore is saved as a new change, so restoring the revision before it undoes it. revision must be the current one.",
+    parameters: Schema.Struct({ ...Recording.fields, ...TranscriptRestore.fields }),
+    success: TranscriptionSummary,
+    failure,
+  }).annotateMerge(changes({ idempotent: false })),
   Tool.make("rename_recording", {
     description:
       "Change a recording's library title. The saved file and its original filename stay unchanged.",
