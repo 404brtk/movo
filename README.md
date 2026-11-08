@@ -1,6 +1,6 @@
 # movo
 
-A local media workspace. Import audio and video or download public videos from YouTube and X into a persistent library, play saved copies and generate local transcripts with word-level timestamps. Downloads and transcription run in the background while you browse other recordings. Model installation is optional and explicit.
+A local media workspace. Import audio and video or download public videos from YouTube and X into a persistent library, play saved copies and generate local transcripts with word-level timestamps, then correct them with a version history. Downloads and transcription run in the background while you browse other recordings. Model installation is optional and explicit.
 
 ## Requirements
 

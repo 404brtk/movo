@@ -28,7 +28,7 @@ Work files live in `MOVO_DATA_DIR/transcriptions/<media-id>/`. Stored library me
 
 Jobs move through queued, running, completed, failed, cancelled or interrupted states. A single worker runs one transcription at a time, independently of media downloads and browser requests. Duplicate enqueue requests return the existing job. Cancel and retry operations are serialized so concurrent requests cannot clean files belonging to a new attempt.
 
-**Transcribe again** starts a new attempt for a completed recording through the retry operation. The row keeps its last successful transcript while the new attempt is queued or running, and the panel shows it with a note until a replacement completes. A successful attempt replaces it in the same update that marks the job completed. Failure, cancellation and interruption keep the previous transcript and report the new attempt's state and error. A second retry while an attempt is queued or running is rejected, so one recording never has two active attempts.
+**Transcribe again** starts a new attempt for a completed recording through the retry operation. The row keeps its last successful transcript while the new attempt is queued or running, and the panel shows it with a note until a replacement completes. A successful attempt replaces it, and discards its edit history, in the same update that marks the job completed. When the transcript has been edited, the button first asks for confirmation. Failure, cancellation and interruption keep the previous transcript and report the new attempt's state and error. A second retry while an attempt is queued or running is rejected, so one recording never has two active attempts.
 
 Startup marks persisted running jobs interrupted and clears terminal staging directories. Queued jobs continue automatically. Interrupted jobs require an explicit retry; both keep any previous transcript. Cleanup failures are saved separately on the affected job and do not stop other recordings or discard a completed transcript. Retrying requires successful cleanup. Restart attempts cleanup again.
 
@@ -54,7 +54,21 @@ Copying runs only after an explicit action using the browser's Clipboard API. A 
 
 Decoded float32 mono audio uses 64,000 bytes per second, approximately 230 MB per hour on disk. The isolated worker reads that prepared audio into memory, in addition to the model and inference workspace. Longer recordings therefore need proportionally more free memory and disk space. The worker reads the file in chunks, so Node's 2 GiB whole-file read limit does not apply. The engine accepts at most 2³¹−1 samples (about 37 hours); longer recordings fail before the audio is loaded. Preparation has a 30-minute timeout and inference a six-hour timeout. Memory allocation or native runtime errors fail the job; they do not silently publish partial text.
 
-The initial implementation keeps native long-form segmentation and does not add a custom streaming decoder. Manual device selection, speaker labels, multiple transcript versions and editing are outside this implementation.
+The initial implementation keeps native long-form segmentation and does not add a custom streaming decoder. Manual device selection, speaker labels and keeping several transcription results of one recording are outside this implementation.
+
+## Editing
+
+A saved transcript can be corrected without transcribing again. Every change is saved as a new version with its own history, and any earlier version can be restored. Exports, copying, search, reading along and MCP always use the current version.
+
+- **Edit passage** (the pencil next to each passage) opens its text in a text field. Ctrl+Enter or **Save passage** saves it, and Esc or **Cancel** discards it. Clearing the text removes the passage. Saving may split or join passages, because passages are derived from the edited words.
+- **Find and replace** replaces every whole-word match of a word or phrase. Matching ignores case but not accents, so `zolw` does not change “żółw”. Punctuation around a match is kept: replacing `kubernetis` with `Kubernetes` turns “Kubernetis,” into “Kubernetes,”. A phrase can span several words, and an empty replacement removes the matches. The form previews the matches before anything is saved, using the same code that applies the change on the server.
+- **History** lists the versions, newest first, with the first changed text of each and whether an AI agent made it over MCP. **Restore** returns to a listed version, **Undo last change** returns to the previous one, and version 0 is the transcription result. A restore is itself a new version, so it can be undone as well.
+
+Words keep their timestamps whenever an edit leaves them in place. Unchanged words at the start and end of an edited passage keep theirs. When the number of words stays the same, each new word takes the timestamps of the word it replaces. Otherwise the new words share the time span of the words they replace, in proportion to their length, and inserted words without a replaced word fall in the gap between their neighbors. Words stay ordered by start time, and the result passes the same schema as engine output.
+
+Editing is rejected while a new transcription attempt is queued or running, because its result would replace the edits. Every change names the version it was made from; a change based on an older version is rejected with HTTP 409, and the browser reloads the transcript so the change can be made again.
+
+The current transcript stays in `transcription_jobs.transcript`. The `transcript_changes` table stores one row per version with its kind (`edit`, `replace` or `restore`), source (`app` or `mcp`), the restored version and the replaced words. Each change is a list of replacements, each with the position, the removed words and the inserted words, so a change takes about as much space as the text it touches rather than a copy of the transcript. Restoring applies the stored changes backwards and verifies that every removed word is still in place. The transcript, its change and the search index are updated in one SQLite transaction. Deleting a recording deletes its history.
 
 ## HTTP interface
 
@@ -65,12 +79,20 @@ All commands use the existing local-origin checks. They operate on a saved media
 - `POST /api/media/:id/transcription` returns HTTP 202 with the existing or newly queued job.
 - `POST /api/media/:id/transcription/cancel` returns the current job after stopping active work, or `null` when none exists.
 - `POST /api/media/:id/transcription/retry` returns HTTP 202 after starting a new attempt for a completed, failed, cancelled or interrupted job. Queued and running jobs are rejected.
+- `POST /api/media/:id/transcription/edit` replaces words with JSON `{ "revision", "firstWord", "wordCount", "text" }`.
+- `POST /api/media/:id/transcription/replace` replaces matches with JSON `{ "revision", "find", "replacement" }`.
+- `POST /api/media/:id/transcription/restore` returns to an earlier version with JSON `{ "revision", "target" }`.
+- `GET /api/media/:id/transcription/changes` lists versions newest first with the optional `limit` (1–100, default 20) and `offset` query parameters and the `total`.
+
+Job responses include `revision`, the current version number, which is 0 for an unedited transcript. The change commands return the job after the change, or unchanged when nothing changed. They accept bodies of up to 64 KiB, edit text of up to 10,000 characters and find or replacement text of up to 512 characters, with words of up to 1,024 characters. Without a saved transcript or for a version or word range outside it they return HTTP 400; for an older `revision` or while a new attempt is queued or running, HTTP 409. Request and response shapes are the Effect schemas in `src/shared/contracts/transcriptions.ts`.
 
 An invalid or missing media ID returns HTTP 404. Model/tool unavailability returns HTTP 503. The worker owns accepted work after the initiating request ends.
 
 ## Verification
 
 Normal tests use real temporary SQLite and filesystem storage, real local FFmpeg conversion and controlled substitutes only at inference/process boundaries. Browser tests verify explicit initiation, setup errors, navigation during work, cancellation/retry, re-transcription with the previous transcript visible, saved passages, reload, empty output, seeking and the highlighted passage and word. They never download weights or inspect the user's model cache.
+
+Editing tests cover timestamp reuse and redistribution, insertion, removal, overlapping words, whole-word and multi-word matching with punctuation and accents, and that undoing every change returns the original words. Storage tests use real SQLite for edits, replacements, restores, stale versions, edits during a new attempt, search updates and deletion with history; browser tests edit with the keyboard, preview and apply replacements, undo and restore versions and confirm transcribing again.
 
 Export tests cover literal text, Unicode, millisecond/hour boundaries, overlaps, zero-duration cues and empty results. HTTP tests exercise real saved transcripts and reject exports before completion. Browser export tests use an isolated real backend and database with a controlled inference result, save all three formats, parse the exported WebVTT with Chromium, and verify keyboard actions, narrow layout and clipboard failures. Clipboard tests replace the browser API without changing the system clipboard.
 

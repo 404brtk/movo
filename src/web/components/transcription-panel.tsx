@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -8,9 +8,26 @@ import {
   transcriptionOptions,
 } from "../lib/api.ts";
 import { formatDevice } from "../lib/format.ts";
+import { ChangeHistory } from "./change-history.tsx";
+import { FindAndReplace } from "./find-and-replace.tsx";
 import { MediaToolsSetup } from "./media-tools-setup.tsx";
 import { TranscriptActions } from "./transcript-actions.tsx";
-import { TranscriptReader, type TranscriptPlayback } from "./transcript-reader.tsx";
+import {
+  TranscriptReader,
+  type TranscriptEditing,
+  type TranscriptPlayback,
+} from "./transcript-reader.tsx";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "./ui/alert-dialog.tsx";
 import { Button } from "./ui/button.tsx";
 
 const phaseLabels = {
@@ -34,6 +51,7 @@ export function TranscriptionPanel({
   const query = useQuery(options);
   const client = useQueryClient();
   const [showTools, setShowTools] = useState(false);
+  const [editTool, setEditTool] = useState<"replace" | "history" | null>(null);
   const action = useMutation({
     mutationFn: (operation: "start" | "cancel" | "retry") =>
       operation === "start"
@@ -49,6 +67,15 @@ export function TranscriptionPanel({
   });
   const job = query.data;
   const active = job?.status === "queued" || job?.status === "running";
+  const revision = job?.revision ?? 0;
+  const editable = Boolean(job?.transcript) && !active;
+  const editing = useMemo<TranscriptEditing | undefined>(
+    () => (editable ? { mediaId, revision } : undefined),
+    [editable, mediaId, revision],
+  );
+  const hasWords = (job?.transcript?.words.length ?? 0) > 0;
+  const toggleEditTool = (tool: "replace" | "history") =>
+    setEditTool((current) => (current === tool ? null : tool));
   const headingId = `transcription-${mediaId}`;
   return (
     <section aria-labelledby={headingId} className="space-y-5 border-t pt-8">
@@ -58,7 +85,7 @@ export function TranscriptionPanel({
             Transcription
           </h2>
           <p className="text-sm text-muted-foreground">
-            Parakeet Ultra · processed on this computer.
+            Parakeet Ultra · processed on this computer{revision > 0 ? " · edited" : ""}.
           </p>
         </div>
         {playback && query.isSuccess && !job ? (
@@ -76,13 +103,13 @@ export function TranscriptionPanel({
           </Button>
         ) : null}
         {playback && job && !active ? (
-          <Button
+          <RetryTranscription
+            label={job.status === "completed" ? "Transcribe again" : "Retry transcription"}
             variant={job.status === "completed" ? "outline" : "default"}
+            confirm={revision > 0}
             disabled={action.isPending}
-            onClick={() => action.mutate("retry")}
-          >
-            {job.status === "completed" ? "Transcribe again" : "Retry transcription"}
-          </Button>
+            onRetry={() => action.mutate("retry")}
+          />
         ) : null}
       </div>
       {query.isPending ? (
@@ -139,13 +166,55 @@ export function TranscriptionPanel({
           Showing the previous transcript until a new one completes.
         </p>
       ) : null}
+      {editing && (hasWords || revision > 0) ? (
+        <div className="flex flex-wrap gap-2">
+          {hasWords ? (
+            <Button
+              variant="outline"
+              className="h-10 px-3 text-sm"
+              aria-expanded={editTool === "replace"}
+              onClick={() => toggleEditTool("replace")}
+            >
+              Find and replace
+            </Button>
+          ) : null}
+          <Button
+            variant="outline"
+            className="h-10 px-3 text-sm"
+            aria-expanded={editTool === "history"}
+            onClick={() => toggleEditTool("history")}
+          >
+            History
+          </Button>
+        </div>
+      ) : null}
+      {editing && job?.transcript && hasWords && editTool === "replace" ? (
+        <FindAndReplace
+          mediaId={mediaId}
+          revision={revision}
+          transcript={job.transcript}
+          onClose={() => setEditTool(null)}
+        />
+      ) : null}
+      {editing && editTool === "history" ? (
+        <ChangeHistory mediaId={mediaId} revision={revision} onClose={() => setEditTool(null)} />
+      ) : null}
       {job?.transcript ? (
         job.transcript.words.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No speech was detected in this recording.</p>
+          <p className="text-sm text-muted-foreground">
+            {revision > 0
+              ? "Every passage was removed. Restore an earlier version from History."
+              : "No speech was detected in this recording."}
+          </p>
         ) : (
           <>
             <TranscriptActions mediaId={mediaId} transcript={job.transcript} />
-            <TranscriptReader transcript={job.transcript} playback={playback} revealMs={revealMs} />
+            <TranscriptReader
+              transcript={job.transcript}
+              playback={playback}
+              revealMs={revealMs}
+              editing={editing}
+            />
           </>
         )
       ) : null}
@@ -169,5 +238,56 @@ export function TranscriptionPanel({
       ) : null}
       {showTools ? <MediaToolsSetup onClose={() => setShowTools(false)} /> : null}
     </section>
+  );
+}
+
+function RetryTranscription({
+  label,
+  variant,
+  confirm,
+  disabled,
+  onRetry,
+}: {
+  label: string;
+  variant: "default" | "outline";
+  confirm: boolean;
+  disabled: boolean;
+  onRetry: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!confirm)
+    return (
+      <Button variant={variant} disabled={disabled} onClick={onRetry}>
+        {label}
+      </Button>
+    );
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger render={<Button variant={variant} />} disabled={disabled}>
+        {label}
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Replace your edits?</AlertDialogTitle>
+          <AlertDialogDescription>
+            The new transcript replaces your edits and their history when it completes. Until then,
+            the edited transcript stays available and editing is paused.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className="h-10 px-3 text-sm">Keep edits</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            className="h-10 px-3 text-sm"
+            onClick={() => {
+              setOpen(false);
+              onRetry();
+            }}
+          >
+            {label}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

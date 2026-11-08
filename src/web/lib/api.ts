@@ -1,6 +1,6 @@
 import { Result, Schema } from "effect";
 import { hc } from "hono/client";
-import { keepPreviousData, queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, keepPreviousData, queryOptions } from "@tanstack/react-query";
 import type { AppType } from "../../server/http/app.ts";
 import { LibraryList, type LibraryQuery } from "../../shared/contracts/library.ts";
 import {
@@ -23,12 +23,20 @@ import {
 } from "../../shared/contracts/downloads.ts";
 import { activeModelPhases, ModelList, ModelStatus } from "../../shared/contracts/models.ts";
 import {
+  defaultHistoryPage,
+  TranscriptHistory,
   TranscriptionJob,
   TranscriptionStatus,
+  type PassageEdit,
   type TranscriptExportFormat,
+  type TranscriptReplace,
+  type TranscriptRestore,
 } from "../../shared/contracts/transcriptions.ts";
 
 const client = hc<AppType>("/");
+const jsonBody = (body: unknown) => ({
+  init: { body: JSON.stringify(body), headers: { "content-type": "application/json" } },
+});
 
 export class ApiError extends Error {
   readonly status: number;
@@ -158,15 +166,7 @@ export async function importMedia(file: File) {
 
 export const mediaFileUrl = (id: string) => `/api/media/${encodeURIComponent(id)}/file`;
 export const renameMedia = (id: string, title: string) =>
-  readResponse(
-    client.api.media[":id"].$patch(
-      { param: { id } },
-      {
-        init: { body: JSON.stringify({ title }), headers: { "content-type": "application/json" } },
-      },
-    ),
-    MediaItem,
-  );
+  readResponse(client.api.media[":id"].$patch({ param: { id } }, jsonBody({ title })), MediaItem);
 export const deleteMedia = (id: string) =>
   readResponse(client.api.media[":id"].$delete({ param: { id } }), MediaDeletion);
 export const removeMediaFile = (id: string) =>
@@ -223,13 +223,7 @@ export const previewOptions = (url: string) =>
   });
 
 export const enqueueDownload = (request: DownloadRequest) =>
-  readResponse(
-    client.api.downloads.$post(
-      {},
-      { init: { body: JSON.stringify(request), headers: { "content-type": "application/json" } } },
-    ),
-    DownloadJobList,
-  );
+  readResponse(client.api.downloads.$post({}, jsonBody(request)), DownloadJobList);
 export const cancelDownload = (id: string) =>
   readResponse(client.api.downloads[":id"].cancel.$post({ param: { id } }), DownloadJob);
 export const retryDownload = (id: string) =>
@@ -257,5 +251,42 @@ export const cancelTranscription = (id: string) =>
 export const retryTranscription = (id: string) =>
   readResponse(
     client.api.media[":id"].transcription.retry.$post({ param: { id } }),
+    TranscriptionJob,
+  );
+export const transcriptHistoryOptions = (id: string, revision: number) =>
+  infiniteQueryOptions({
+    queryKey: [...transcriptionOptions(id).queryKey, "changes", revision],
+    queryFn: ({ pageParam, signal }) =>
+      readResponse(
+        client.api.media[":id"].transcription.changes.$get(
+          {
+            param: { id },
+            query: { limit: String(defaultHistoryPage), offset: String(pageParam) },
+          },
+          { init: { signal } },
+        ),
+        TranscriptHistory,
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((total, page) => total + page.changes.length, 0);
+      return loaded < last.total ? loaded : undefined;
+    },
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+export const editTranscript = (id: string, edit: PassageEdit) =>
+  readResponse(
+    client.api.media[":id"].transcription.edit.$post({ param: { id } }, jsonBody(edit)),
+    TranscriptionJob,
+  );
+export const replaceInTranscript = (id: string, replace: TranscriptReplace) =>
+  readResponse(
+    client.api.media[":id"].transcription.replace.$post({ param: { id } }, jsonBody(replace)),
+    TranscriptionJob,
+  );
+export const restoreTranscript = (id: string, restore: TranscriptRestore) =>
+  readResponse(
+    client.api.media[":id"].transcription.restore.$post({ param: { id } }, jsonBody(restore)),
     TranscriptionJob,
   );
