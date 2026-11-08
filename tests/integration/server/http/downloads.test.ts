@@ -13,6 +13,7 @@ import { MediaError } from "../../../../src/server/media/error.ts";
 
 const base = "http://127.0.0.1:4310/api/downloads";
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
+const oneJob = (body: unknown) => Schema.decodeUnknownSync(Schema.Tuple([DownloadJob]))(body)[0];
 const json = (body: unknown) => ({
   method: "POST",
   headers: { "content-type": "application/json" },
@@ -45,23 +46,25 @@ it("checks transcription prerequisites before accepting or upgrading a combined 
           });
           const app = createApp(database, config, undefined, { tools, downloads, transcriptions });
           yield* Effect.promise(async () => {
-            const blocked = await app.request(base, json({ url, transcribe: true }));
+            const blocked = await app.request(base, json({ urls: [url], transcribe: true }));
             expect(blocked.status).toBe(503);
             expect(await blocked.json()).toEqual({
               error: "Install the transcription model first.",
             });
             expect(await Effect.runPromise(downloads.list())).toEqual([]);
-            expect((await app.request(base, json({ url, transcribe: "true" }))).status).toBe(400);
-            const plain = Schema.decodeUnknownSync(DownloadJob)(
-              await (await app.request(base, json({ url }))).json(),
-            );
+            expect(
+              (await app.request(base, json({ urls: [url], transcribe: "true" }))).status,
+            ).toBe(400);
+            const plain = oneJob(await (await app.request(base, json({ urls: [url] }))).json());
             expect(plain.transcribe).toBe(false);
-            expect((await app.request(base, json({ url, transcribe: true }))).status).toBe(503);
+            expect((await app.request(base, json({ urls: [url], transcribe: true }))).status).toBe(
+              503,
+            );
             expect((await Effect.runPromise(downloads.get(plain.id))).transcribe).toBe(false);
             ready = true;
-            const accepted = await app.request(base, json({ url, transcribe: true }));
+            const accepted = await app.request(base, json({ urls: [url], transcribe: true }));
             expect(accepted.status).toBe(202);
-            expect(Schema.decodeUnknownSync(DownloadJob)(await accepted.json())).toMatchObject({
+            expect(oneJob(await accepted.json())).toMatchObject({
               id: plain.id,
               transcribe: true,
             });
@@ -95,20 +98,22 @@ it("validates HTTP input, queues independently of its request and exposes cancel
             expect((await app.request(base, json({}))).status).toBe(400);
             expect((await app.request(base, { method: "POST", body: "{" })).status).toBe(400);
             expect(
-              (await app.request(base, json({ url: "https://example.com/video" }))).status,
+              (await app.request(base, json({ urls: ["https://example.com/video"] }))).status,
             ).toBe(400);
-            expect((await app.request(base, json({ url: "x".repeat(5000) }))).status).toBe(413);
+            expect((await app.request(base, json({ urls: ["x".repeat(1_100_000)] }))).status).toBe(
+              413,
+            );
             expect(
               (
                 await app.request(base, {
-                  ...json({ url }),
+                  ...json({ urls: [url] }),
                   headers: { origin: "https://foreign.example" },
                 })
               ).status,
             ).toBe(403);
-            const response = await app.request(base, json({ url }));
+            const response = await app.request(base, json({ urls: [url] }));
             expect(response.status).toBe(202);
-            const job = Schema.decodeUnknownSync(DownloadJob)(await response.json());
+            const job = oneJob(await response.json());
             expect(job.preset).toBe("video-1080p");
             await expect
               .poll(async () => (await Effect.runPromise(downloads.get(job.id))).status)
@@ -118,35 +123,58 @@ it("validates HTTP input, queues independently of its request and exposes cancel
             expect(
               Schema.decodeUnknownSync(DownloadJobList)(await list.json()).map((item) => item.id),
             ).toEqual([job.id]);
-            expect((await app.request(base, json({ url, preset: "video-2160p" }))).status).toBe(
-              400,
+            const secondUrl = "https://youtu.be/bbbbbbbbbbb";
+            for (const invalid of [
+              "https://example.com/video",
+              "",
+              `${url}&t=${"1".repeat(2048)}`,
+            ]) {
+              const rejected = await app.request(base, json({ urls: [secondUrl, invalid] }));
+              expect(rejected.status).toBe(400);
+              expect(await rejected.json()).toEqual({
+                error: expect.stringMatching(/^Link 2: /u),
+              });
+            }
+            expect(await Effect.runPromise(downloads.list())).toHaveLength(1);
+            expect((await app.request(base, json({ urls: [] }))).status).toBe(400);
+            const batch = Schema.decodeUnknownSync(DownloadJobList)(
+              await (await app.request(base, json({ urls: [secondUrl, url] }))).json(),
             );
-            expect((await app.request(base, json({ url, preset: 720 }))).status).toBe(400);
-            const audio = Schema.decodeUnknownSync(DownloadJob)(
-              await (await app.request(base, json({ url, preset: "audio" }))).json(),
+            expect(batch.map((item) => item.url)).toEqual([
+              "https://www.youtube.com/watch?v=bbbbbbbbbbb",
+              url,
+            ]);
+            expect(batch[1]?.id).toBe(job.id);
+            expect(
+              (await app.request(base, json({ urls: [url], preset: "video-2160p" }))).status,
+            ).toBe(400);
+            expect((await app.request(base, json({ urls: [url], preset: 720 }))).status).toBe(400);
+            const audio = oneJob(
+              await (await app.request(base, json({ urls: [url], preset: "audio" }))).json(),
             );
-            const smaller = Schema.decodeUnknownSync(DownloadJob)(
-              await (await app.request(base, json({ url, preset: "video-720p" }))).json(),
+            const smaller = oneJob(
+              await (await app.request(base, json({ urls: [url], preset: "video-720p" }))).json(),
             );
             expect(audio).toMatchObject({ preset: "audio" });
             expect(smaller).toMatchObject({ preset: "video-720p" });
             expect(new Set([job.id, audio.id, smaller.id]).size).toBe(3);
             const xResponse = await app.request(
               base,
-              json({
-                url: "https://twitter.com/example/status/123?s=20",
-                preset: "audio",
-              }),
+              json({ urls: ["https://twitter.com/example/status/123?s=20"], preset: "audio" }),
             );
             expect(xResponse.status).toBe(202);
-            const xJob = Schema.decodeUnknownSync(DownloadJob)(await xResponse.json());
+            const xJob = oneJob(await xResponse.json());
             expect(xJob).toMatchObject({
               url: "https://x.com/i/web/status/123",
               preset: "audio",
             });
             expect(
-              (await app.request(base, json({ url: "https://x.com/example/status/123/video/2" })))
-                .status,
+              (
+                await app.request(
+                  base,
+                  json({ urls: ["https://x.com/example/status/123/video/2"] }),
+                )
+              ).status,
             ).toBe(400);
             expect((await app.request(`${base}/${job.id}/cancel`, { method: "POST" })).status).toBe(
               200,

@@ -26,8 +26,9 @@ export const downloadStates = [
   "cancelled",
   "interrupted",
 ] as const;
+export const DownloadPreviewRequest = Schema.Struct({ url: Schema.String });
 export const DownloadRequest = Schema.Struct({
-  url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)),
+  urls: Schema.Array(Schema.String).check(Schema.isMinLength(1)),
   preset: Schema.optional(DownloadPreset),
   transcribe: Schema.optional(Schema.Boolean),
 });

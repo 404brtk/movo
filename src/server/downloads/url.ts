@@ -1,6 +1,8 @@
 import { MediaError } from "../media/error.ts";
 
 export function downloadSource(input: string) {
+  if (input.length > 2048)
+    throw new MediaError("invalid", "Links must be 2048 characters or shorter.");
   try {
     const url = new URL(input.trim());
     if (url.protocol !== "https:" || url.username || url.password || url.port)

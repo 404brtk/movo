@@ -26,9 +26,15 @@ describe("single public YouTube URLs", () => {
     "https://www.youtube.com/@channel",
     "https://youtu.be/../etc",
     "not a url",
+    "",
   ])("rejects unsupported input %s", (input) => {
     expect(() => downloadSource(input)).toThrow("YouTube video or X post");
   });
+});
+
+it("rejects links longer than 2048 characters before parsing them", () => {
+  const link = `https://www.youtube.com/watch?v=J7DzL2_Na80&t=${"1".repeat(2048)}`;
+  expect(() => downloadSource(link)).toThrow("Links must be 2048 characters or shorter.");
 });
 
 describe("single X post URLs", () => {

@@ -14,15 +14,17 @@ import { Button } from "./ui/button.tsx";
 import { YtdlpSetup } from "./ytdlp-setup.tsx";
 
 export function DownloadLink() {
-  const [url, setUrl] = useState("");
-  const [checkedUrl, setCheckedUrl] = useState("");
+  const [links, setLinks] = useState("");
+  const [checkedUrls, setCheckedUrls] = useState<string[]>([]);
   const [preset, setPreset] = useState<DownloadPreset>(defaultDownloadPreset);
   const [transcribe, setTranscribe] = useState(false);
   const [showYtdlp, setShowYtdlp] = useState(false);
   const checkTrigger = useRef<HTMLButtonElement>(null);
   const ytdlp = useQuery(ytdlpOptions);
   const selected = getDownloadPreset(preset);
-  const preview = useQuery(previewOptions(checkedUrl));
+  const urls = links.split(/\s+/u).filter(Boolean);
+  const previewUrl = checkedUrls.length === 1 ? (checkedUrls[0] ?? "") : "";
+  const preview = useQuery(previewOptions(previewUrl));
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const download = useMutation({
@@ -32,7 +34,9 @@ export function DownloadLink() {
       await navigate({ to: "/downloads" });
     },
   });
-  const error = preview.error ?? download.error;
+  const error = (preview.error ?? download.error)?.message;
+  const ready =
+    checkedUrls.length > 1 || (previewUrl !== "" && preview.data !== undefined && !preview.isError);
   return (
     <section aria-label="Download from a link" className="mb-8 rounded-xl border p-5 sm:p-6">
       <form
@@ -45,31 +49,36 @@ export function DownloadLink() {
             return;
           }
           setShowYtdlp(false);
-          if (checkedUrl === url.trim()) void preview.refetch();
-          else setCheckedUrl(url.trim());
+          if (urls.length === 1 && previewUrl === urls[0]) void preview.refetch();
+          else setCheckedUrls(urls);
         }}
       >
         <label htmlFor="download-url" className="block text-sm font-medium">
-          Video link
+          Video links
         </label>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <input
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <textarea
             id="download-url"
-            name="url"
-            type="url"
+            name="urls"
             required
-            maxLength={2048}
+            rows={1}
             autoComplete="off"
-            value={url}
+            spellCheck={false}
+            value={links}
             onChange={(event) => {
-              setUrl(event.target.value);
-              setCheckedUrl("");
+              setLinks(event.target.value);
+              setCheckedUrls([]);
               download.reset();
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              checkTrigger.current?.click();
             }}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? "download-link-error" : "download-link-help"}
-            placeholder="Paste a YouTube or X link"
-            className="h-11 min-w-0 flex-1 rounded-md border bg-transparent px-3 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            placeholder="Paste YouTube or X links, one per line"
+            className="field-sizing-content max-h-60 min-h-11 min-w-0 flex-1 resize-y rounded-md border bg-transparent px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
           <Button
             ref={checkTrigger}
@@ -78,16 +87,16 @@ export function DownloadLink() {
             aria-controls={showYtdlp ? "ytdlp-setup" : undefined}
             disabled={ytdlp.isPending || preview.isFetching || download.isPending}
           >
-            Check link
+            {urls.length > 1 ? "Check links" : "Check link"}
           </Button>
         </div>
         <p id="download-link-help" className="text-xs text-muted-foreground">
-          Public YouTube videos and X posts with one video. Choose video quality or audio after
-          checking the link. Sign-in is not supported.
+          Public YouTube videos or X posts with one video, separated by spaces or new lines
+          (Shift+Enter). Choose video quality or audio after checking. Sign-in is not supported.
         </p>
       </form>
       <output className="block text-sm text-muted-foreground">
-        {checkedUrl && preview.isFetching
+        {previewUrl && preview.isFetching
           ? "Checking video details…"
           : download.isPending
             ? "Adding download…"
@@ -101,16 +110,25 @@ export function DownloadLink() {
           }}
         />
       ) : null}
-      {checkedUrl && preview.data && !preview.isError ? (
+      {ready ? (
         <div className="mt-5 space-y-4 border-t pt-5">
-          <div className="min-w-0 space-y-1">
-            <p className="font-medium wrap-anywhere">{preview.data.title}</p>
-            <p className="text-sm text-muted-foreground">
-              {preview.data.durationSeconds === null
-                ? "Duration unknown"
-                : formatDuration(preview.data.durationSeconds)}
-            </p>
-          </div>
+          {preview.data ? (
+            <div className="min-w-0 space-y-1">
+              <p className="font-medium wrap-anywhere">{preview.data.title}</p>
+              <p className="text-sm text-muted-foreground">
+                {preview.data.durationSeconds === null
+                  ? "Duration unknown"
+                  : formatDuration(preview.data.durationSeconds)}
+              </p>
+            </div>
+          ) : (
+            <div className="min-w-0 space-y-1">
+              <p className="font-medium">{checkedUrls.length} links</p>
+              <p className="text-sm text-muted-foreground">
+                Movo checks each link when its download starts. Downloads run one at a time.
+              </p>
+            </div>
+          )}
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-40 flex-1 space-y-2">
               <label htmlFor="download-mode" className="block text-sm font-medium">
@@ -184,9 +202,16 @@ export function DownloadLink() {
               <Button
                 className="h-11 px-4 text-sm"
                 disabled={download.isPending || preview.isFetching}
-                onClick={() => download.mutate({ url: preview.data.url, preset, transcribe })}
+                onClick={() =>
+                  download.mutate({
+                    urls: preview.data ? [preview.data.url] : checkedUrls,
+                    preset,
+                    transcribe,
+                  })
+                }
               >
                 {transcribe ? "Download and transcribe" : "Download"}
+                {preview.data ? "" : ` all ${checkedUrls.length}`}
               </Button>
             </div>
             <p id="download-transcribe-help" className="text-xs leading-5 text-muted-foreground">
@@ -205,7 +230,7 @@ export function DownloadLink() {
           role="alert"
           className="mt-3 text-sm wrap-anywhere text-destructive"
         >
-          {error.message}
+          {error}
         </p>
       ) : null}
     </section>

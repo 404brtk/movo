@@ -71,19 +71,19 @@ for (const choice of [
     await page.route("**/api/downloads", (route) => {
       if (route.request().method() === "POST") {
         expect(route.request().postDataJSON()).toEqual({
-          url,
+          urls: [url],
           preset: choice.preset,
           transcribe: false,
         });
         queued = true;
-        return route.fulfill({ status: 202, json: job });
+        return route.fulfill({ status: 202, json: [job] });
       }
       expect(route.request().method()).toBe("GET");
       return route.fulfill({ json: queued ? [job] : [] });
     });
     await page.setViewportSize({ width: 320, height: 760 });
     await page.goto("/");
-    await page.getByRole("textbox", { name: "Video link" }).fill(url);
+    await page.getByRole("textbox", { name: "Video links" }).fill(url);
     await page.getByRole("button", { name: "Check link", exact: true }).click();
     await expect(page.getByLabel("Save as", { exact: true })).toHaveValue("video");
     await expect(page.getByLabel("Video quality", { exact: true })).toHaveValue("video-1080p");
@@ -102,6 +102,44 @@ for (const choice of [
     ).toBe(true);
   });
 }
+
+test("queues several pasted links without previewing them", async ({ page }) => {
+  const urls = [url, "https://x.com/example/status/123"];
+  const jobs = urls.map((sourceUrl) => ({ ...jobFixture(), id: randomUUID(), url: sourceUrl }));
+  let queued = false;
+  let previewed = false;
+  await page.route("**/api/downloads/preview", (route) => {
+    previewed = true;
+    return route.abort();
+  });
+  await page.route("**/api/downloads", (route) => {
+    if (route.request().method() === "POST") {
+      expect(route.request().postDataJSON()).toEqual({
+        urls,
+        preset: "audio",
+        transcribe: false,
+      });
+      queued = true;
+      return route.fulfill({ status: 202, json: jobs });
+    }
+    return route.fulfill({ json: queued ? jobs : [] });
+  });
+  await page.goto("/");
+  const links = page.getByRole("textbox", { name: "Video links" });
+  await links.fill(` ${urls[0]}`);
+  await links.press("Shift+Enter");
+  await links.pressSequentially(`${urls[1]} `);
+  await expect(links).toHaveValue(` ${urls.join("\n")} `);
+  await links.press("Enter");
+  await expect(page.getByText("2 links", { exact: true })).toBeVisible();
+  await page.getByLabel("Save as", { exact: true }).selectOption("audio");
+  await page.getByRole("button", { name: "Download all 2", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Downloads", exact: true })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Download jobs" }).getByRole("listitem")).toHaveCount(
+    2,
+  );
+  expect(previewed).toBe(false);
+});
 
 test("previews an X post, recovers from a source error and keeps polling while another recording is open", async ({
   page,
@@ -122,12 +160,12 @@ test("previews an X post, recovers from a source error and keeps polling while a
   await page.route("**/api/downloads", async (route) => {
     if (route.request().method() === "POST") {
       expect(route.request().postDataJSON()).toEqual({
-        url: sourceUrl,
+        urls: [sourceUrl],
         preset: "video-1080p",
         transcribe: false,
       });
       queued = true;
-      await route.fulfill({ status: 202, json: job });
+      await route.fulfill({ status: 202, json: [job] });
     } else {
       expect(route.request().method()).toBe("GET");
       await route.fulfill({ json: queued ? [job] : [] });
@@ -150,7 +188,7 @@ test("previews an X post, recovers from a source error and keeps polling while a
     );
   });
   await page.goto("/");
-  await page.getByRole("textbox", { name: "Video link" }).fill(inputUrl);
+  await page.getByRole("textbox", { name: "Video links" }).fill(inputUrl);
   await page.getByRole("button", { name: "Check link", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText(
     "Use a public post that opens without signing in",

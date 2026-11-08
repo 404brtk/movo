@@ -76,7 +76,10 @@ const handlers = ({ library, downloads, transcriptions }: McpServices) =>
       ),
     get_download: ({ downloadId }) => reported(downloads.get(downloadId)),
     preview_link: ({ url }) => reported(downloads.preview(url)),
-    download_link: (request) => reported(requestDownload(downloads, transcriptions, request)),
+    download_links: (request) =>
+      reported(
+        requestDownload(downloads, transcriptions, request).pipe(Effect.map((jobs) => ({ jobs }))),
+      ),
     cancel_download: ({ downloadId }) => reported(downloads.cancel(downloadId)),
     retry_download: ({ downloadId }) => reported(downloads.retry(downloadId)),
     import_file: ({ path }) => reported(library.importPath(path)),

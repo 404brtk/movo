@@ -30,7 +30,7 @@ test("installs yt-dlp before checking a link and returns focus after setup", asy
     await route.fulfill({ json: { url, title: "A source recording", durationSeconds: 2 } });
   });
   await page.goto("/");
-  await page.getByRole("textbox", { name: "Video link" }).fill(url);
+  await page.getByRole("textbox", { name: "Video links" }).fill(url);
   const check = page.getByRole("button", { name: "Check link", exact: true });
   await check.click();
   await expect(page.getByRole("heading", { name: "yt-dlp", exact: true })).toBeVisible();
@@ -56,7 +56,7 @@ test("explains manual yt-dlp setup where automatic downloads are unavailable", a
     route.fulfill({ json: { ...missing, download: null } }),
   );
   await page.goto("/");
-  await page.getByRole("textbox", { name: "Video link" }).fill(url);
+  await page.getByRole("textbox", { name: "Video links" }).fill(url);
   await page.getByRole("button", { name: "Check link", exact: true }).click();
   await expect(page.getByText(/add it to PATH or set YTDLP_PATH/u)).toBeVisible();
   await expect(page.getByRole("button", { name: "Download yt-dlp", exact: true })).toHaveCount(0);

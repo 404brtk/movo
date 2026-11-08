@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { Effect, Result, Schema } from "effect";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { DownloadRequest } from "../../shared/contracts/downloads.ts";
+import { DownloadPreviewRequest, DownloadRequest } from "../../shared/contracts/downloads.ts";
 import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
 import { RenameMediaRequest } from "../../shared/contracts/media.ts";
 import { TranscriptExportFormat } from "../../shared/contracts/transcriptions.ts";
@@ -45,13 +45,16 @@ async function runMedia<A>(operation: Effect.Effect<A, MediaError>, signal?: Abo
   return result.success;
 }
 
-async function readDownloadRequest(payload: Promise<unknown>) {
+async function readDownloadRequest<S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
+  payload: Promise<unknown>,
+) {
   try {
-    return Schema.decodeUnknownSync(DownloadRequest)(await payload);
+    return Schema.decodeUnknownSync(schema)(await payload);
   } catch (cause) {
     throw new MediaError(
       "invalid",
-      "Provide a valid JSON object with a video URL and supported download options.",
+      "Provide a valid JSON object with at least one video URL and supported download options.",
       cause,
     );
   }
@@ -104,9 +107,9 @@ export function createApp(
   });
 
   const downloadBodyLimit = bodyLimit({
-    maxSize: 4096,
+    maxSize: 1024 * 1024,
     onError: (context) =>
-      context.json({ error: "Download requests must be 4 KiB or smaller." }, 413),
+      context.json({ error: "Download requests must be 1 MiB or smaller." }, 413),
   });
   app.use("/api/downloads", downloadBodyLimit);
   app.use("/api/downloads/*", downloadBodyLimit);
@@ -155,7 +158,9 @@ export function createApp(
     .post("/downloads/preview", async (context) =>
       context.json(
         await runMedia(
-          downloads.preview((await readDownloadRequest(context.req.json())).url),
+          downloads.preview(
+            (await readDownloadRequest(DownloadPreviewRequest, context.req.json())).url,
+          ),
           context.req.raw.signal,
         ),
       ),
@@ -163,7 +168,11 @@ export function createApp(
     .post("/downloads", async (context) =>
       context.json(
         await runMedia(
-          requestDownload(downloads, transcriptions, await readDownloadRequest(context.req.json())),
+          requestDownload(
+            downloads,
+            transcriptions,
+            await readDownloadRequest(DownloadRequest, context.req.json()),
+          ),
         ),
         202,
       ),
