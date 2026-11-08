@@ -15,7 +15,10 @@ import {
 } from "../../../../src/server/transcriptions/jobs.ts";
 import { blockCleanup } from "../../../helpers/block-cleanup.ts";
 import { eq } from "drizzle-orm";
-import { transcriptionJobs } from "../../../../src/server/transcriptions/transcriptions.schema.ts";
+import {
+  transcriptChanges,
+  transcriptionJobs,
+} from "../../../../src/server/transcriptions/transcriptions.schema.ts";
 import { timedWords } from "../../../helpers/timed-words.ts";
 
 const audio = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
@@ -432,3 +435,182 @@ it.for(["completed", "failed"])(
     );
   },
 );
+
+const wordTexts = (job: { transcript: { words: readonly { text: string }[] } | null } | null) =>
+  job?.transcript?.words.map((word) => word.text).join(" ");
+
+const completingJobs = (database: AppDatabase, directory: string, tools: MediaTools) =>
+  createTranscriptions(database, { dataDirectory: directory }, tools, {
+    check: () => Effect.void,
+    transcribe: (_path, _staging, _update, reportDevice) =>
+      Effect.sync(() => {
+        reportDevice(device);
+        return transcript;
+      }),
+  });
+
+it("edits, replaces and restores a transcript while keeping search and history current", async ({
+  signal,
+}) => {
+  await withRecording(signal, (database, directory, tools, library, media) =>
+    Effect.gen(function* () {
+      const jobs = completingJobs(database, directory, tools);
+      yield* jobs.enqueue(media.id);
+      const worker = yield* jobs.start();
+      yield* waitFor(jobs, media.id, "completed");
+      expect(yield* jobs.get(media.id)).toMatchObject({ revision: 1, resultRevision: 1 });
+
+      const edited = yield* jobs.edit(
+        media.id,
+        { revision: 1, firstWord: 0, wordCount: 3, text: "A corrected passage." },
+        "app",
+      );
+      expect(edited?.revision).toBe(2);
+      expect(wordTexts(edited)).toBe("A corrected passage. Another passage.");
+      expect((yield* library.browse({ q: "corrected" })).items).toHaveLength(1);
+      expect((yield* library.browse({ q: "saved" })).items).toHaveLength(0);
+
+      const replaced = yield* jobs.replace(
+        media.id,
+        { revision: 2, find: "PASSAGE", replacement: "section" },
+        "mcp",
+      );
+      expect(wordTexts(replaced)).toBe("A corrected section. Another section.");
+      expect(
+        yield* jobs.edit(media.id, { revision: 3, firstWord: 0, wordCount: 1, text: "A" }, "app"),
+      ).toEqual(replaced);
+
+      const stale = yield* Effect.flip(
+        jobs.edit(media.id, { revision: 2, firstWord: 0, wordCount: 1, text: "The" }, "app"),
+      );
+      expect(stale.reason).toBe("conflict");
+      const outside = yield* Effect.flip(
+        jobs.edit(media.id, { revision: 3, firstWord: 4, wordCount: 2, text: "x" }, "app"),
+      );
+      expect(outside.reason).toBe("invalid");
+
+      expect(yield* jobs.history(media.id, { limit: 10, offset: 0 })).toMatchObject({
+        total: 2,
+        changes: [
+          {
+            revision: 3,
+            kind: "replace",
+            source: "mcp",
+            replacementCount: 2,
+            before: "passage.",
+            after: "section.",
+          },
+          { revision: 2, kind: "edit", source: "app", before: "saved", after: "corrected" },
+        ],
+      });
+
+      const restored = yield* jobs.restore(media.id, { revision: 3, target: 1 }, "app");
+      expect(restored?.revision).toBe(4);
+      expect(restored?.transcript).toEqual(transcript);
+      expect((yield* library.browse({ q: "saved" })).items).toHaveLength(1);
+      expect(wordTexts(yield* jobs.restore(media.id, { revision: 4, target: 3 }, "app"))).toBe(
+        "A corrected section. Another section.",
+      );
+      expect(yield* jobs.history(media.id, { limit: 1, offset: 1 })).toMatchObject({
+        total: 4,
+        changes: [{ revision: 4, kind: "restore", restoredRevision: 1 }],
+      });
+      for (const target of [0, 6]) {
+        const outsideHistory = yield* Effect.flip(
+          jobs.restore(media.id, { revision: 5, target }, "app"),
+        );
+        expect(outsideHistory.reason).toBe("invalid");
+      }
+
+      yield* jobs.removeMedia(media.id);
+      expect(yield* library.list()).toEqual([]);
+      yield* Fiber.interrupt(worker);
+    }),
+  );
+});
+
+it("stores restores as their net difference and skips restores that change nothing", async ({
+  signal,
+}) => {
+  await withRecording(signal, (database, directory, tools, _library, media) =>
+    Effect.gen(function* () {
+      const jobs = completingJobs(database, directory, tools);
+      yield* jobs.enqueue(media.id);
+      const worker = yield* jobs.start();
+      yield* waitFor(jobs, media.id, "completed");
+      yield* jobs.edit(
+        media.id,
+        { revision: 1, firstWord: 3, wordCount: 2, text: "Another section." },
+        "app",
+      );
+      let revision = 2;
+      for (let round = 0; round < 6; round++) {
+        const target = round % 2 === 0 ? 1 : revision - 1;
+        revision = (yield* jobs.restore(media.id, { revision, target }, "app"))?.revision ?? 0;
+      }
+      expect(revision).toBe(8);
+      expect(
+        database
+          .select({ patch: transcriptChanges.patch })
+          .from(transcriptChanges)
+          .all()
+          .map(({ patch }) =>
+            patch.map(({ removed, inserted }) => removed.length + inserted.length),
+          ),
+      ).toEqual(Array.from({ length: 7 }, () => [2]));
+      expect(
+        yield* jobs.restore(media.id, { revision, target: revision - 2 }, "app"),
+      ).toMatchObject({
+        revision,
+      });
+      yield* Fiber.interrupt(worker);
+    }),
+  );
+});
+
+it("rejects edits during a new attempt and never reuses a revision after it completes", async ({
+  signal,
+}) => {
+  await withRecording(signal, (database, directory, tools, _library, media) =>
+    Effect.gen(function* () {
+      const release = yield* Deferred.make<void>();
+      let attempts = 0;
+      const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
+        check: () => Effect.void,
+        transcribe: (_path, _staging, _update, reportDevice) =>
+          Effect.gen(function* () {
+            if (++attempts > 1) yield* Deferred.await(release);
+            reportDevice(device);
+            return transcript;
+          }),
+      });
+      yield* jobs.enqueue(media.id);
+      const worker = yield* jobs.start();
+      yield* waitFor(jobs, media.id, "completed");
+      yield* jobs.replace(media.id, { revision: 1, find: "passage", replacement: "part" }, "app");
+      expect((yield* jobs.retry(media.id))?.revision).toBe(2);
+      const during = yield* Effect.flip(
+        jobs.replace(media.id, { revision: 2, find: "part", replacement: "piece" }, "app"),
+      );
+      expect(during.reason).toBe("conflict");
+      yield* Deferred.succeed(release, undefined);
+      yield* waitFor(jobs, media.id, "completed");
+      expect(yield* jobs.get(media.id)).toMatchObject({
+        revision: 3,
+        resultRevision: 3,
+        transcript,
+      });
+      expect(yield* jobs.history(media.id, { limit: 10, offset: 0 })).toEqual({
+        changes: [],
+        total: 0,
+      });
+      for (const revision of [1, 2]) {
+        const earlier = yield* Effect.flip(
+          jobs.edit(media.id, { revision, firstWord: 0, wordCount: 1, text: "The" }, "mcp"),
+        );
+        expect(earlier.reason).toBe("conflict");
+      }
+      yield* Fiber.interrupt(worker);
+    }),
+  );
+});

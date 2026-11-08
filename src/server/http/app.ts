@@ -7,7 +7,16 @@ import { bodyLimit } from "hono/body-limit";
 import { DownloadPreviewRequest, DownloadRequest } from "../../shared/contracts/downloads.ts";
 import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
 import { RenameMediaRequest } from "../../shared/contracts/media.ts";
-import { TranscriptExportFormat } from "../../shared/contracts/transcriptions.ts";
+import {
+  defaultHistoryPage,
+  maxHistoryPage,
+  maxWordCharacters,
+  PassageEdit,
+  TranscriptExportFormat,
+  TranscriptHistoryQuery,
+  TranscriptReplace,
+  TranscriptRestore,
+} from "../../shared/contracts/transcriptions.ts";
 import { exportTranscript } from "../../shared/transcript-export.ts";
 import {
   createDownloads,
@@ -45,20 +54,33 @@ async function runMedia<A>(operation: Effect.Effect<A, MediaError>, signal?: Abo
   return result.success;
 }
 
-async function readDownloadRequest<S extends Schema.ConstraintDecoder<unknown>>(
-  schema: S,
+async function readJson<S extends Schema.ConstraintDecoder<unknown>>(
   payload: Promise<unknown>,
+  schema: S,
+  message: string,
 ) {
   try {
     return Schema.decodeUnknownSync(schema)(await payload);
   } catch (cause) {
-    throw new MediaError(
-      "invalid",
-      "Provide a valid JSON object with at least one video URL and supported download options.",
-      cause,
-    );
+    throw new MediaError("invalid", message, cause);
   }
 }
+
+const readDownloadRequest = <S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
+  payload: Promise<unknown>,
+) =>
+  readJson(
+    payload,
+    schema,
+    "Provide a valid JSON object with at least one video URL and supported download options.",
+  );
+
+const transcriptChangeLimit = bodyLimit({
+  maxSize: 64 * 1024,
+  onError: (context) =>
+    context.json({ error: "Transcript changes must be 64 KiB or smaller." }, 413),
+});
 
 export function createApp(
   database: AppDatabase,
@@ -208,16 +230,11 @@ export function createApp(
           context.json({ error: "Title requests must be 4 KiB or smaller." }, 413),
       }),
       async (context) => {
-        let request: typeof RenameMediaRequest.Type;
-        try {
-          request = Schema.decodeUnknownSync(RenameMediaRequest)(await context.req.json());
-        } catch (cause) {
-          throw new MediaError(
-            "invalid",
-            "Provide a JSON object with a title of 1–512 characters without control characters.",
-            cause,
-          );
-        }
+        const request = await readJson(
+          context.req.json(),
+          RenameMediaRequest,
+          "Provide a JSON object with a title of 1–512 characters without control characters.",
+        );
         return context.json(await runMedia(library.rename(context.req.param("id"), request.title)));
       },
     )
@@ -252,6 +269,53 @@ export function createApp(
           "X-Content-Type-Options": "nosniff",
         },
       });
+    })
+    .get(
+      "/media/:id/transcription/changes",
+      sValidator("query", Schema.toStandardSchemaV1(TranscriptHistoryQuery), (result) => {
+        if (!result.success)
+          throw new MediaError(
+            "invalid",
+            `Request between 1 and ${maxHistoryPage} changes with a non-negative offset.`,
+          );
+      }),
+      async (context) => {
+        const { limit = defaultHistoryPage, offset = 0 } = context.req.valid("query");
+        context.header("Cache-Control", "no-store");
+        return context.json(
+          await runMedia(transcriptions.history(context.req.param("id"), { limit, offset })),
+        );
+      },
+    )
+    .post("/media/:id/transcription/edit", transcriptChangeLimit, async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        PassageEdit,
+        `Provide the transcript revision, a word range and its new text. Words can have at most ${maxWordCharacters} characters.`,
+      );
+      return context.json(
+        await runMedia(transcriptions.edit(context.req.param("id"), request, "app")),
+      );
+    })
+    .post("/media/:id/transcription/replace", transcriptChangeLimit, async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        TranscriptReplace,
+        "Provide the transcript revision, the text to find and its replacement.",
+      );
+      return context.json(
+        await runMedia(transcriptions.replace(context.req.param("id"), request, "app")),
+      );
+    })
+    .post("/media/:id/transcription/restore", transcriptChangeLimit, async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        TranscriptRestore,
+        "Provide the transcript revision and the version to restore.",
+      );
+      return context.json(
+        await runMedia(transcriptions.restore(context.req.param("id"), request, "app")),
+      );
     })
     .post("/media/:id/transcription", async (context) =>
       context.json(await runMedia(transcriptions.enqueue(context.req.param("id"))), 202),

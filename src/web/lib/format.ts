@@ -20,6 +20,9 @@ export function formatBytes(bytes: number) {
 export const formatImportDate = (timestamp: number) =>
   new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(timestamp);
 
+export const formatChangeTime = (timestamp: number) =>
+  new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(timestamp);
+
 const backendNames: Record<string, string> = {
   cpu: "CPU",
   cuda: "CUDA",

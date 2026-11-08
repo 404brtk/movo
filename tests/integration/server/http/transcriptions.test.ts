@@ -277,3 +277,111 @@ it("removes the saved copy over HTTP while keeping the transcript and its export
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 });
+
+it("edits, replaces and restores a transcript over HTTP and lists its changes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "movo-transcript-edits-http-"));
+  try {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const database = yield* openDatabase(join(directory, "app.sqlite"));
+          const config = { dataDirectory: directory };
+          const tools = createMediaTools(config);
+          const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+          const audio = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
+          const media = yield* library.import(
+            new Response(audio).body,
+            "recording.wav",
+            audio.length,
+          );
+          const transcriptions = createTranscriptions(database, config, tools, {
+            check: () => Effect.void,
+            transcribe: () =>
+              Effect.succeed({
+                language: null,
+                words: timedWords(0, 1900, "We use kubernetis daily."),
+              }),
+          });
+          const app = createApp(database, config, undefined, { tools, transcriptions });
+          const base = `http://127.0.0.1:4310/api/media/${media.id}/transcription`;
+          const post = (action: string, body: unknown) =>
+            app.request(`${base}/${action}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: typeof body === "string" ? body : JSON.stringify(body),
+            });
+          const text = async () => await (await app.request(`${base}/export/txt`)).text();
+          yield* transcriptions.enqueue(media.id);
+          const worker = yield* transcriptions.start();
+          yield* Effect.promise(async () => {
+            await expect
+              .poll(async () => (await Effect.runPromise(transcriptions.get(media.id)))?.status)
+              .toBe("completed");
+            const edited = await post("edit", {
+              revision: 1,
+              firstWord: 2,
+              wordCount: 1,
+              text: "Kubernetes",
+            });
+            expect(edited.status).toBe(200);
+            expect(Schema.decodeUnknownSync(TranscriptionJob)(await edited.json()).revision).toBe(
+              2,
+            );
+            expect(await text()).toBe("We use Kubernetes daily.");
+
+            const stale = await post("edit", {
+              revision: 1,
+              firstWord: 0,
+              wordCount: 1,
+              text: "I",
+            });
+            expect(stale.status).toBe(409);
+            expect(await stale.json()).toEqual({
+              error:
+                "The transcript changed since it was loaded. Reload it and make the change again.",
+            });
+            const edit = (replacement: string) =>
+              post("edit", { revision: 2, firstWord: 0, wordCount: 1, text: replacement });
+            expect((await post("edit", "{")).status).toBe(400);
+            expect((await edit("x".repeat(1025))).status).toBe(400);
+            expect((await edit("x ".repeat(40000))).status).toBe(413);
+            expect(
+              (await post("replace", { revision: 2, find: " ", replacement: "x" })).status,
+            ).toBe(400);
+
+            const replaced = await post("replace", {
+              revision: 2,
+              find: "daily",
+              replacement: "every day",
+            });
+            expect(replaced.status).toBe(200);
+            expect(await text()).toBe("We use Kubernetes every day.");
+            const changes = await app.request(`${base}/changes?limit=1`);
+            expect(changes.headers.get("cache-control")).toBe("no-store");
+            expect(await changes.json()).toMatchObject({
+              total: 2,
+              changes: [
+                {
+                  revision: 3,
+                  kind: "replace",
+                  source: "app",
+                  before: "daily.",
+                  after: "every day.",
+                },
+              ],
+            });
+            expect((await app.request(`${base}/changes?limit=0`)).status).toBe(400);
+            expect((await app.request(`${base}/changes?offset=x`)).status).toBe(400);
+
+            expect((await post("restore", { revision: 3, target: 1 })).status).toBe(200);
+            expect(await text()).toBe("We use kubernetis daily.");
+            expect((await post("restore", { revision: 1, target: 1 })).status).toBe(409);
+          });
+          yield* Fiber.interrupt(worker);
+        }),
+      ),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});

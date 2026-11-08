@@ -196,6 +196,31 @@ test("confirms deletion, preserves the recording after failure and removes it af
   await expect(page.getByRole("heading", { name: "Media not found", exact: true })).toBeVisible();
 });
 
+test("keeps confirmation buttons reachable for a long title on a short screen", async ({
+  page,
+}) => {
+  const name = `Long ${randomUUID()}`;
+  const title = `${"A long recording title ".repeat(20)}${randomUUID()}`.slice(0, 512);
+  await page.setViewportSize({ width: 320, height: 320 });
+  await page.goto("/");
+  await page
+    .getByLabel("Choose media file")
+    .setInputFiles({ name: `${name}.wav`, mimeType: "audio/wav", buffer: wave });
+  await page.getByRole("link", { name: `Open ${name}`, exact: true }).click();
+  const apiPath = `/api${new URL(page.url()).pathname}`;
+  expect((await page.request.patch(apiPath, { data: { title } })).status()).toBe(200);
+  await page.reload();
+  await page.getByRole("button", { name: "Delete recording", exact: true }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText(title);
+  const keep = dialog.getByRole("button", { name: "Keep recording" });
+  await keep.scrollIntoViewIfNeeded();
+  await expect(keep).toBeInViewport({ ratio: 1 });
+  await keep.click();
+  await expect(dialog).toHaveCount(0);
+  expect((await page.request.delete(apiPath)).status()).toBe(200);
+});
+
 test("shows a committed deletion cleanup warning and returns to the library without offering another deletion", async ({
   page,
 }) => {

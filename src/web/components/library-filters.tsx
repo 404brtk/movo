@@ -3,10 +3,10 @@ import { Schema } from "effect";
 import { useEffect, useState } from "react";
 import { LibraryQuery, librarySort, maxSearchLength } from "../../shared/contracts/library.ts";
 import { searchTerms } from "../../shared/search-text.ts";
+import { Input } from "./ui/input.tsx";
+import { NativeSelect, NativeSelectOption } from "./ui/native-select.tsx";
 
 const searchDelayMs = 250;
-const controlClassName =
-  "h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 export function LibraryFilters({ search }: { search: LibraryQuery }) {
   const navigate = useNavigate({ from: "/" });
@@ -35,7 +35,7 @@ export function LibraryFilters({ search }: { search: LibraryQuery }) {
         <label htmlFor="library-search" className="block text-sm font-medium">
           Search
         </label>
-        <input
+        <Input
           id="library-search"
           type="search"
           maxLength={maxSearchLength}
@@ -43,14 +43,13 @@ export function LibraryFilters({ search }: { search: LibraryQuery }) {
           value={draft}
           onChange={(event) => setDraft(event.currentTarget.value)}
           placeholder="Titles and transcripts"
-          className={`${controlClassName} text-base`}
         />
       </div>
       <div className="space-y-2">
         <label htmlFor="library-kind" className="block text-sm font-medium">
           Type
         </label>
-        <select
+        <NativeSelect
           id="library-kind"
           value={search.kind ?? ""}
           onChange={(event) => {
@@ -59,18 +58,18 @@ export function LibraryFilters({ search }: { search: LibraryQuery }) {
             );
             void navigate({ search: (previous) => ({ ...previous, kind }) });
           }}
-          className={controlClassName}
+          className="w-full"
         >
-          <option value="">All</option>
-          <option value="audio">Audio</option>
-          <option value="video">Video</option>
-        </select>
+          <NativeSelectOption value="">All</NativeSelectOption>
+          <NativeSelectOption value="audio">Audio</NativeSelectOption>
+          <NativeSelectOption value="video">Video</NativeSelectOption>
+        </NativeSelect>
       </div>
       <div className="space-y-2">
         <label htmlFor="library-transcript" className="block text-sm font-medium">
           Transcript
         </label>
-        <select
+        <NativeSelect
           id="library-transcript"
           value={search.transcript ?? ""}
           onChange={(event) => {
@@ -79,18 +78,18 @@ export function LibraryFilters({ search }: { search: LibraryQuery }) {
             );
             void navigate({ search: (previous) => ({ ...previous, transcript }) });
           }}
-          className={controlClassName}
+          className="w-full"
         >
-          <option value="">Any</option>
-          <option value="available">Transcribed</option>
-          <option value="missing">Not transcribed</option>
-        </select>
+          <NativeSelectOption value="">Any</NativeSelectOption>
+          <NativeSelectOption value="available">Transcribed</NativeSelectOption>
+          <NativeSelectOption value="missing">Not transcribed</NativeSelectOption>
+        </NativeSelect>
       </div>
       <div className="space-y-2">
         <label htmlFor="library-sort" className="block text-sm font-medium">
           Sort by
         </label>
-        <select
+        <NativeSelect
           id="library-sort"
           value={sort}
           onChange={(event) => {
@@ -104,15 +103,15 @@ export function LibraryFilters({ search }: { search: LibraryQuery }) {
               }),
             });
           }}
-          className={controlClassName}
+          className="w-full"
         >
           {searchTerms(search.q ?? "").length > 0 ? (
-            <option value="relevance">Best match</option>
+            <NativeSelectOption value="relevance">Best match</NativeSelectOption>
           ) : null}
-          <option value="newest">Newest</option>
-          <option value="oldest">Oldest</option>
-          <option value="title">Title</option>
-        </select>
+          <NativeSelectOption value="newest">Newest</NativeSelectOption>
+          <NativeSelectOption value="oldest">Oldest</NativeSelectOption>
+          <NativeSelectOption value="title">Title</NativeSelectOption>
+        </NativeSelect>
       </div>
     </search>
   );

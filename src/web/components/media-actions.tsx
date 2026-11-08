@@ -1,4 +1,3 @@
-import { AlertDialog } from "@base-ui/react/alert-dialog";
 import {
   useMutation,
   useQuery,
@@ -18,7 +17,18 @@ import {
   renameMedia,
   transcriptionOptions,
 } from "../lib/api.ts";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "./ui/alert-dialog.tsx";
 import { Button } from "./ui/button.tsx";
+import { Input } from "./ui/input.tsx";
 
 export function MediaActions({ item }: { item: MediaItem }) {
   const client = useQueryClient();
@@ -140,7 +150,7 @@ export function MediaActions({ item }: { item: MediaItem }) {
           <label htmlFor="recording-title" className="block text-sm font-medium">
             Title
           </label>
-          <input
+          <Input
             ref={focusTitle}
             id="recording-title"
             name="title"
@@ -151,7 +161,6 @@ export function MediaActions({ item }: { item: MediaItem }) {
             onChange={(event) => setTitle(event.target.value)}
             aria-invalid={rename.isError || undefined}
             aria-describedby={rename.isError ? "rename-error" : undefined}
-            className="h-11 w-full min-w-0 rounded-md border bg-transparent px-3 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
           {rename.isError ? (
             <p id="rename-error" role="alert" className="text-sm wrap-anywhere text-destructive">
@@ -213,7 +222,7 @@ function ConfirmRemoval({
   const focusCompletion = useCallback((button: HTMLButtonElement | null) => button?.focus(), []);
   const cleanupError = removal.data?.cleanupError;
   return (
-    <AlertDialog.Root
+    <AlertDialog
       open={open}
       onOpenChange={(next) => {
         if (removal.isPending) return;
@@ -225,41 +234,36 @@ function ConfirmRemoval({
         setOpen(next);
       }}
     >
-      <AlertDialog.Trigger
+      <AlertDialogTrigger
         render={<Button variant="destructive" className="h-10 px-3 text-sm" />}
         disabled={disabled}
       >
         {trigger}
-      </AlertDialog.Trigger>
-      <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/50" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 space-y-5 overflow-y-auto rounded-xl border bg-background p-6 shadow-lg">
-          <AlertDialog.Title className="text-xl font-semibold wrap-anywhere">
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="wrap-anywhere">
             {cleanupError ? completed : title}
-          </AlertDialog.Title>
-          <AlertDialog.Description
-            aria-live="polite"
-            className="text-sm leading-6 text-muted-foreground"
-          >
+          </AlertDialogTitle>
+          <AlertDialogDescription aria-live="polite">
             {cleanupError ?? description}
-          </AlertDialog.Description>
-          {removal.isError ? (
-            <p role="alert" className="text-sm wrap-anywhere text-destructive">
-              {removal.error.message}
-            </p>
-          ) : null}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {removal.isError ? (
+          <p role="alert" className="text-sm wrap-anywhere text-destructive">
+            {removal.error.message}
+          </p>
+        ) : null}
+        <AlertDialogFooter>
           {cleanupError ? (
             <Button ref={focusCompletion} className="h-10 px-3 text-sm" onClick={onAcknowledge}>
               {acknowledge}
             </Button>
           ) : (
-            <div className="flex flex-wrap justify-end gap-3">
-              <AlertDialog.Close
-                render={<Button variant="outline" className="h-10 px-3 text-sm" />}
-                disabled={removal.isPending}
-              >
+            <>
+              <AlertDialogCancel className="h-10 px-3 text-sm" disabled={removal.isPending}>
                 {keep}
-              </AlertDialog.Close>
+              </AlertDialogCancel>
               <Button
                 variant="destructive"
                 className="h-10 px-3 text-sm"
@@ -276,10 +280,10 @@ function ConfirmRemoval({
               >
                 {removal.isPending ? pending : confirm}
               </Button>
-            </div>
+            </>
           )}
-        </AlertDialog.Popup>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

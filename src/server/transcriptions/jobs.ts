@@ -3,19 +3,26 @@ import { join } from "node:path";
 import { and, asc, eq, notInArray, sql } from "drizzle-orm";
 import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
 import {
+  maxTranscriptWords,
   Transcript,
   TranscriptionJob,
+  type PassageEdit,
+  type TranscriptChangeSource,
   type TranscriptionDevice,
   type TranscriptionPhase,
+  type TranscriptReplace,
+  type TranscriptRestore,
 } from "../../shared/contracts/transcriptions.ts";
+import { applyPatch, diffWords, editWords, replaceWords } from "../../shared/transcript-edits.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
 import { setSearchTranscript } from "../media/search.ts";
+import { listChanges, patchesBackTo, recordChange, restartHistory } from "./history.ts";
 import { queueTranscription } from "./queue.ts";
-import { transcriptionJobs } from "./transcriptions.schema.ts";
+import { transcriptionJobs, type transcriptChanges } from "./transcriptions.schema.ts";
 
 export interface TranscriptionEngine {
   check: () => Effect.Effect<void, MediaError>;
@@ -150,7 +157,9 @@ export function createTranscriptions(
                 { status: "completed", phase: "finished", transcript, error: null },
                 transaction,
               );
-              if (completed.changes > 0) setSearchTranscript(transaction, job.mediaId, transcript);
+              if (completed.changes === 0) return;
+              restartHistory(transaction, job.mediaId);
+              setSearchTranscript(transaction, job.mediaId, transcript);
             });
           });
         }),
@@ -220,6 +229,69 @@ export function createTranscriptions(
       yield* library.get(id);
       return yield* read(id);
     });
+  const change = (
+    id: string,
+    revision: number,
+    source: TranscriptChangeSource,
+    plan: (
+      transcript: Transcript,
+      resultRevision: number,
+    ) => Effect.Effect<
+      Pick<typeof transcriptChanges.$inferInsert, "kind" | "restoredRevision" | "patch">,
+      MediaError
+    >,
+  ) =>
+    Effect.gen(function* () {
+      const job = yield* get(id);
+      if (!job?.transcript)
+        return yield* Effect.fail(
+          new MediaError("invalid", "Complete the transcription before editing it."),
+        );
+      if (["queued", "running"].includes(job.status))
+        return yield* Effect.fail(
+          new MediaError(
+            "conflict",
+            "Cancel the new transcription before editing. Its result would replace your changes.",
+          ),
+        );
+      if (job.revision !== revision)
+        return yield* Effect.fail(
+          new MediaError(
+            "conflict",
+            "The transcript changed since it was loaded. Reload it and make the change again.",
+          ),
+        );
+      const { patch, ...description } = yield* plan(job.transcript, job.resultRevision);
+      if (patch.length === 0) return job;
+      const previous = job.transcript;
+      const words = yield* storage(() => applyPatch(previous.words, patch));
+      if (words.length > maxTranscriptWords)
+        return yield* Effect.fail(
+          new MediaError(
+            "invalid",
+            `A transcript can have at most ${maxTranscriptWords.toLocaleString("en-US")} words. Replace fewer words or use a shorter replacement.`,
+          ),
+        );
+      yield* storage(() => {
+        const transcript = Schema.decodeUnknownSync(Transcript)({ ...previous, words });
+        database.transaction((transaction) => {
+          transaction
+            .update(transcriptionJobs)
+            .set({ transcript, revision: revision + 1, updatedAt: Date.now() })
+            .where(eq(transcriptionJobs.mediaId, id))
+            .run();
+          recordChange(transaction, {
+            mediaId: id,
+            revision: revision + 1,
+            source,
+            patch,
+            ...description,
+          });
+          setSearchTranscript(transaction, id, transcript);
+        });
+      });
+      return yield* read(id);
+    }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions));
   return {
     check: engine.check,
     get,
@@ -230,6 +302,44 @@ export function createTranscriptions(
           yield* Fiber.interrupt(active.fiber);
         return yield* library.remove(id);
       }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
+    history: (id: string, page: { limit: number; offset: number }) =>
+      Effect.gen(function* () {
+        yield* get(id);
+        return yield* storage(() => listChanges(database, id, page));
+      }),
+    edit: (id: string, request: PassageEdit, source: TranscriptChangeSource) =>
+      change(id, request.revision, source, ({ words }) =>
+        request.firstWord + request.wordCount > words.length
+          ? Effect.fail(new MediaError("invalid", "Choose words inside the transcript."))
+          : Effect.succeed({
+              kind: "edit",
+              restoredRevision: null,
+              patch: editWords(words, request.firstWord, request.wordCount, request.text),
+            }),
+      ),
+    replace: (id: string, request: TranscriptReplace, source: TranscriptChangeSource) =>
+      change(id, request.revision, source, ({ words }) =>
+        Effect.succeed({
+          kind: "replace",
+          restoredRevision: null,
+          patch: replaceWords(words, request.find, request.replacement),
+        }),
+      ),
+    restore: (id: string, request: TranscriptRestore, source: TranscriptChangeSource) =>
+      change(id, request.revision, source, ({ words }, resultRevision) =>
+        storage(() => {
+          if (request.target > request.revision || request.target < resultRevision)
+            throw new MediaError("invalid", "Choose a version from the transcript history.");
+          return {
+            kind: "restore" as const,
+            restoredRevision: request.target,
+            patch: diffWords(
+              words,
+              patchesBackTo(database, id, request.target).reduce(applyPatch, words),
+            ),
+          };
+        }),
+      ),
     removeMediaFile: (id: string) =>
       library.removeFile(id).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
     enqueue: (id: string) =>
