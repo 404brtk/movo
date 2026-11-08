@@ -184,14 +184,14 @@ export const movoTools = Toolkit.make(
   }).annotateMerge(changes({ idempotent: false })),
   Tool.make("list_transcript_changes", {
     description:
-      "List a transcript's saved changes, newest first, with the first replaced text of each as before and after. Revision 0 is the transcription result. Returns at most limit changes (default 20, up to 100) after skipping offset (default 0), and the total number of changes.",
+      "List a transcript's saved changes, newest first, with the first replaced text of each as before and after. The transcription result itself is resultRevision from get_recording. Returns at most limit changes (default 20, up to 100) after skipping offset (default 0), and the total number of changes.",
     parameters: Schema.Struct({ ...Recording.fields, ...Page }),
     success: TranscriptHistory,
     failure,
   }).annotateMerge(reads),
   Tool.make("restore_transcript", {
     description:
-      "Return a transcript to an earlier revision; target 0 is the transcription result. The restore is saved as a new change, so restoring the revision before it undoes it. revision must be the current one.",
+      "Return a transcript to an earlier revision, from resultRevision of get_recording (the transcription result) up to the current one. The restore is saved as a new change, so restoring the revision before it undoes it; restoring a revision with the same text changes nothing. revision must be the current one.",
     parameters: Schema.Struct({ ...Recording.fields, ...TranscriptRestore.fields }),
     success: TranscriptionSummary,
     failure,

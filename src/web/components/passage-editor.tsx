@@ -23,17 +23,15 @@ export function PassageEditor({
   passage: TranscriptPassage;
   onClose: () => void;
 }) {
+  const current = { revision, firstWord: passage.firstWord, wordCount: passage.words.length };
   const [text, setText] = useState(passage.text);
-  const [target] = useState(() => ({
-    revision,
-    firstWord: passage.firstWord,
-    wordCount: passage.words.length,
-  }));
+  const [target, setTarget] = useState(current);
   const save = useTranscriptChange(mediaId, (value: string) =>
     editTranscript(mediaId, { ...target, text: value }),
   );
+  const stale = target.revision !== revision;
   const submit = () => {
-    if (!save.isPending) save.mutate(text, { onSuccess: onClose });
+    if (!save.isPending && !stale) save.mutate(text, { onSuccess: onClose });
   };
   const hintId = `passage-hint-${passage.firstWord}`;
   const errorId = `passage-error-${passage.firstWord}`;
@@ -70,13 +68,30 @@ export function PassageEditor({
         Ctrl+Enter saves and Esc cancels. Clear the text to remove the passage. Every change can be
         undone from History.
       </p>
-      {save.isError ? (
+      {save.isError && !stale ? (
         <p id={errorId} role="alert" className="text-sm wrap-anywhere text-destructive">
           {save.error.message}
         </p>
       ) : null}
+      {stale ? (
+        <div role="alert" className="space-y-3 rounded-md border p-3 text-sm">
+          <p className="wrap-anywhere">
+            The transcript changed while you were editing. This passage now reads “{passage.text}”.
+          </p>
+          <Button
+            variant="outline"
+            className="h-10 px-3 text-sm"
+            onClick={() => {
+              save.reset();
+              setTarget(current);
+            }}
+          >
+            Use my text for the current passage
+          </Button>
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-3">
-        <Button type="submit" className="h-10 px-3 text-sm" disabled={save.isPending}>
+        <Button type="submit" className="h-10 px-3 text-sm" disabled={save.isPending || stale}>
           {save.isPending ? "Saving…" : "Save passage"}
         </Button>
         <Button

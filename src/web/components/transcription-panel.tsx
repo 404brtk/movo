@@ -68,6 +68,8 @@ export function TranscriptionPanel({
   const job = query.data;
   const active = job?.status === "queued" || job?.status === "running";
   const revision = job?.revision ?? 0;
+  const resultRevision = job?.resultRevision ?? 0;
+  const edited = revision > resultRevision;
   const editable = Boolean(job?.transcript) && !active;
   const editing = useMemo<TranscriptEditing | undefined>(
     () => (editable ? { mediaId, revision } : undefined),
@@ -85,7 +87,7 @@ export function TranscriptionPanel({
             Transcription
           </h2>
           <p className="text-sm text-muted-foreground">
-            Parakeet Ultra · processed on this computer{revision > 0 ? " · edited" : ""}.
+            Parakeet Ultra · processed on this computer{edited ? " · edited" : ""}.
           </p>
         </div>
         {playback && query.isSuccess && !job ? (
@@ -106,7 +108,7 @@ export function TranscriptionPanel({
           <RetryTranscription
             label={job.status === "completed" ? "Transcribe again" : "Retry transcription"}
             variant={job.status === "completed" ? "outline" : "default"}
-            confirm={revision > 0}
+            confirm={edited}
             disabled={action.isPending}
             onRetry={() => action.mutate("retry")}
           />
@@ -166,7 +168,7 @@ export function TranscriptionPanel({
           Showing the previous transcript until a new one completes.
         </p>
       ) : null}
-      {editing && (hasWords || revision > 0) ? (
+      {editing && (hasWords || edited) ? (
         <div className="flex flex-wrap gap-2">
           {hasWords ? (
             <Button
@@ -197,12 +199,17 @@ export function TranscriptionPanel({
         />
       ) : null}
       {editing && editTool === "history" ? (
-        <ChangeHistory mediaId={mediaId} revision={revision} onClose={() => setEditTool(null)} />
+        <ChangeHistory
+          mediaId={mediaId}
+          revision={revision}
+          resultRevision={resultRevision}
+          onClose={() => setEditTool(null)}
+        />
       ) : null}
       {job?.transcript ? (
         job.transcript.words.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            {revision > 0
+            {edited
               ? "Every passage was removed. Restore an earlier version from History."
               : "No speech was detected in this recording."}
           </p>

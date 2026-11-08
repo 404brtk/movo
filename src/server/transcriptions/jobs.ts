@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { and, asc, eq, notInArray, sql } from "drizzle-orm";
 import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
 import {
+  maxTranscriptWords,
   Transcript,
   TranscriptionJob,
   type PassageEdit,
@@ -12,20 +13,14 @@ import {
   type TranscriptReplace,
   type TranscriptRestore,
 } from "../../shared/contracts/transcriptions.ts";
-import { applyPatch, editWords, replaceWords } from "../../shared/transcript-edits.ts";
+import { applyPatch, diffWords, editWords, replaceWords } from "../../shared/transcript-edits.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
 import { setSearchTranscript } from "../media/search.ts";
-import {
-  clearHistory,
-  listChanges,
-  patchesBackTo,
-  recordChange,
-  transcriptRevision,
-} from "./history.ts";
+import { listChanges, patchesBackTo, recordChange, restartHistory } from "./history.ts";
 import { queueTranscription } from "./queue.ts";
 import { transcriptionJobs, type transcriptChanges } from "./transcriptions.schema.ts";
 
@@ -66,15 +61,10 @@ export function createTranscriptions(
   let started = false;
   const row = (id: string) =>
     database.select().from(transcriptionJobs).where(eq(transcriptionJobs.mediaId, id)).get();
-  const decodeJob = (job: typeof transcriptionJobs.$inferSelect) =>
-    Schema.decodeUnknownSync(TranscriptionJob)({
-      ...job,
-      revision: transcriptRevision(database, job.mediaId),
-    });
   const read = (id: string) =>
     storage(() => {
       const job = row(id);
-      return job ? decodeJob(job) : null;
+      return job ? Schema.decodeUnknownSync(TranscriptionJob)(job) : null;
     });
   const updateRunning = (
     id: string,
@@ -168,7 +158,7 @@ export function createTranscriptions(
                 transaction,
               );
               if (completed.changes === 0) return;
-              clearHistory(transaction, job.mediaId);
+              restartHistory(transaction, job.mediaId);
               setSearchTranscript(transaction, job.mediaId, transcript);
             });
           });
@@ -219,7 +209,7 @@ export function createTranscriptions(
         yield* Effect.sleep("300 millis");
         return;
       }
-      const job = yield* storage(() => decodeJob(claimed));
+      const job = yield* storage(() => Schema.decodeUnknownSync(TranscriptionJob)(claimed));
       const fiber = yield* Effect.forkChild(perform(job));
       active = { mediaId: job.mediaId, fiber };
       const exit = yield* Fiber.await(fiber);
@@ -245,8 +235,9 @@ export function createTranscriptions(
     source: TranscriptChangeSource,
     plan: (
       transcript: Transcript,
+      resultRevision: number,
     ) => Effect.Effect<
-      Pick<typeof transcriptChanges.$inferInsert, "kind" | "restoredRevision" | "patches">,
+      Pick<typeof transcriptChanges.$inferInsert, "kind" | "restoredRevision" | "patch">,
       MediaError
     >,
   ) =>
@@ -270,25 +261,30 @@ export function createTranscriptions(
             "The transcript changed since it was loaded. Reload it and make the change again.",
           ),
         );
-      const { patches, ...description } = yield* plan(job.transcript);
-      if (patches.every((patch) => patch.length === 0)) return job;
+      const { patch, ...description } = yield* plan(job.transcript, job.resultRevision);
+      if (patch.length === 0) return job;
       const previous = job.transcript;
+      const words = yield* storage(() => applyPatch(previous.words, patch));
+      if (words.length > maxTranscriptWords)
+        return yield* Effect.fail(
+          new MediaError(
+            "invalid",
+            `A transcript can have at most ${maxTranscriptWords.toLocaleString("en-US")} words. Replace fewer words or use a shorter replacement.`,
+          ),
+        );
       yield* storage(() => {
-        const transcript = Schema.decodeUnknownSync(Transcript)({
-          ...previous,
-          words: patches.reduce(applyPatch, previous.words),
-        });
+        const transcript = Schema.decodeUnknownSync(Transcript)({ ...previous, words });
         database.transaction((transaction) => {
           transaction
             .update(transcriptionJobs)
-            .set({ transcript, updatedAt: Date.now() })
+            .set({ transcript, revision: revision + 1, updatedAt: Date.now() })
             .where(eq(transcriptionJobs.mediaId, id))
             .run();
           recordChange(transaction, {
             mediaId: id,
             revision: revision + 1,
             source,
-            patches,
+            patch,
             ...description,
           });
           setSearchTranscript(transaction, id, transcript);
@@ -318,7 +314,7 @@ export function createTranscriptions(
           : Effect.succeed({
               kind: "edit",
               restoredRevision: null,
-              patches: [editWords(words, request.firstWord, request.wordCount, request.text)],
+              patch: editWords(words, request.firstWord, request.wordCount, request.text),
             }),
       ),
     replace: (id: string, request: TranscriptReplace, source: TranscriptChangeSource) =>
@@ -326,18 +322,23 @@ export function createTranscriptions(
         Effect.succeed({
           kind: "replace",
           restoredRevision: null,
-          patches: [replaceWords(words, request.find, request.replacement)],
+          patch: replaceWords(words, request.find, request.replacement),
         }),
       ),
     restore: (id: string, request: TranscriptRestore, source: TranscriptChangeSource) =>
-      change(id, request.revision, source, () =>
-        request.target > request.revision
-          ? Effect.fail(new MediaError("invalid", "Choose a version from the transcript history."))
-          : storage(() => ({
-              kind: "restore",
-              restoredRevision: request.target,
-              patches: patchesBackTo(database, id, request.target),
-            })),
+      change(id, request.revision, source, ({ words }, resultRevision) =>
+        storage(() => {
+          if (request.target > request.revision || request.target < resultRevision)
+            throw new MediaError("invalid", "Choose a version from the transcript history.");
+          return {
+            kind: "restore" as const,
+            restoredRevision: request.target,
+            patch: diffWords(
+              words,
+              patchesBackTo(database, id, request.target).reduce(applyPatch, words),
+            ),
+          };
+        }),
       ),
     removeMediaFile: (id: string) =>
       library.removeFile(id).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
@@ -349,9 +350,7 @@ export function createTranscriptions(
         yield* engine.check();
         return yield* storage(() => {
           queueTranscription(database, id);
-          const queued = row(id);
-          if (!queued) throw new MediaError("storage", "The queued transcription is missing.");
-          return decodeJob(queued);
+          return Schema.decodeUnknownSync(TranscriptionJob)(row(id));
         });
       }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
     cancel: (id: string) =>

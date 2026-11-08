@@ -14,7 +14,9 @@ import type { TranscriptionJob } from "../../src/shared/contracts/transcriptions
 import { serveBrowserApp } from "../helpers/browser-server.ts";
 import { timedWords } from "../helpers/timed-words.ts";
 
-const test = base.extend<{ recording: { origin: string; title: string; url: string } }>({
+const test = base.extend<{
+  recording: { origin: string; mediaId: string; title: string; url: string };
+}>({
   recording: async ({ request }, use) => {
     const directory = await mkdtemp(join(tmpdir(), "movo-browser-editing-"));
     try {
@@ -63,7 +65,7 @@ const test = base.extend<{ recording: { origin: string; title: string; url: stri
                   return job.status;
                 })
                 .toBe("completed");
-              await use({ origin, title, url: `${origin}/media/${media.id}` });
+              await use({ origin, mediaId: media.id, title, url: `${origin}/media/${media.id}` });
             });
           }),
         ),
@@ -138,21 +140,21 @@ test("previews and applies find and replace, then undoes and restores versions",
   await panel.getByRole("button", { name: "History" }).click();
   const versions = panel.getByRole("list", { name: "Transcript versions" }).getByRole("listitem");
   await expect(versions).toHaveText([
-    /“running\.” → “working\.”Version 2.*Current/u,
-    /“kubernetis” → “Kubernetes” in 2 placesVersion 1.*/u,
-    /Transcription resultVersion 0/u,
+    /“running\.” → “working\.”Version 3.*Current/u,
+    /“kubernetis” → “Kubernetes” in 2 placesVersion 2.*/u,
+    /Transcription resultVersion 1/u,
   ]);
   await panel.getByRole("button", { name: "Undo last change" }).click();
   await expect(panel.getByRole("status").filter({ hasText: "Restored" })).toHaveText(
-    "Restored version 1.",
+    "Restored version 2.",
   );
   await expect(passages(page).last()).toContainText("Kubernetes keeps running.");
-  await panel.getByRole("button", { name: "Restore version 0" }).click();
+  await panel.getByRole("button", { name: "Restore version 1" }).click();
   await expect(passages(page)).toHaveText([
     /We deploy kubernetis daily\./u,
     /Kubernetis keeps running\./u,
   ]);
-  await expect(versions.first()).toHaveText(/Restored the transcription resultVersion 4.*Current/u);
+  await expect(versions.first()).toHaveText(/Restored the transcription resultVersion 5.*Current/u);
 });
 
 test("asks before transcribing again replaces edits and then starts a new history", async ({
@@ -178,5 +180,33 @@ test("asks before transcribing again replaces edits and then starts a new histor
   await panel.getByRole("button", { name: "History" }).click();
   await expect(
     panel.getByRole("list", { name: "Transcript versions" }).getByRole("listitem"),
-  ).toHaveText([/Transcription resultVersion 0Current/u]);
+  ).toHaveText([/Transcription resultVersion 3Current/u]);
+});
+
+test("keeps a passage draft when another client changes the transcript first", async ({
+  page,
+  recording,
+}) => {
+  const panel = transcription(page);
+  await panel.getByRole("button", { name: "Edit passage at 0:00" }).click();
+  const text = page.getByRole("textbox", { name: "Passage text" });
+  await text.fill("We ship Kubernetes daily.");
+  const statusUrl = `${recording.origin}/api/media/${recording.mediaId}/transcription`;
+  const job: TranscriptionJob = await (await page.request.get(statusUrl)).json();
+  const replaced = await page.request.post(`${statusUrl}/replace`, {
+    data: { revision: job.revision, find: "running", replacement: "working" },
+  });
+  expect(replaced.status()).toBe(200);
+
+  await page.getByRole("button", { name: "Save passage" }).click();
+  const notice = panel.getByRole("alert").filter({ hasText: "changed while you were editing" });
+  await expect(notice).toContainText("This passage now reads “We deploy kubernetis daily.”.");
+  await expect(page.getByRole("button", { name: "Save passage" })).toBeDisabled();
+  await expect(text).toHaveValue("We ship Kubernetes daily.");
+  await notice.getByRole("button", { name: "Use my text for the current passage" }).click();
+  await page.getByRole("button", { name: "Save passage" }).click();
+  await expect(passages(page)).toHaveText([
+    /We ship Kubernetes daily\./u,
+    /Kubernetis keeps working\./u,
+  ]);
 });

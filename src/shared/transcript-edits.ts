@@ -11,6 +11,11 @@ export const wordTokens = (text: string) => text.split(/\s+/u).filter(Boolean);
 const sameWord = (first: TranscriptWord, second: TranscriptWord) =>
   first.startMs === second.startMs && first.endMs === second.endMs && first.text === second.text;
 
+const wordOrder = (first: TranscriptWord, second: TranscriptWord) =>
+  first.startMs - second.startMs ||
+  first.endMs - second.endMs ||
+  (first.text < second.text ? -1 : first.text > second.text ? 1 : 0);
+
 function edges(text: string) {
   const [, leading = "", core = "", trailing = ""] = edgePunctuation.exec(text) ?? [];
   return { leading, core, trailing };
@@ -146,4 +151,39 @@ export function invertPatch(patch: TranscriptPatch): TranscriptPatch {
     shift += inserted.length - removed.length;
     return inverse;
   });
+}
+
+export function diffWords(
+  before: readonly TranscriptWord[],
+  after: readonly TranscriptWord[],
+): TranscriptPatch {
+  const patch: WordReplacement[] = [];
+  let removedUntil = 0;
+  let insertedUntil = 0;
+  const matches = () => {
+    const removed = before[removedUntil];
+    const inserted = after[insertedUntil];
+    return removed !== undefined && inserted !== undefined && sameWord(removed, inserted);
+  };
+  while (removedUntil < before.length || insertedUntil < after.length) {
+    if (matches()) {
+      removedUntil++;
+      insertedUntil++;
+      continue;
+    }
+    const firstWord = removedUntil;
+    const firstInserted = insertedUntil;
+    while ((removedUntil < before.length || insertedUntil < after.length) && !matches()) {
+      const removed = before[removedUntil];
+      const inserted = after[insertedUntil];
+      if (removed && (!inserted || wordOrder(removed, inserted) < 0)) removedUntil++;
+      else insertedUntil++;
+    }
+    patch.push({
+      firstWord,
+      removed: before.slice(firstWord, removedUntil),
+      inserted: after.slice(firstInserted, insertedUntil),
+    });
+  }
+  return patch;
 }

@@ -25,6 +25,7 @@ async function openRecording(
       phase: "finished",
       transcript,
       revision: 0,
+      resultRevision: 0,
       device: { backend: "cpu", name: "Test CPU" },
       error: null,
       cleanupError: null,

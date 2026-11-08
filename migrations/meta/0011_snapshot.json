@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "74c27f8f-7f4c-4159-858f-9fa39723483a",
+  "id": "c9a97c02-3229-4c3d-ac4c-07c5a9bbd5d3",
   "prevId": "b4d1cca0-5582-4ffd-b167-6e68e6ba440c",
   "tables": {
     "download_jobs": {
@@ -353,8 +353,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "patches": {
-          "name": "patches",
+        "patch": {
+          "name": "patch",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -426,6 +426,22 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "result_revision": {
+          "name": "result_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         },
         "device": {
           "name": "device",

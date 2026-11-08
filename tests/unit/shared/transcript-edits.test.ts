@@ -8,6 +8,7 @@ import {
 } from "../../../src/shared/contracts/transcriptions.ts";
 import {
   applyPatch,
+  diffWords,
   editWords,
   invertPatch,
   replaceWords,
@@ -161,5 +162,42 @@ describe("patches", () => {
   it("undoes several changes with shifting positions", () => {
     const patch = [...editWords(words, 0, 1, "zero one"), ...editWords(words, 2, 2, "")];
     expect(texts(checkedRoundTrip(words, patch))).toBe("zero one two");
+  });
+});
+
+describe("net differences", () => {
+  const words = [
+    ...timedWords(0, 1000, "We deploy kubernetis daily."),
+    ...timedWords(1000, 2000, "It keeps running."),
+    ...timedWords(2000, 3000, "Kubernetis scales well."),
+  ];
+
+  it("finds no difference between equal transcripts", () => {
+    expect(diffWords(words, [...words])).toEqual([]);
+  });
+
+  it("finds only the changed words", () => {
+    const changed = applyPatch(words, replaceWords(words, "kubernetis", "Kubernetes"));
+    expect(diffWords(words, changed)).toEqual(replaceWords(words, "kubernetis", "Kubernetes"));
+  });
+
+  it("turns any version into any other", () => {
+    const versions = [
+      words,
+      applyPatch(words, editWords(words, 0, 4, "We now deploy Kubernetes clusters daily.")),
+      applyPatch(words, editWords(words, 4, 3, "")),
+      applyPatch(words, editWords(words, 7, 3, "It scales well, really well.")),
+      [],
+    ];
+    for (const before of versions)
+      for (const after of versions)
+        expect(checkedRoundTrip(before, diffWords(before, after))).toEqual(after);
+  });
+
+  it("stays as small as the edit when restoring back and forth", () => {
+    const edited = applyPatch(words, editWords(words, 4, 3, "It keeps working."));
+    expect(diffWords(edited, words)).toEqual([
+      { firstWord: 6, removed: [edited[6]], inserted: [words[6]] },
+    ]);
   });
 });

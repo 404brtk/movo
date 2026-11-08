@@ -21,6 +21,7 @@ export type TranscriptionPhase = (typeof transcriptionPhases)[number];
 const Count = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
 const Milliseconds = Count;
 export const maxWordCharacters = 1024;
+export const maxTranscriptWords = 1000000;
 export const TranscriptWord = Schema.Struct({
   startMs: Milliseconds,
   endMs: Milliseconds,
@@ -39,7 +40,7 @@ export const TranscriptPatch = Schema.Array(WordReplacement);
 export type TranscriptPatch = typeof TranscriptPatch.Type;
 export const Transcript = Schema.Struct({
   language: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))),
-  words: Schema.Array(TranscriptWord).check(Schema.isMaxLength(1000000)),
+  words: Schema.Array(TranscriptWord).check(Schema.isMaxLength(maxTranscriptWords)),
 }).check(
   Schema.makeFilter(
     (transcript) =>
@@ -64,6 +65,7 @@ export const TranscriptionJob = Schema.Struct({
   phase: Schema.Literals(transcriptionPhases),
   transcript: Schema.NullOr(Transcript),
   revision: Count,
+  resultRevision: Count,
   device: Schema.NullOr(TranscriptionDevice),
   error: Schema.NullOr(Schema.String),
   cleanupError: Schema.NullOr(Schema.String),

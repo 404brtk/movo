@@ -7,12 +7,11 @@ import { useTranscriptChange } from "../lib/transcript-change.ts";
 import { Button } from "./ui/button.tsx";
 
 const quoted = (text: string) => `“${text}”`;
+const restoredVersion = (target: number, resultRevision: number) =>
+  target === resultRevision ? "Restored the transcription result" : `Restored version ${target}`;
 
-function describeChange(change: TranscriptChange) {
-  if (change.kind === "restore")
-    return change.restoredRevision === 0
-      ? "Restored the transcription result"
-      : `Restored version ${change.restoredRevision}`;
+function describeChange(change: TranscriptChange, resultRevision: number) {
+  if (change.kind === "restore") return restoredVersion(change.restoredRevision, resultRevision);
   const text = !change.before
     ? `Added ${quoted(change.after)}`
     : !change.after
@@ -24,10 +23,12 @@ function describeChange(change: TranscriptChange) {
 export function ChangeHistory({
   mediaId,
   revision,
+  resultRevision,
   onClose,
 }: {
   mediaId: string;
   revision: number;
+  resultRevision: number;
   onClose: () => void;
 }) {
   const history = useInfiniteQuery(transcriptHistoryOptions(mediaId, revision));
@@ -41,11 +42,17 @@ export function ChangeHistory({
   const versions = [
     ...changes.map((change) => ({
       revision: change.revision,
-      description: describeChange(change),
+      description: describeChange(change, resultRevision),
       details: `Version ${change.revision} · ${formatChangeTime(change.createdAt)}${change.source === "mcp" ? " · by an AI agent" : ""}`,
     })),
     ...(history.isSuccess && !history.hasNextPage
-      ? [{ revision: 0, description: "Transcription result", details: "Version 0" }]
+      ? [
+          {
+            revision: resultRevision,
+            description: "Transcription result",
+            details: `Version ${resultRevision}`,
+          },
+        ]
       : []),
   ];
   return (
@@ -58,7 +65,7 @@ export function ChangeHistory({
           <Button
             variant="outline"
             className="h-10 px-3 text-sm"
-            disabled={revision === 0 || restore.isPending}
+            disabled={revision <= resultRevision || restore.isPending}
             onClick={() => restoreTo(revision - 1)}
           >
             Undo last change
@@ -72,9 +79,7 @@ export function ChangeHistory({
         {restore.isPending
           ? "Restoring…"
           : restored !== null
-            ? restored === 0
-              ? "Restored the transcription result."
-              : `Restored version ${restored}.`
+            ? `${restoredVersion(restored, resultRevision)}.`
             : ""}
       </output>
       {restore.isError ? (
