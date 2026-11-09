@@ -128,6 +128,8 @@ test("copies plain text and downloads UTF-8 transcripts with keyboard-accessible
     const path = testInfo.outputPath(`transcript.${exported.format}`);
     await download.saveAs(path);
     expect(readFileSync(path, "utf8")).toBe(exported.text);
+    await expect(page.getByRole("menu")).toBeHidden();
+    await expect(exportMenu).toBeFocused();
   }
   const cues = await page.locator("audio").evaluate(
     async (player: HTMLMediaElement, text: string) => {
