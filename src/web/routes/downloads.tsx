@@ -1,155 +1,85 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { getDownloadPreset } from "../../shared/contracts/downloads.ts";
-import { cancelDownload, downloadsOptions, retryDownload } from "../lib/api.ts";
-import { formatBytes } from "../lib/format.ts";
+import { useId } from "react";
+import { Download04Icon } from "@hugeicons/core-free-icons";
+import { useQuery } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
+import type { DownloadJob } from "../../shared/contracts/downloads.ts";
+import { AccentIcon } from "../components/accent-icon.tsx";
+import { DownloadJobRow } from "../components/download-job-row.tsx";
+import { DownloadLink } from "../components/download-link.tsx";
+import { ListSkeleton } from "../components/list-skeleton.tsx";
+import { PageHeader } from "../components/page-header.tsx";
 import { Button } from "../components/ui/button.tsx";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/ui/empty.tsx";
+import { downloadsOptions } from "../lib/api.ts";
+import { isActiveDownload } from "../lib/download-view.ts";
 
 export const Route = createFileRoute("/downloads")({ component: Downloads });
 
-const phaseLabels = {
-  queued: "Waiting",
-  checking: "Checking source",
-  downloading: "Downloading",
-  processing: "Processing media",
-  saving: "Saving to library",
-  finished: "Finished",
-};
+function DownloadSection({ title, jobs }: { title: string; jobs: readonly DownloadJob[] }) {
+  const headingId = useId();
+  if (jobs.length === 0) return null;
+  return (
+    <section aria-labelledby={headingId}>
+      <h2 id={headingId} className="mt-7 mb-1.5 text-xs/[normal] font-medium text-muted-foreground">
+        {title}
+      </h2>
+      <ul aria-labelledby={headingId}>
+        {jobs.map((job) => (
+          <DownloadJobRow key={job.id} job={job} />
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 function Downloads() {
   const jobs = useQuery(downloadsOptions);
-  const client = useQueryClient();
-  const action = useMutation({
-    mutationFn: ({ id, retry }: { id: string; retry: boolean }) =>
-      retry ? retryDownload(id) : cancelDownload(id),
-    onSuccess: () => client.invalidateQueries({ queryKey: downloadsOptions.queryKey }),
-  });
   return (
-    <main className="mx-auto max-w-5xl space-y-8 px-5 py-10 sm:px-8 sm:py-14">
-      <div className="space-y-3">
-        <Link
-          to="/"
-          className="inline-flex min-h-10 items-center text-sm text-muted-foreground underline underline-offset-4"
-        >
-          Back to library
-        </Link>
-        <h1 className="text-4xl font-semibold tracking-tight">Downloads</h1>
-        <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-          Downloads continue while you browse other media. Keep the local Movo app running.
-          Interrupted downloads can be retried.
-        </p>
-      </div>
-      {jobs.isPending ? <output>Loading downloads…</output> : null}
+    <main className="mx-auto max-w-[800px] px-5 pt-9 pb-16">
+      <PageHeader
+        title="Downloads"
+        description="Downloads keep running while you browse. Keep Movo open until they finish."
+      >
+        <DownloadLink />
+      </PageHeader>
+      {jobs.isPending ? <ListSkeleton label="Loading downloads" /> : null}
       {jobs.isError ? (
-        <div role="alert" className="space-y-3">
-          <p>{jobs.error.message}</p>
-          <Button
-            variant="outline"
-            onClick={() => {
-              void jobs.refetch();
-            }}
-          >
+        <div role="alert" className="mt-8 space-y-4 rounded-lg border p-6">
+          <p className="text-sm">{jobs.error.message}</p>
+          <Button variant="outline" onClick={() => void jobs.refetch()}>
             Try again
           </Button>
         </div>
       ) : null}
-      {action.isError ? (
-        <p role="alert" className="text-sm text-destructive">
-          {action.error.message}
-        </p>
-      ) : null}
       {jobs.data?.length === 0 ? (
-        <p className="rounded-xl border border-dashed p-8 text-sm text-muted-foreground">
-          No downloads yet. Add a YouTube or X link in your library to get started.
-        </p>
+        <Empty className="mt-[88px] gap-0 p-0">
+          <EmptyHeader className="max-w-[360px] gap-0">
+            <EmptyMedia className="mb-0">
+              <AccentIcon icon={Download04Icon} size={30} />
+            </EmptyMedia>
+            <EmptyTitle className="mt-4 text-[17px]/6 font-semibold tracking-[-0.01em]">
+              No downloads yet
+            </EmptyTitle>
+            <EmptyDescription className="mt-1.5 text-[13.5px]/[21px] text-pretty">
+              Paste a YouTube or X link and Movo saves the video or its audio to your library.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : null}
-      {jobs.data && jobs.data.length > 0 ? (
-        <ul aria-label="Download jobs" className="divide-y rounded-xl border px-5">
-          {jobs.data.map((job) => {
-            const selected = getDownloadPreset(job.preset);
-            return (
-              <li
-                key={job.id}
-                className="flex flex-col justify-between gap-4 py-5 sm:flex-row sm:items-center"
-              >
-                <div className="min-w-0 space-y-2">
-                  <p className="font-medium wrap-anywhere">{job.title ?? job.url}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {selected.kind === "audio" ? "Audio" : "Video"} · {selected.label}
-                  </p>
-                  {job.transcribe ? (
-                    <p className="text-xs text-muted-foreground">
-                      {job.status === "completed"
-                        ? "Transcription requested. Open media to view its progress."
-                        : "Transcription will be queued after download."}
-                    </p>
-                  ) : null}
-                  <p className="text-sm text-muted-foreground">
-                    {job.status === "running"
-                      ? phaseLabels[job.phase]
-                      : job.status === "queued"
-                        ? "Waiting in queue"
-                        : job.status === "completed"
-                          ? "Saved to library"
-                          : job.status === "cancelled"
-                            ? "Cancelled"
-                            : job.status === "interrupted"
-                              ? "Interrupted"
-                              : "Download failed"}
-                    {job.downloadedBytes > 0 ? ` · ${formatBytes(job.downloadedBytes)}` : ""}
-                  </p>
-                  {job.error ? (
-                    <p className="max-w-xl text-sm wrap-anywhere text-destructive">{job.error}</p>
-                  ) : null}
-                  {job.cleanupError && job.cleanupError !== job.error ? (
-                    <p className="max-w-xl text-sm wrap-anywhere text-destructive">
-                      {job.cleanupError}
-                    </p>
-                  ) : null}
-                  <a
-                    href={job.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex min-h-8 items-center text-xs text-muted-foreground underline underline-offset-4"
-                  >
-                    View source
-                  </a>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  {job.status === "completed" && job.mediaId ? (
-                    <Link
-                      to="/media/$mediaId"
-                      params={{ mediaId: job.mediaId }}
-                      className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm"
-                    >
-                      Open media
-                    </Link>
-                  ) : null}
-                  {["queued", "running"].includes(job.status) ? (
-                    <Button
-                      className="h-11 px-4"
-                      variant="outline"
-                      disabled={action.isPending || job.phase === "saving"}
-                      onClick={() => action.mutate({ id: job.id, retry: false })}
-                    >
-                      Cancel
-                    </Button>
-                  ) : null}
-                  {["failed", "cancelled", "interrupted"].includes(job.status) ? (
-                    <Button
-                      className="h-11 px-4"
-                      variant="outline"
-                      disabled={action.isPending}
-                      onClick={() => action.mutate({ id: job.id, retry: true })}
-                    >
-                      Retry
-                    </Button>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+      {jobs.data ? (
+        <>
+          <DownloadSection title="In progress" jobs={jobs.data.filter(isActiveDownload)} />
+          <DownloadSection
+            title="Recent"
+            jobs={jobs.data.filter((job) => !isActiveDownload(job))}
+          />
+        </>
       ) : null}
     </main>
   );

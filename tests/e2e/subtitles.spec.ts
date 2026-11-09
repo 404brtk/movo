@@ -98,7 +98,8 @@ test("shows the transcript as video subtitles and replaces them after transcribi
     ]);
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
   const transcribeAgain = async (text: string) => {
-    await panel.getByRole("button", { name: "Transcribe again", exact: true }).click();
+    await page.getByRole("button", { name: "More actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Transcribe again", exact: true }).click();
     await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
     job.value = {
       ...job.value,
@@ -109,22 +110,24 @@ test("shows the transcript as video subtitles and replaces them after transcribi
     };
     await expect(panel.getByText(text, { exact: true })).toBeVisible();
   };
-  const setSubtitleMode = (mode: TextTrackMode) =>
-    video.evaluate((element: HTMLMediaElement, nextMode: TextTrackMode) => {
-      const [track] = element.textTracks;
-      if (!track) throw new Error("Expected a subtitle track.");
-      track.mode = nextMode;
-    }, mode);
+  const subtitlesToggle = page.getByRole("button", { name: "Subtitles", exact: true });
 
   await transcribeAgain("Nowa transkrypcja.");
   await expect
     .poll(() => subtitleTracks(video))
     .toEqual(singleCueTrack("showing", "Nowa transkrypcja."));
 
-  await setSubtitleMode("disabled");
+  await expect(subtitlesToggle).toHaveAttribute("aria-pressed", "true");
+  await subtitlesToggle.click();
+  await expect(subtitlesToggle).toHaveAttribute("aria-pressed", "false");
+  await expect
+    .poll(() => subtitleTracks(video))
+    .toEqual(singleCueTrack("hidden", "Nowa transkrypcja."));
   await transcribeAgain("Kolejna wersja.");
-  expect(await subtitleTracks(video)).toEqual(singleCueTrack("disabled", null));
-  await setSubtitleMode("showing");
+  await expect
+    .poll(() => subtitleTracks(video))
+    .toEqual(singleCueTrack("hidden", "Kolejna wersja."));
+  await subtitlesToggle.click();
   await expect
     .poll(() => subtitleTracks(video))
     .toEqual(singleCueTrack("showing", "Kolejna wersja."));

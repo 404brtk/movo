@@ -64,10 +64,13 @@ test("requires an explicit download, retries a failed request and discovers inst
   );
   await page.getByRole("button", { name: "Download model", exact: true }).click();
   await expect(page.getByRole("progressbar", { name: "Parakeet Ultra download" })).toHaveAttribute(
-    "value",
+    "aria-valuenow",
     "1024",
   );
-  await page.getByRole("link", { name: "Back to library", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Library", exact: true })
+    .click();
   await page.getByRole("link", { name: "Models", exact: true }).click();
   await expect(page.getByRole("progressbar", { name: "Parakeet Ultra download" })).toBeVisible();
   await page.reload();
@@ -92,7 +95,7 @@ test("requires an explicit download, retries a failed request and discovers inst
   await expect(page.getByText("Needs repair", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Download model", exact: true })).toHaveCount(0);
   await expect(page.getByRole("alert")).toContainText("Repair it in your Hugging Face cache");
-  await expect(page.getByRole("status")).toHaveText("");
+  await expect(page.getByRole("status")).toHaveText("Needs repair");
 });
 
 test("cancels verification and reports a failed verification with an explicit retry on a narrow screen", async ({
@@ -114,7 +117,7 @@ test("cancels verification and reports a failed verification with an explicit re
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/models");
   await expect(page.getByRole("status")).toHaveText("Verifying download…");
-  await page.getByRole("button", { name: "Cancel installation", exact: true }).click();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Download cancelled.");
   await expect(page.getByRole("button", { name: "Download model", exact: true })).toBeEnabled();
   model = {
@@ -128,10 +131,48 @@ test("cancels verification and reports a failed verification with an explicit re
   await page.reload();
   await expect(page.getByRole("alert")).toHaveText("The model failed its integrity check.");
   await expect(page.getByRole("button", { name: "Retry download", exact: true })).toBeEnabled();
-  await page.getByText("Supported languages (2)", { exact: true }).click();
+  await page.getByRole("button", { name: "Supported languages", exact: true }).click();
   await expect(page.getByText("English, Polish", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
   await page.screenshot({ path: testInfo.outputPath("models-mobile.png"), fullPage: true });
+});
+
+test("lists the media tools and opens yt-dlp setup from the models page", async ({ page }) => {
+  await page.route("**/api/models", (route) => route.fulfill({ json: [initial] }));
+  await page.route("**/api/media-tools", (route) =>
+    route.fulfill({
+      json: {
+        ffprobe: { state: "ready", source: "managed", version: "7.1-essentials_build" },
+        ffmpeg: { state: "ready", source: "managed", version: "7.1-essentials_build" },
+        download: null,
+        installation: { phase: "idle", downloadedBytes: 0, error: null },
+      },
+    }),
+  );
+  await page.route("**/api/ytdlp", (route) =>
+    route.fulfill({
+      json: {
+        ytdlp: { state: "missing" },
+        download: {
+          provider: "yt-dlp",
+          sourceUrl: "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.26",
+          version: "2026.10.26",
+          bytes: 18874368,
+        },
+        installation: { phase: "idle", downloadedBytes: 0, error: null },
+      },
+    }),
+  );
+  await page.goto("/models");
+  const tools = page.getByRole("list", { name: "Tools" });
+  await expect(tools.getByRole("listitem").first()).toContainText(
+    "FFprobe 7.1 and FFmpeg 7.1 · private copy",
+  );
+  await expect(tools.getByText("Ready", { exact: true })).toBeVisible();
+  await tools.getByRole("button", { name: "Download yt-dlp", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "yt-dlp is needed", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Not now", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "yt-dlp is needed", exact: true })).toHaveCount(0);
 });

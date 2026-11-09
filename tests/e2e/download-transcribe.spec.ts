@@ -111,37 +111,43 @@ test("downloads and transcribes once, reports missing prerequisites and shows th
 }) => {
   await page.setViewportSize({ width: 320, height: 760 });
   await page.goto(workflow.origin);
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
   await page.getByRole("textbox", { name: "Video links" }).fill(sourceUrl);
   await page.getByRole("button", { name: "Check link", exact: true }).click();
-  const checkbox = page.getByRole("checkbox", { name: "Transcribe after download" });
+  const checkbox = page.getByRole("switch", { name: "Transcribe after download" });
   await expect(checkbox).not.toBeChecked();
   await checkbox.focus();
   await page.keyboard.press("Space");
   await expect(checkbox).toBeChecked();
-  await page.getByLabel("Save as", { exact: true }).selectOption("audio");
-  await page.getByRole("button", { name: "Download and transcribe", exact: true }).click();
+  await page
+    .getByRole("group", { name: "Save as" })
+    .getByRole("button", { name: "Audio only" })
+    .click();
+  await page.getByRole("button", { name: "Download", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("Install Parakeet Ultra before transcribing.");
   workflow.enableModel();
-  await page.getByRole("button", { name: "Download and transcribe", exact: true }).click();
+  await page.getByRole("button", { name: "Download", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Downloads", exact: true })).toBeVisible();
   await expect(page.getByText("Saved to library", { exact: false })).toBeVisible();
   await page.reload();
   await expect(
-    page.getByText("Transcription requested. Open media to view its progress.", { exact: true }),
+    page.getByText("Transcription was queued after the download.", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Open media", exact: true }).click();
+  await page.getByRole("link", { name: "Open", exact: true }).click();
   await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Cancel transcription", exact: true }),
   ).toBeVisible();
   await page.goto(`${workflow.origin}/?transcript=available`);
-  await expect(page.getByRole("heading", { name: "No recordings match" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "No transcribed recordings match these filters" }),
+  ).toBeVisible();
   await workflow.finishTranscription();
   await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   await expect(page.getByText(passage, { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText(passage, { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Copy text", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy transcript", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );

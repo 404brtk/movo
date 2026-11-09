@@ -10,18 +10,24 @@ export function formatDuration(seconds: number) {
     : `${minutes}:${remainder}`;
 }
 
+const byteUnits = ["B", "KiB", "MiB", "GiB"] as const;
+const byteExponent = (bytes: number) =>
+  bytes < 1024 ? 0 : Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), byteUnits.length - 1);
+const formatScaled = (bytes: number, exponent: number) =>
+  new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / 1024 ** exponent);
+
 export function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), 3);
-  const units = ["B", "KiB", "MiB", "GiB"];
-  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / 1024 ** exponent)} ${units[exponent]}`;
+  const exponent = byteExponent(bytes);
+  return `${formatScaled(bytes, exponent)} ${byteUnits[exponent]}`;
 }
 
-export const formatImportDate = (timestamp: number) =>
-  new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(timestamp);
+export function formatByteProgress(bytes: number, totalBytes: number) {
+  const exponent = byteExponent(totalBytes);
+  return `${formatScaled(bytes, exponent)} of ${formatScaled(totalBytes, exponent)} ${byteUnits[exponent]}`;
+}
 
-export const formatChangeTime = (timestamp: number) =>
-  new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(timestamp);
+export const formatSourceHost = (url: string) =>
+  URL.parse(url)?.hostname.replace(/^www\./u, "") ?? null;
 
 const backendNames: Record<string, string> = {
   cpu: "CPU",

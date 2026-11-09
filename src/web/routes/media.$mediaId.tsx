@@ -1,16 +1,18 @@
-import { ArrowLeft02Icon, Download04Icon } from "@hugeicons/core-free-icons";
+import { useCallback, useRef, useState } from "react";
+import { ArrowLeft02Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Schema } from "effect";
-import { useCallback, useRef, useState } from "react";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import { MediaPlayer } from "../components/media-player.tsx";
-import { MediaActions } from "../components/media-actions.tsx";
+import { NotFound } from "../components/not-found.tsx";
+import { RecordingMenu } from "../components/recording-menu.tsx";
 import { TranscriptionPanel } from "../components/transcription-panel.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
-import { ApiError, mediaFileUrl, mediaItemOptions, transcriptionOptions } from "../lib/api.ts";
-import { formatBytes, formatDuration, formatImportDate } from "../lib/format.ts";
+import { Skeleton } from "../components/ui/skeleton.tsx";
+import { ApiError, mediaItemOptions, transcriptionOptions } from "../lib/api.ts";
+import { formatBytes, formatDuration } from "../lib/format.ts";
 import { searchParams } from "../lib/search-params.ts";
 
 export const Route = createFileRoute("/media/$mediaId")({
@@ -24,6 +26,36 @@ export const Route = createFileRoute("/media/$mediaId")({
   component: MediaDetail,
 });
 
+function describeRecording(item: MediaItem) {
+  return [
+    item.kind === "video" ? "Video" : "Audio",
+    formatDuration(item.durationSeconds),
+    item.fileRemovedAt === null ? formatBytes(item.byteSize) : null,
+    item.originalName,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function SavedCopyRemoved() {
+  return (
+    <p className="mt-5 flex items-start gap-3 rounded-xl bg-subtle px-4 py-3.5 text-[13px]/5 text-muted-foreground shadow-[inset_0_0_0_1px_var(--color-border)]">
+      <HugeiconsIcon
+        icon={InformationCircleIcon}
+        aria-hidden="true"
+        className="mt-0.5 size-4 shrink-0"
+      />
+      <span>
+        <strong className="font-medium text-foreground">
+          Saved copy removed to free up space.
+        </strong>{" "}
+        The transcript and its exports are still here. Playback and transcribing again need the
+        file, so import it again if you want them back.
+      </span>
+    </p>
+  );
+}
+
 function PlaybackWithTranscript({
   item,
   startMs,
@@ -31,19 +63,6 @@ function PlaybackWithTranscript({
   item: MediaItem;
   startMs: number | undefined;
 }) {
-  if (item.fileRemovedAt !== null)
-    return (
-      <>
-        <p className="rounded-xl border bg-muted/40 px-4 py-6 text-sm text-muted-foreground sm:px-8">
-          The saved copy was removed to free up space. The transcript is still available.
-        </p>
-        <TranscriptionPanel mediaId={item.id} revealMs={startMs} />
-      </>
-    );
-  return <PlaybackWithPlayer item={item} startMs={startMs} />;
-}
-
-function PlaybackWithPlayer({ item, startMs }: { item: MediaItem; startMs: number | undefined }) {
   const player = useRef<HTMLMediaElement | null>(null);
   const [positionMs, setPositionMs] = useState(startMs ?? 0);
   const transcription = useQuery(transcriptionOptions(item.id));
@@ -76,96 +95,57 @@ function MediaDetail() {
   const { startMs } = Route.useSearch();
   const media = useQuery(mediaItemOptions(mediaId));
   const item = media.data;
+  if (media.isError && media.error instanceof ApiError && media.error.status === 404)
+    return (
+      <NotFound description="The recording may have been deleted, or the link is out of date." />
+    );
   return (
-    <main className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
-      <Link
-        to="/"
-        className="mb-8 inline-flex min-h-10 items-center gap-2 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-      >
-        <HugeiconsIcon icon={ArrowLeft02Icon} size={18} aria-hidden="true" />
-        Back to library
-      </Link>
+    <main
+      className={`mx-auto max-w-[720px] px-5 pt-5 ${item?.kind === "audio" && item.fileRemovedAt === null ? "pb-32" : "pb-16"}`}
+    >
+      <div className="-mx-2.5 flex items-center justify-between">
+        <Link
+          to="/"
+          aria-label="Back to library"
+          className={buttonVariants({ variant: "ghost", size: "sm" })}
+        >
+          <HugeiconsIcon icon={ArrowLeft02Icon} data-icon="inline-start" aria-hidden="true" />
+          Library
+        </Link>
+        {item ? <RecordingMenu key={item.id} item={item} /> : null}
+      </div>
       {media.isPending ? (
-        <output className="block py-12 text-sm text-muted-foreground">Loading media…</output>
+        <output aria-label="Loading recording" className="mt-4 grid gap-3 opacity-50">
+          <Skeleton className="h-7 w-2/3 rounded-full" />
+          <Skeleton className="h-3 w-1/3 rounded-full" />
+        </output>
       ) : null}
       {media.isError ? (
-        <div role="alert" className="space-y-3">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {media.error instanceof ApiError && media.error.status === 404
-              ? "Media not found"
-              : "Could not load media"}
-          </h1>
+        <div role="alert" className="mt-6 space-y-4 rounded-lg border p-6">
+          <h1 className="text-lg font-semibold">Could not load this recording</h1>
           <p className="text-sm text-muted-foreground">{media.error.message}</p>
-          {media.error instanceof ApiError && media.error.status === 404 ? null : (
-            <Button
-              variant="outline"
-              onClick={() => {
-                void media.refetch();
-              }}
-            >
-              Try again
-            </Button>
-          )}
+          <Button variant="outline" onClick={() => void media.refetch()}>
+            Try again
+          </Button>
         </div>
       ) : null}
       {item ? (
-        <div className="space-y-8">
-          <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
-            <div className="min-w-0 space-y-2">
-              <h1 className="text-3xl font-semibold tracking-[-0.035em] wrap-anywhere sm:text-4xl">
-                {item.title}
-              </h1>
-              <p className="text-sm wrap-anywhere text-muted-foreground">{item.originalName}</p>
-            </div>
-            {item.fileRemovedAt === null ? (
-              <a
-                className={buttonVariants({
-                  variant: "outline",
-                  className: "h-10 w-fit gap-2 px-3 text-sm",
-                })}
-                href={mediaFileUrl(item.id)}
-                download={item.originalName}
-              >
-                <HugeiconsIcon icon={Download04Icon} size={18} aria-hidden="true" />
-                Save a copy
-              </a>
-            ) : null}
-          </div>
-          <MediaActions key={item.id} item={item} />
-          <PlaybackWithTranscript key={`${item.id}:${startMs}`} item={item} startMs={startMs} />
-          {item.sourceUrl ? (
-            <a
-              href={item.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-10 items-center text-sm underline underline-offset-4"
-            >
-              View original source
-            </a>
-          ) : null}
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-6 border-t pt-6 text-sm sm:grid-cols-4">
-            <div className="space-y-1.5">
-              <dt className="text-muted-foreground">Type</dt>
-              <dd>{item.kind === "video" ? "Video" : "Audio"}</dd>
-            </div>
-            <div className="space-y-1.5">
-              <dt className="text-muted-foreground">Duration</dt>
-              <dd className="tabular-nums">{formatDuration(item.durationSeconds)}</dd>
-            </div>
-            <div className="space-y-1.5">
-              <dt className="text-muted-foreground">File size</dt>
-              <dd>{item.fileRemovedAt === null ? formatBytes(item.byteSize) : "Removed"}</dd>
-            </div>
-            <div className="space-y-1.5">
-              <dt className="text-muted-foreground">Imported</dt>
-              <dd>
-                <time dateTime={new Date(item.importedAt).toISOString()}>
-                  {formatImportDate(item.importedAt)}
-                </time>
-              </dd>
-            </div>
-          </dl>
-        </div>
+        <>
+          <h1 className="mt-3.5 text-[28px]/[34px] font-semibold tracking-[-0.025em] text-balance wrap-anywhere">
+            {item.title}
+          </h1>
+          <p className="mt-1.5 text-[13px]/[normal] wrap-anywhere text-muted-foreground tabular-nums">
+            {describeRecording(item)}
+          </p>
+          {item.fileRemovedAt === null ? (
+            <PlaybackWithTranscript key={`${item.id}:${startMs}`} item={item} startMs={startMs} />
+          ) : (
+            <>
+              <SavedCopyRemoved />
+              <TranscriptionPanel mediaId={item.id} revealMs={startMs} />
+            </>
+          )}
+        </>
       ) : null}
     </main>
   );

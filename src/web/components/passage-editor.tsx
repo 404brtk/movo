@@ -4,13 +4,16 @@ import type { TranscriptPassage } from "../../shared/transcript-passages.ts";
 import { editTranscript } from "../lib/api.ts";
 import { formatDuration } from "../lib/format.ts";
 import { useTranscriptChange } from "../lib/transcript-change.ts";
+import { Spinner } from "./spinner.tsx";
 import { Button } from "./ui/button.tsx";
+import { Kbd } from "./ui/kbd.tsx";
 import { Textarea } from "./ui/textarea.tsx";
 
 const focusAtEnd = (input: HTMLTextAreaElement | null) => {
   input?.focus();
   input?.setSelectionRange(input.value.length, input.value.length);
 };
+const modifierKey = /Mac|iPhone|iPad/u.test(globalThis.navigator?.userAgent ?? "") ? "⌘" : "Ctrl";
 
 export function PassageEditor({
   mediaId,
@@ -38,7 +41,6 @@ export function PassageEditor({
   return (
     <form
       aria-label={`Edit passage at ${formatDuration(passage.startMs / 1000)}`}
-      className="min-w-0 flex-1 space-y-3 py-1"
       onSubmit={(event) => {
         event.preventDefault();
         submit();
@@ -63,24 +65,24 @@ export function PassageEditor({
             submit();
           }
         }}
+        className="mt-1.5 min-h-[92px] rounded-[9px] px-2.5 py-2 text-[17px]/7 md:text-[17px]/7"
       />
-      <p id={hintId} className="text-xs text-muted-foreground">
-        Ctrl+Enter saves and Esc cancels. Clear the text to remove the passage. Every change can be
-        undone from History.
-      </p>
       {save.isError && !stale ? (
-        <p id={errorId} role="alert" className="text-sm wrap-anywhere text-destructive">
+        <p id={errorId} role="alert" className="mt-2 text-[13px]/5 wrap-anywhere text-destructive">
           {save.error.message}
         </p>
       ) : null}
       {stale ? (
-        <div role="alert" className="space-y-3 rounded-md border p-3 text-sm">
+        <div
+          role="alert"
+          className="mt-2.5 space-y-2.5 rounded-[10px] bg-subtle p-3 text-[13px]/5 shadow-[inset_0_0_0_1px_var(--color-border)]"
+        >
           <p className="wrap-anywhere">
             The transcript changed while you were editing. This passage now reads “{passage.text}”.
           </p>
           <Button
             variant="outline"
-            className="h-10 px-3 text-sm"
+            size="sm"
             onClick={() => {
               save.reset();
               setTarget(current);
@@ -90,18 +92,27 @@ export function PassageEditor({
           </Button>
         </div>
       ) : null}
-      <div className="flex flex-wrap gap-3">
-        <Button type="submit" className="h-10 px-3 text-sm" disabled={save.isPending || stale}>
-          {save.isPending ? "Saving…" : "Save passage"}
-        </Button>
-        <Button
-          variant="outline"
-          className="h-10 px-3 text-sm"
-          disabled={save.isPending}
-          onClick={onClose}
-        >
-          Cancel
-        </Button>
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+        <p id={hintId} className="text-xs text-muted-foreground">
+          <Kbd>{modifierKey}</Kbd> <Kbd>Enter</Kbd> to save · <Kbd>Esc</Kbd> to cancel
+          <span className="sr-only">
+            . Clear the text to remove the passage. Every change can be undone from History.
+          </span>
+        </p>
+        <div className="ml-auto flex gap-1.5">
+          <Button variant="ghost" size="sm" disabled={save.isPending} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            size="sm"
+            aria-busy={save.isPending}
+            disabled={save.isPending || stale}
+          >
+            {save.isPending ? <Spinner /> : null}
+            {save.isPending ? "Saving…" : "Save passage"}
+          </Button>
+        </div>
       </div>
     </form>
   );

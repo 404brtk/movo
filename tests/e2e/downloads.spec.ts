@@ -48,7 +48,7 @@ test("keeps saved media available when temporary download cleanup fails", async 
   await page.goto("/downloads");
   await expect(page.getByText("Saved to library", { exact: false })).toBeVisible();
   await expect(page.getByText(job.cleanupError ?? "", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open media", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Open", exact: true })).toHaveAttribute(
     "href",
     `/media/${job.mediaId}`,
   );
@@ -56,10 +56,10 @@ test("keeps saved media available when temporary download cleanup fails", async 
 });
 
 for (const choice of [
-  { preset: "video-480p", label: "Video · Up to 480p" },
-  { preset: "video-720p", label: "Video · Up to 720p" },
-  { preset: "video-best", label: "Video · Best available" },
-  { preset: "audio", label: "Audio · Best available" },
+  { preset: "video-480p", option: "480p", label: "Video · up to 480p" },
+  { preset: "video-720p", option: "720p", label: "Video · up to 720p" },
+  { preset: "video-best", option: "Best", label: "Video · best available" },
+  { preset: "audio", option: "Audio only", label: "Audio · best available" },
 ] as const) {
   test(`queues ${choice.preset} and shows the selected option after reload`, async ({ page }) => {
     let queued = false;
@@ -84,20 +84,29 @@ for (const choice of [
     });
     await page.setViewportSize({ width: 320, height: 760 });
     await page.goto("/");
+    await page.getByRole("button", { name: "Download from link", exact: true }).click();
     await page.getByRole("textbox", { name: "Video links" }).fill(url);
     await page.getByRole("button", { name: "Check link", exact: true }).click();
-    await expect(page.getByLabel("Save as", { exact: true })).toHaveValue("video");
-    await expect(page.getByLabel("Video quality", { exact: true })).toHaveValue("video-1080p");
+    const saveAs = page.getByRole("group", { name: "Save as" });
+    await expect(saveAs.getByRole("button", { name: "Video" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const quality = page.getByRole("group", { name: "Quality" });
+    await expect(quality.getByRole("button", { name: "1080p" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     if (choice.preset === "audio") {
-      await page.getByLabel("Save as", { exact: true }).selectOption("audio");
+      await saveAs.getByRole("button", { name: choice.option }).click();
     } else {
-      await page.getByLabel("Video quality", { exact: true }).selectOption(choice.preset);
+      await quality.getByRole("button", { name: choice.option }).click();
     }
     await page.getByRole("button", { name: "Download", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Downloads", exact: true })).toBeVisible();
-    await expect(page.getByText(choice.label, { exact: true })).toBeVisible();
+    await expect(page.getByText(choice.label)).toBeVisible();
     await page.reload();
-    await expect(page.getByText(choice.label, { exact: true })).toBeVisible();
+    await expect(page.getByText(choice.label)).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
@@ -126,6 +135,7 @@ test("queues several pasted links without previewing them", async ({ page }) => 
     return route.fulfill({ json: queued ? jobs : [] });
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
   const links = page.getByRole("textbox", { name: "Video links" });
   await links.fill(` ${urls[0]}`);
   await links.press("Shift+Enter");
@@ -133,10 +143,13 @@ test("queues several pasted links without previewing them", async ({ page }) => 
   await expect(links).toHaveValue(` ${urls.join("\n")} `);
   await links.press("Enter");
   await expect(page.getByText("2 links", { exact: true })).toBeVisible();
-  await page.getByLabel("Save as", { exact: true }).selectOption("audio");
+  await page
+    .getByRole("group", { name: "Save as" })
+    .getByRole("button", { name: "Audio only" })
+    .click();
   await page.getByRole("button", { name: "Download all 2", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Downloads", exact: true })).toBeVisible();
-  await expect(page.getByRole("list", { name: "Download jobs" }).getByRole("listitem")).toHaveCount(
+  await expect(page.getByRole("list", { name: "In progress" }).getByRole("listitem")).toHaveCount(
     2,
   );
   expect(previewed).toBe(false);
@@ -189,26 +202,30 @@ test("previews an X post, recovers from a source error and keeps polling while a
     );
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
   await page.getByRole("textbox", { name: "Video links" }).fill(inputUrl);
   await page.getByRole("button", { name: "Check link", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText(
     "Use a public post that opens without signing in",
   );
-  await expect(page.getByRole("button", { name: "Download", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Download", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Check link", exact: true }).click();
-  await expect(page.getByText("Duration unknown", { exact: true })).toBeVisible();
+  await expect(page.getByText(/· Duration unknown$/u)).toBeVisible();
   await page.getByRole("button", { name: "Download", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Downloads", exact: true })).toBeVisible();
-  await expect(page.getByRole("list", { name: "Download jobs" })).toContainText("Downloading");
-  await page.getByRole("link", { name: "Back to library", exact: true }).click();
+  await expect(page.getByRole("list", { name: "In progress" })).toContainText("Downloading");
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Library", exact: true })
+    .click();
   await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
-  await expect(page.locator("audio")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Downloads 1", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Player", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Downloading/u })).toBeVisible();
   job = { ...job, status: "completed", phase: "finished", mediaId: item.id };
-  await expect(page.getByRole("link", { name: "Downloads", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Downloading/u })).toHaveCount(0);
   await page.getByRole("link", { name: "Downloads", exact: true }).click();
-  await expect(page.getByRole("list", { name: "Download jobs" })).toContainText("Saved to library");
-  await page.getByRole("link", { name: "Open media", exact: true }).click();
+  await expect(page.getByRole("list", { name: "Recent" })).toContainText("Saved to library");
+  await page.getByRole("link", { name: "Open", exact: true }).click();
   await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
 });
 
