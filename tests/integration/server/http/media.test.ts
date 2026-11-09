@@ -55,7 +55,7 @@ describe("media HTTP interface", () => {
       expect(renamed.status).toBe(200);
       expect(await renamed.json()).toEqual({ ...item, title: "Nowy tytuł 🎙️" });
       expect(await (await app.request(base)).json()).toEqual({
-        items: [{ ...item, title: "Nowy tytuł 🎙️" }],
+        items: [{ ...item, title: "Nowy tytuł 🎙️", transcription: "none" }],
         transcribing: false,
       });
       for (const method of ["PATCH", "DELETE"]) {
@@ -84,7 +84,11 @@ describe("media HTTP interface", () => {
       expect(found.status).toBe(200);
       expect(await found.json()).toEqual({
         items: [
-          { ...item, match: { title: [{ start: 0, end: 6 }], passages: [], passageCount: 0 } },
+          {
+            ...item,
+            transcription: "none",
+            match: { title: [{ start: 0, end: 6 }], passages: [], passageCount: 0 },
+          },
         ],
         transcribing: false,
       });
@@ -156,7 +160,7 @@ describe("media HTTP interface", () => {
       });
       const list = await app.request(base);
       expect(Schema.decodeUnknownSync(LibraryList)(await list.json())).toEqual({
-        items: [imported],
+        items: [{ ...imported, transcription: "none" }],
         transcribing: false,
       });
       const detail = await app.request(`${base}/${imported.id}`);

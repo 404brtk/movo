@@ -5,6 +5,8 @@ import { MediaItem, mediaKinds } from "./media.ts";
 export const librarySorts = ["relevance", "newest", "oldest", "title"] as const;
 export type LibrarySort = (typeof librarySorts)[number];
 export const transcriptFilters = ["available", "missing"] as const;
+export const libraryTranscriptions = ["none", "active", "stopped", "done"] as const;
+export type LibraryTranscription = (typeof libraryTranscriptions)[number];
 export const maxSearchLength = 200;
 
 export const LibraryQuery = Schema.Struct({
@@ -38,6 +40,7 @@ export const LibraryMatch = Schema.Struct({
 export type LibraryMatch = typeof LibraryMatch.Type;
 export const LibraryItem = Schema.Struct({
   ...MediaItem.fields,
+  transcription: Schema.Literals(libraryTranscriptions),
   match: Schema.optionalKey(LibraryMatch),
 });
 export type LibraryItem = typeof LibraryItem.Type;

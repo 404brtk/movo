@@ -60,7 +60,7 @@ const changes = (hint: { destructive?: boolean; idempotent: boolean; openWorld?:
 export const movoTools = Toolkit.make(
   Tool.make("search_library", {
     description:
-      "Search saved recordings by title and transcript text, or list them when q is empty. Every word of q must match; words also match longer words that start with them. Optional filters: kind (audio, video), transcript (available, missing), sort (relevance, newest, oldest, title). Transcript matches include up to three passages with startMs, which read_transcript accepts as fromMs. Returns at most limit recordings (default 20, up to 100) after skipping offset (default 0), and the total number of matches.",
+      "Search saved recordings by title and transcript text, or list them when q is empty. Every word of q must match; words also match longer words that start with them. Optional filters: kind (audio, video), transcript (available, missing), sort (relevance, newest, oldest, title). Each recording has transcription: active while its transcription is queued or running, done when it has a transcript, stopped when the last attempt ended without one, none when it was never transcribed. Transcript matches include up to three passages with startMs, which read_transcript accepts as fromMs. Returns at most limit recordings (default 20, up to 100) after skipping offset (default 0), and the total number of matches.",
     parameters: Schema.Struct({ ...LibraryQuery.fields, ...Page }),
     success: Schema.Struct({
       items: Schema.Array(LibraryItem),
