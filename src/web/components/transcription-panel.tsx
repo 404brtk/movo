@@ -102,6 +102,7 @@ function TranscriptView({
           playback={playback}
           revealMs={revealMs}
           editing={editing}
+          searching={showFind}
           matches={showFind ? find.matches : undefined}
         />
       ) : (

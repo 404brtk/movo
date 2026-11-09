@@ -13,6 +13,14 @@ const scrollsPage = (event: KeyboardEvent) =>
 export const pinnedHeight = () =>
   Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
 
+const currentPassageIn = (list: RefObject<HTMLElement | null>) =>
+  list.current?.querySelector('[aria-current="time"]') ?? null;
+
+const isOffscreen = (element: Element | null) => {
+  const bounds = element?.getBoundingClientRect();
+  return !bounds || bounds.bottom < pinnedHeight() || bounds.top > window.innerHeight;
+};
+
 const scrollBehavior = (): ScrollBehavior =>
   matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 
@@ -31,16 +39,22 @@ export function useTranscriptFollow({
 }) {
   const [currentAbove, setCurrentAbove] = useState(false);
   const followed = useRef({ following, passage });
+  const wasSuspended = useRef(suspended);
 
   useEffect(() => {
     const previous = followed.current;
     followed.current = { following, passage };
     if (!following || suspended || passage === undefined) return;
     if (previous.following && previous.passage === passage) return;
-    list.current
-      ?.querySelector('[aria-current="time"]')
-      ?.scrollIntoView({ block: "start", behavior: scrollBehavior() });
+    currentPassageIn(list)?.scrollIntoView({ block: "start", behavior: scrollBehavior() });
   }, [list, following, suspended, passage]);
+
+  useEffect(() => {
+    const resumed = wasSuspended.current && !suspended;
+    wasSuspended.current = suspended;
+    if (!resumed || !following || passage === undefined) return;
+    if (isOffscreen(currentPassageIn(list))) onFollowingChange?.(false);
+  }, [list, following, suspended, passage, onFollowingChange]);
 
   useEffect(() => {
     if (!following || !onFollowingChange) return undefined;
@@ -69,7 +83,7 @@ export function useTranscriptFollow({
   useEffect(() => {
     if (following || passage === undefined) return undefined;
     const locate = () => {
-      const bounds = list.current?.querySelector('[aria-current="time"]')?.getBoundingClientRect();
+      const bounds = currentPassageIn(list)?.getBoundingClientRect();
       setCurrentAbove(bounds !== undefined && bounds.bottom < pinnedHeight());
     };
     locate();

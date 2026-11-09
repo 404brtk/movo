@@ -170,12 +170,14 @@ export function TranscriptReader({
   playback,
   revealMs,
   editing,
+  searching = false,
   matches,
 }: {
   transcript: Transcript;
   playback?: TranscriptPlayback | undefined;
   revealMs?: number | undefined;
   editing?: TranscriptEditing | undefined;
+  searching?: boolean;
   matches?: TranscriptMatches | undefined;
 }) {
   const [edited, setEdited] = useState<EditedPassage | null>(null);
@@ -185,7 +187,7 @@ export function TranscriptReader({
   const revealedWord = revealMs === undefined ? -1 : currentWordIndex(transcript.words, revealMs);
   const list = useRef<HTMLOListElement>(null);
   const currentPassage = passages.find((passage) => contains(passage, currentWord));
-  const suspended = Boolean(matches) || Boolean(edited?.open);
+  const suspended = searching || Boolean(edited?.open);
   const { currentAbove } = useTranscriptFollow({
     list,
     passage: currentPassage?.firstWord,
