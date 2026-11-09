@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Clock01Icon, Undo02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import type { TranscriptChange } from "../../shared/contracts/transcriptions.ts";
+import type { TranscriptChange, TranscriptEdit } from "../../shared/contracts/transcriptions.ts";
 import { restoreTranscript, transcriptHistoryOptions } from "../lib/api.ts";
 import { formatDuration } from "../lib/format.ts";
 import { formatDayAndTime } from "../lib/library-view.ts";
@@ -20,11 +20,10 @@ import {
 } from "./ui/sheet.tsx";
 
 const quoted = (text: string) => `“${text}”`;
-const restoredVersion = (target: number, resultRevision: number) =>
-  target === resultRevision ? "Restored the transcription result" : `Restored version ${target}`;
+const restoredVersion = (isResult: boolean) =>
+  isResult ? "Restored the transcription result" : "Restored an earlier version";
 
-function describeChange(change: TranscriptChange, resultRevision: number) {
-  if (change.kind === "restore") return restoredVersion(change.restoredRevision, resultRevision);
+function describeEdit(change: TranscriptEdit) {
   if (change.kind === "replace")
     return change.after
       ? `Replaced ${quoted(change.before)} with ${quoted(change.after)}`
@@ -34,13 +33,20 @@ function describeChange(change: TranscriptChange, resultRevision: number) {
   return change.after ? `Edited passage${at}` : `Removed passage${at}`;
 }
 
+const describeChange = (change: TranscriptChange) =>
+  change.kind === "restore" ? restoredVersion(change.restored === null) : describeEdit(change);
+
 function describeDetails(change: TranscriptChange) {
+  const target =
+    change.kind === "restore" && change.restored
+      ? `Back to: ${describeEdit(change.restored)} · `
+      : "";
   const count =
     change.kind === "replace"
       ? `${change.replacementCount} ${change.replacementCount === 1 ? "replacement" : "replacements"} · `
       : "";
   const agent = change.source === "mcp" ? " · by an AI agent" : "";
-  return `${count}${formatDayAndTime(change.createdAt)}${agent}`;
+  return `${target}${count}${formatDayAndTime(change.createdAt)}${agent}`;
 }
 
 function HistoryVersions({
@@ -59,11 +65,12 @@ function HistoryVersions({
     restoreTranscript(mediaId, { revision, target }),
   );
   const [restored, setRestored] = useState<number | null>(null);
+  const reloading = history.isPlaceholderData;
   const changes = history.data?.pages.flatMap((page) => page.changes) ?? [];
   const versions = [
     ...changes.map((change) => ({
       revision: change.revision,
-      description: describeChange(change, resultRevision),
+      description: describeChange(change),
       details: describeDetails(change),
     })),
     ...(history.isSuccess && !history.hasNextPage
@@ -73,7 +80,7 @@ function HistoryVersions({
   return (
     <>
       <output aria-live="polite" className="sr-only">
-        {restored !== null ? `${restoredVersion(restored, resultRevision)}.` : ""}
+        {restored !== null ? `${restoredVersion(restored === resultRevision)}.` : ""}
       </output>
       {restore.isError ? (
         <p role="alert" className="mx-5 mt-3 text-xs wrap-anywhere text-destructive">
@@ -95,9 +102,9 @@ function HistoryVersions({
         </div>
       ) : null}
       {versions.length > 0 ? (
-        <ol aria-label="Transcript versions" className="px-3 pt-3">
-          {versions.map((version) => {
-            const current = version.revision === revision;
+        <ol aria-label="Transcript versions" aria-busy={reloading} className="px-3 pt-3">
+          {versions.map((version, index) => {
+            const current = !reloading && index === 0;
             const restoring = restore.isPending && restore.variables === version.revision;
             return (
               <li
@@ -126,9 +133,9 @@ function HistoryVersions({
                   <Button
                     variant="ghost"
                     size="sm"
-                    aria-label={`Restore version ${version.revision}`}
+                    aria-label={`Restore: ${version.description} (${version.details})`}
                     aria-busy={restoring}
-                    disabled={restore.isPending}
+                    disabled={restore.isPending || reloading}
                     onClick={() =>
                       restore.mutate(version.revision, {
                         onSuccess: () => setRestored(version.revision),
@@ -186,7 +193,7 @@ export function ChangeHistory(props: {
           <SheetTitle>History</SheetTitle>
         </SheetHeader>
         <SheetDescription>
-          Every edit is a version. Restoring adds a new one, so nothing is lost.
+          Every edit is saved. Restoring a version keeps the others, so you can switch back anytime.
         </SheetDescription>
         <HistoryVersions {...props} />
       </SheetContent>
