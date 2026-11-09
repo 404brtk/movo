@@ -30,21 +30,25 @@ test("installs yt-dlp before checking a link and returns focus after setup", asy
     await route.fulfill({ json: { url, title: "A source recording", durationSeconds: 2 } });
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
   await page.getByRole("textbox", { name: "Video links" }).fill(url);
   const check = page.getByRole("button", { name: "Check link", exact: true });
   await check.click();
-  await expect(page.getByRole("heading", { name: "yt-dlp", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "yt-dlp is needed", exact: true })).toBeVisible();
   expect(previews).toBe(0);
   await page.getByRole("button", { name: "Download yt-dlp", exact: true }).click();
-  await expect(page.getByRole("progressbar", { name: "yt-dlp download" })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Downloading yt-dlp" })).toBeVisible();
   status = {
     ...missing,
     ytdlp: { state: "ready", source: "managed", version: "2026.10.26" },
     installation: { phase: "complete", downloadedBytes: missing.download?.bytes ?? 0, error: null },
   };
-  await expect(page.getByText("yt-dlp is ready. You can check the link.")).toBeVisible();
-  await page.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "yt-dlp", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "yt-dlp is ready", exact: true })).toBeVisible();
+  await page
+    .getByRole("region", { name: "yt-dlp is ready" })
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+  await expect(page.getByRole("region", { name: "yt-dlp is ready" })).toHaveCount(0);
   await expect(check).toBeFocused();
   await check.click();
   await expect(page.getByText("A source recording", { exact: true })).toBeVisible();
@@ -56,6 +60,7 @@ test("explains manual yt-dlp setup where automatic downloads are unavailable", a
     route.fulfill({ json: { ...missing, download: null } }),
   );
   await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
   await page.getByRole("textbox", { name: "Video links" }).fill(url);
   await page.getByRole("button", { name: "Check link", exact: true }).click();
   await expect(page.getByText(/add it to PATH or set YTDLP_PATH/u)).toBeVisible();

@@ -92,29 +92,36 @@ function keepEdgePunctuation(texts: readonly string[], matched: readonly Transcr
   );
 }
 
-export function replaceWords(
-  words: readonly TranscriptWord[],
-  find: string,
-  replacement: string,
-): TranscriptPatch {
+export function findWords(words: readonly TranscriptWord[], find: string) {
   const pattern = wordTokens(find).map(matchKey);
   if (pattern.length === 0) return [];
-  const replacementTexts = wordTokens(replacement);
   const keys = words.map((word) => matchKey(word.text));
-  const patch: WordReplacement[] = [];
+  const ranges: { firstWord: number; wordCount: number }[] = [];
   let index = 0;
   while (index + pattern.length <= words.length) {
     if (!pattern.every((key, offset) => keys[index + offset] === key)) {
       index++;
       continue;
     }
-    const matched = words.slice(index, index + pattern.length);
-    const texts = keepEdgePunctuation(replacementTexts, matched);
-    if (texts.length !== matched.length || texts.some((text, at) => text !== matched[at]?.text))
-      patch.push(retimedReplacement(words, index, matched.length, texts));
+    ranges.push({ firstWord: index, wordCount: pattern.length });
     index += pattern.length;
   }
-  return patch;
+  return ranges;
+}
+
+export function replaceWords(
+  words: readonly TranscriptWord[],
+  find: string,
+  replacement: string,
+): TranscriptPatch {
+  const replacementTexts = wordTokens(replacement);
+  return findWords(words, find).flatMap(({ firstWord, wordCount }) => {
+    const matched = words.slice(firstWord, firstWord + wordCount);
+    const texts = keepEdgePunctuation(replacementTexts, matched);
+    return texts.length === matched.length && texts.every((text, at) => text === matched[at]?.text)
+      ? []
+      : [retimedReplacement(words, firstWord, wordCount, texts)];
+  });
 }
 
 export function applyPatch(words: readonly TranscriptWord[], patch: TranscriptPatch) {

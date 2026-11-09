@@ -1,8 +1,18 @@
 import { useState } from "react";
+import { Copy01Icon, FileExportIcon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { transcriptExportFormats, type Transcript } from "../../shared/contracts/transcriptions.ts";
 import { transcriptText } from "../../shared/transcript-export.ts";
 import { transcriptionExportUrl } from "../lib/api.ts";
-import { Button, buttonVariants } from "./ui/button.tsx";
+import { Button } from "./ui/button.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
+
+const formatNames = { txt: "Plain text", srt: "SubRip subtitles", vtt: "WebVTT subtitles" };
 
 export function TranscriptActions({
   mediaId,
@@ -35,34 +45,51 @@ export function TranscriptActions({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          className="h-10 px-3 text-sm"
-          disabled={copyState === "copying"}
-          onClick={() => {
-            void copyText();
-          }}
+    <div className="relative flex items-center">
+      <output className="sr-only">{copyState === "copied" ? "Transcript copied." : ""}</output>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Copy transcript"
+        disabled={copyState === "copying"}
+        onClick={() => void copyText()}
+      >
+        <HugeiconsIcon
+          icon={copyState === "copied" ? Tick02Icon : Copy01Icon}
+          aria-hidden="true"
+          className={copyState === "copied" ? "text-success" : undefined}
+        />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" className="-mr-1.5" />}
+          aria-label="Export transcript"
         >
-          Copy text
-        </Button>
-        {transcriptExportFormats.map((format) => (
-          <a
-            key={format}
-            href={transcriptionExportUrl(mediaId, format)}
-            download
-            className={buttonVariants({ variant: "outline", className: "h-10 px-3 text-sm" })}
-          >
-            Download {format.toUpperCase()}
-          </a>
-        ))}
-      </div>
-      <output className="block text-sm text-muted-foreground">
-        {copyState === "copied" ? "Transcript copied." : ""}
-      </output>
+          <HugeiconsIcon icon={FileExportIcon} aria-hidden="true" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          {transcriptExportFormats.map((format) => (
+            <DropdownMenuItem
+              key={format}
+              render={({ children, ...props }) => (
+                <a {...props} href={transcriptionExportUrl(mediaId, format)} download>
+                  {children}
+                </a>
+              )}
+            >
+              Download {format.toUpperCase()}
+              <span className="ml-auto text-[11.5px] text-muted-foreground">
+                {formatNames[format]}
+              </span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
       {copyState === "failed" ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          className="absolute top-full right-0 z-10 mt-1 w-64 text-right text-xs text-destructive"
+        >
           Could not copy text. Allow clipboard access in your browser, or download TXT.
         </p>
       ) : null}

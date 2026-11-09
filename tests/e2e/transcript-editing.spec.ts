@@ -104,7 +104,7 @@ test("edits a passage with the keyboard, keeps it after reload and finds the new
   await page.keyboard.press("Control+Enter");
   await expect(passages(page).first()).toContainText("We deploy Kubernetes clusters daily.");
   await expect(edit).toBeFocused();
-  await expect(transcription(page)).toContainText("processed on this computer · edited.");
+  await expect(transcription(page)).toContainText("Parakeet Ultra · edited");
 
   await page.reload();
   await expect(passages(page).first()).toContainText("We deploy Kubernetes clusters daily.");
@@ -121,12 +121,13 @@ test("previews and applies find and replace, then undoes and restores versions",
   await expect(form.getByLabel("Find", { exact: true })).toBeFocused();
   await form.getByLabel("Find", { exact: true }).fill("KUBERNETIS");
   await form.getByLabel("Replace with").fill("Kubernetes");
-  await expect(form.getByRole("status")).toHaveText("2 matches to replace.");
-  await expect(form.getByRole("list", { name: "Changes to make" })).toContainText(
-    "kubernetis → Kubernetes",
-  );
+  await expect(form.getByRole("status")).toHaveText(/^Matches whole words in 2 passages\./u);
+  await expect(form.getByText("1 of 2", { exact: true })).toBeVisible();
+  await expect(panel.locator("mark")).toHaveText(["kubernetis", "Kubernetis"]);
+  await form.getByLabel("Find", { exact: true }).press("Enter");
+  await expect(form.getByText("2 of 2", { exact: true })).toBeVisible();
   await form.getByRole("button", { name: "Replace all" }).click();
-  await expect(form.getByRole("status")).toHaveText("Replaced 2 matches.");
+  await expect(form.getByRole("status")).toHaveText(/^Replaced 2 matches\./u);
   await expect(passages(page)).toHaveText([
     /We deploy Kubernetes daily\./u,
     /Kubernetes keeps running\./u,
@@ -137,24 +138,29 @@ test("previews and applies find and replace, then undoes and restores versions",
   await page.getByRole("textbox", { name: "Passage text" }).fill("Kubernetes keeps working.");
   await page.getByRole("button", { name: "Save passage" }).click();
 
-  await panel.getByRole("button", { name: "History" }).click();
-  const versions = panel.getByRole("list", { name: "Transcript versions" }).getByRole("listitem");
+  const history = panel.getByRole("button", { name: "History" });
+  await history.click();
+  const versions = page.getByRole("list", { name: "Transcript versions" }).getByRole("listitem");
   await expect(versions).toHaveText([
-    /“running\.” → “working\.”Version 3.*Current/u,
-    /“kubernetis” → “Kubernetes” in 2 placesVersion 2.*/u,
-    /Transcription resultVersion 1/u,
+    /^Edited passage at 0:01.*Current$/u,
+    /^Replaced “kubernetis” with “Kubernetes”2 replacements · /u,
+    /^Transcription result/u,
   ]);
-  await panel.getByRole("button", { name: "Undo last change" }).click();
-  await expect(panel.getByRole("status").filter({ hasText: "Restored" })).toHaveText(
+  await page.getByRole("button", { name: "Restore version 2" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Restored" })).toHaveText(
     "Restored version 2.",
   );
+  await page.keyboard.press("Escape");
+  await expect(history).toBeFocused();
   await expect(passages(page).last()).toContainText("Kubernetes keeps running.");
-  await panel.getByRole("button", { name: "Restore version 1" }).click();
+  await history.click();
+  await page.getByRole("button", { name: "Restore version 1" }).click();
+  await expect(versions.first()).toHaveText(/^Restored the transcription result.*Current$/u);
+  await page.getByRole("button", { name: "Close history" }).click();
   await expect(passages(page)).toHaveText([
     /We deploy kubernetis daily\./u,
     /Kubernetis keeps running\./u,
   ]);
-  await expect(versions.first()).toHaveText(/Restored the transcription resultVersion 5.*Current/u);
 });
 
 test("asks before transcribing again replaces edits and then starts a new history", async ({
@@ -166,21 +172,24 @@ test("asks before transcribing again replaces edits and then starts a new histor
   await page.keyboard.press("Control+Enter");
   await expect(passages(page).first()).toContainText("Edited first passage.");
 
-  await panel.getByRole("button", { name: "Transcribe again" }).click();
+  const more = page.getByRole("button", { name: "More actions", exact: true });
+  await more.click();
+  await page.getByRole("menuitem", { name: "Transcribe again…" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Replace your edits?" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Keep edits" }).click();
   await expect(dialog).toBeHidden();
   await expect(passages(page).first()).toContainText("Edited first passage.");
 
-  await panel.getByRole("button", { name: "Transcribe again" }).click();
+  await more.click();
+  await page.getByRole("menuitem", { name: "Transcribe again…" }).click();
   await dialog.getByRole("button", { name: "Transcribe again" }).click();
   await expect(passages(page).first()).toContainText("We deploy kubernetis daily.");
   await expect(panel).not.toContainText("· edited");
   await panel.getByRole("button", { name: "History" }).click();
   await expect(
-    panel.getByRole("list", { name: "Transcript versions" }).getByRole("listitem"),
-  ).toHaveText([/Transcription resultVersion 3Current/u]);
+    page.getByRole("list", { name: "Transcript versions" }).getByRole("listitem"),
+  ).toHaveText([/^Transcription result.*Current$/u]);
 });
 
 test("keeps a passage draft when another client changes the transcript first", async ({

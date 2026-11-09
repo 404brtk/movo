@@ -10,21 +10,22 @@ import {
   mediaToolsOptions,
 } from "../lib/api.ts";
 import { Button } from "./ui/button.tsx";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx";
 import { MediaToolsSetup } from "./media-tools-setup.tsx";
+import { Spinner } from "./spinner.tsx";
 
 export function ImportMedia() {
   const input = useRef<HTMLInputElement>(null);
-  const toolsTrigger = useRef<HTMLButtonElement>(null);
-  const [showTools, setShowTools] = useState(false);
+  const [panel, setPanel] = useState<"tools" | "error" | null>(null);
   const tools = useQuery(mediaToolsOptions);
   const queryClient = useQueryClient();
   const importing = useMutation({
     mutationFn: importMedia,
     onError: (error) => {
-      if (error instanceof ApiError && error.status === 503) {
-        setShowTools(true);
+      const toolsMissing = error instanceof ApiError && error.status === 503;
+      setPanel(toolsMissing ? "tools" : "error");
+      if (toolsMissing)
         void queryClient.invalidateQueries({ queryKey: mediaToolsOptions.queryKey });
-      }
     },
     onSuccess: async (item) => {
       queryClient.setQueryData(mediaItemOptions(item.id).queryKey, item);
@@ -33,7 +34,15 @@ export function ImportMedia() {
   });
 
   return (
-    <div className="flex max-w-full flex-col items-start gap-3 sm:items-end">
+    <Popover
+      open={panel !== null}
+      onOpenChange={(open) => {
+        importing.reset();
+        if (!open) setPanel(null);
+        else if (tools.data?.ffprobe.state === "ready") input.current?.click();
+        else setPanel("tools");
+      }}
+    >
       <input
         ref={input}
         type="file"
@@ -46,48 +55,30 @@ export function ImportMedia() {
           if (file) importing.mutate(file);
         }}
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          ref={toolsTrigger}
-          variant="ghost"
-          className="h-11 px-3"
-          aria-expanded={showTools}
-          aria-controls="media-tools-setup"
-          onClick={() => setShowTools((current) => !current)}
-        >
-          Media tools
-        </Button>
-        <Button
-          className="h-11 gap-2 px-4 text-sm"
-          disabled={importing.isPending || tools.isPending}
-          onClick={() => {
-            importing.reset();
-            if (tools.data?.ffprobe.state === "ready") input.current?.click();
-            else setShowTools(true);
-          }}
-        >
-          <HugeiconsIcon icon={Upload04Icon} size={18} aria-hidden="true" />
-          Import a file
-        </Button>
-      </div>
-      {showTools ? (
-        <MediaToolsSetup
-          onClose={() => {
-            setShowTools(false);
-            toolsTrigger.current?.focus();
-          }}
-        />
-      ) : null}
-      {importing.isPending ? (
-        <output className="max-w-sm text-sm wrap-anywhere text-muted-foreground">
-          Importing {importing.variables.name}…
-        </output>
-      ) : null}
-      {importing.isError ? (
-        <p role="alert" className="max-w-sm text-sm wrap-anywhere text-destructive">
-          {importing.error.message}
-        </p>
-      ) : null}
-    </div>
+      <PopoverTrigger
+        render={<Button />}
+        disabled={importing.isPending || tools.isPending}
+        aria-busy={importing.isPending}
+      >
+        {importing.isPending ? (
+          <Spinner />
+        ) : (
+          <HugeiconsIcon icon={Upload04Icon} data-icon="inline-start" aria-hidden="true" />
+        )}
+        {importing.isPending ? "Importing…" : "Import a file"}
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={16}
+        className="w-[380px] max-w-[calc(100vw-2rem)] gap-0"
+      >
+        {importing.isError ? (
+          <p role="alert" className="mb-3 text-[13px]/5 wrap-anywhere text-destructive last:mb-0">
+            {importing.error.message}
+          </p>
+        ) : null}
+        {panel === "tools" ? <MediaToolsSetup onClose={() => setPanel(null)} /> : null}
+      </PopoverContent>
+    </Popover>
   );
 }

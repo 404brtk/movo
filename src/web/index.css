@@ -1,9 +1,21 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/inter/opsz.css";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant selected (&:is([data-pressed], [aria-current="page"]));
+
+@utility transition-press {
+  transition:
+    scale 160ms var(--ease-snappy),
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    --tw-gradient-from 150ms ease,
+    --tw-gradient-to 150ms ease;
+}
 
 @theme inline {
   --font-heading: var(--font-sans);
@@ -21,6 +33,28 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-highlight: var(--highlight);
+  --color-highlight-strong: var(--highlight-strong);
+  --color-subtle: var(--subtle);
+  --color-tint: var(--tint);
+  --color-border-strong: var(--border-strong);
+  --color-primary-deep: var(--primary-deep);
+  --color-primary-pressed: var(--primary-pressed);
+  --color-destructive-tint: var(--destructive-tint);
+  --color-destructive-subtle: var(--destructive-subtle);
+  --color-destructive-from: var(--destructive-from);
+  --color-destructive-from-hover: var(--destructive-from-hover);
+  --color-destructive-to-hover: var(--destructive-to-hover);
+  --color-destructive-muted: var(--destructive-muted);
+  --color-destructive-strong: var(--destructive-strong);
+  --color-destructive-pressed: var(--destructive-pressed);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-from: var(--primary-from);
+  --color-primary-to: var(--primary-to);
+  --color-primary-from-hover: var(--primary-from-hover);
+  --color-primary-to-hover: var(--primary-to-hover);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -48,25 +82,93 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+@theme {
+  --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
+  --shadow-well: inset 0 1px 2px oklch(0.2 0.01 262 / 0.06);
+  --shadow-field: inset 0 1px 2px oklch(0.2 0.01 262 / 0.05);
+  --shadow-switch-on:
+    inset 0 0 1px 1px oklch(1 0 0 / 0.3), inset 0 1px 2px oklch(0.3 0.14 259 / 0.25);
+  --shadow-menu:
+    0 0 0 1px oklch(0.2 0.01 262 / 0.06), 0 2px 4px -1px oklch(0.2 0.01 262 / 0.06),
+    0 8px 20px -4px oklch(0.2 0.01 262 / 0.1);
+  --shadow-popover:
+    0 0 0 1px oklch(0.2 0.01 262 / 0.06), 0 4px 8px -2px oklch(0.2 0.01 262 / 0.06),
+    0 20px 44px -12px oklch(0.2 0.01 262 / 0.2);
+  --shadow-dialog:
+    0 0 0 1px oklch(0.2 0.01 262 / 0.06), 0 4px 8px -2px oklch(0.2 0.01 262 / 0.06),
+    0 28px 64px -16px oklch(0.2 0.01 262 / 0.28);
+  --color-scrim: oklch(0.2 0.01 262 / 0.18);
+  --shadow-raised: 0 0 0 1px oklch(0.2 0.01 262 / 0.06), 0 1px 3px oklch(0.2 0.01 262 / 0.1);
+  --shadow-card:
+    0 0 0 1px oklch(0.2 0.01 262 / 0.06), 0 1px 2px oklch(0.2 0.01 262 / 0.05),
+    0 6px 16px -8px oklch(0.2 0.01 262 / 0.1);
+  --shadow-button:
+    inset 0 1px 0 oklch(1 0 0), inset 0 0 1px 1px oklch(1 0 0 / 0.9),
+    0 1px 2px oklch(0.2 0.01 262 / 0.06);
+  --shadow-button-pressed: inset 0 1px 2px oklch(0.2 0.01 262 / 0.08);
+  --shadow-button-tinted: inset 0 0 1.5px 1px oklch(1 0 0 / 0.8), inset 0 1px 0 oklch(1 0 0);
+  --shadow-button-primary:
+    inset 0 0 1.5px 1px oklch(1 0 0 / 0.34), inset 0 1px 0 oklch(1 0 0 / 0.4),
+    0 1px 2px oklch(0.3 0.12 259 / 0.16), 0 1px 4px -1px oklch(0.6 0.2 257 / 0.25);
+  --shadow-button-primary-pressed:
+    inset 0 0 1.5px 1px oklch(1 0 0 / 0.18), inset 0 1px 2px oklch(0.3 0.14 259 / 0.35);
+  --shadow-button-danger:
+    inset 0 0 1.5px 1px oklch(1 0 0 / 0.34), inset 0 1px 0 oklch(1 0 0 / 0.4),
+    0 1px 2px oklch(0.3 0.1 27 / 0.16), 0 1px 4px -1px oklch(0.62 0.24 25 / 0.25);
+  --shadow-button-danger-pressed:
+    inset 0 0 1.5px 1px oklch(1 0 0 / 0.18), inset 0 1px 2px oklch(0.35 0.14 27 / 0.35);
+  --shadow-sheet:
+    0 0 0 1px oklch(0.2 0.01 262 / 0.06), inset 0 1px 0 oklch(1 0 0 / 0.8),
+    0 8px 16px -4px oklch(0.2 0.01 262 / 0.08), 0 32px 64px -16px oklch(0.2 0.01 262 / 0.24);
+  --shadow-player:
+    0 0 0 1px oklch(0.2 0.01 262 / 0.06), inset 0 1px 0 oklch(1 0 0 / 0.8),
+    0 4px 8px -2px oklch(0.2 0.01 262 / 0.06), 0 16px 40px -8px oklch(0.2 0.01 262 / 0.16);
+  --shadow-editor:
+    0 0 0 1px oklch(0.2 0.01 262 / 0.06), 0 2px 4px -1px oklch(0.2 0.01 262 / 0.05),
+    0 12px 28px -10px oklch(0.2 0.01 262 / 0.16);
+}
+
 :root {
   --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --foreground: oklch(0.2 0.008 262);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.2 0.008 262);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --popover-foreground: oklch(0.2 0.008 262);
+  --primary: oklch(0.62 0.195 257);
+  --primary-foreground: oklch(1 0 0);
+  --primary-strong: oklch(0.55 0.2 260);
+  --primary-from: oklch(0.7 0.16 253);
+  --primary-to: oklch(0.585 0.2 259);
+  --primary-from-hover: oklch(0.73 0.15 253);
+  --primary-to-hover: oklch(0.615 0.19 258);
+  --primary-pressed: oklch(0.62 0.19 257);
+  --primary-deep: oklch(0.49 0.19 261);
+  --tint: oklch(0.975 0.012 255);
+  --secondary: oklch(0.965 0.004 262);
+  --secondary-foreground: oklch(0.2 0.008 262);
+  --muted: oklch(0.965 0.004 262);
+  --muted-foreground: oklch(0.53 0.012 262);
+  --subtle: oklch(0.982 0.003 262);
+  --highlight: oklch(0.945 0.028 255);
+  --highlight-strong: oklch(0.9 0.055 255);
+  --accent: oklch(0.965 0.004 262);
+  --accent-foreground: oklch(0.2 0.008 262);
+  --success: oklch(0.64 0.17 150);
+  --warning: oklch(0.6 0.142 58);
+  --destructive: oklch(0.58 0.234 26);
+  --destructive-tint: oklch(0.985 0.007 27);
+  --destructive-subtle: oklch(0.975 0.016 25);
+  --destructive-from: oklch(0.68 0.2 24);
+  --destructive-from-hover: oklch(0.72 0.185 24);
+  --destructive-to-hover: oklch(0.625 0.22 26);
+  --destructive-muted: oklch(0.955 0.03 25);
+  --destructive-strong: oklch(0.54 0.22 27);
+  --destructive-pressed: oklch(0.6 0.22 26);
+  --border: oklch(0.94 0.005 262);
+  --border-strong: oklch(0.86 0.008 262);
+  --input: oklch(0.915 0.006 262);
+  --ring: oklch(0.62 0.195 257);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -125,6 +227,6 @@
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+    @apply font-sans antialiased;
   }
 }

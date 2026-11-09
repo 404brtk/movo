@@ -1,138 +1,159 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { maxReplaceCharacters, type Transcript } from "../../shared/contracts/transcriptions.ts";
-import { replaceWords } from "../../shared/transcript-edits.ts";
+import { findWords, replaceWords } from "../../shared/transcript-edits.ts";
+import { transcriptPassages } from "../../shared/transcript-passages.ts";
 import { replaceInTranscript } from "../lib/api.ts";
-import { formatDuration } from "../lib/format.ts";
+import { marksByPassage, type TranscriptMatches } from "../lib/passage-marks.ts";
 import { useTranscriptChange } from "../lib/transcript-change.ts";
+import { Spinner } from "./spinner.tsx";
 import { Button } from "./ui/button.tsx";
 import { Input } from "./ui/input.tsx";
 
-const previewLimit = 50;
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus();
-const joined = (words: readonly { text: string }[]) => words.map((word) => word.text).join(" ");
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "es"}`;
+
+export function useFindAndReplace(transcript: Transcript) {
+  const [find, setFind] = useState("");
+  const [replacement, setReplacement] = useState("");
+  const [current, setCurrent] = useState(0);
+  const previewFind = useDeferredValue(find);
+  const previewReplacement = useDeferredValue(replacement);
+  const found = useMemo(
+    () => findWords(transcript.words, previewFind),
+    [transcript.words, previewFind],
+  );
+  const changeCount = useMemo(
+    () => replaceWords(transcript.words, previewFind, previewReplacement).length,
+    [transcript.words, previewFind, previewReplacement],
+  );
+  const passageCount = useMemo(
+    () => marksByPassage(transcriptPassages(transcript.words), { ranges: found, current: 0 }).size,
+    [found, transcript.words],
+  );
+  const index = found.length === 0 ? 0 : Math.min(current, found.length - 1);
+  const matches = useMemo<TranscriptMatches | undefined>(
+    () => (found.length === 0 ? undefined : { ranges: found, current: index }),
+    [found, index],
+  );
+  return {
+    find,
+    replacement,
+    count: found.length,
+    changeCount,
+    passageCount,
+    index,
+    matches,
+    previewCurrent: previewFind === find && previewReplacement === replacement,
+    setFind: (value: string) => {
+      setFind(value);
+      setCurrent(0);
+    },
+    setReplacement,
+    step: (direction: 1 | -1) =>
+      setCurrent((found.length + index + direction) % Math.max(found.length, 1)),
+  };
+}
+
+export type FindAndReplaceState = ReturnType<typeof useFindAndReplace>;
 
 export function FindAndReplace({
   mediaId,
   revision,
-  transcript,
+  state,
   onClose,
 }: {
   mediaId: string;
   revision: number;
-  transcript: Transcript;
+  state: FindAndReplaceState;
   onClose: () => void;
 }) {
-  const [find, setFind] = useState("");
-  const [replacement, setReplacement] = useState("");
   const [replaced, setReplaced] = useState<number | null>(null);
-  const previewFind = useDeferredValue(find);
-  const previewReplacement = useDeferredValue(replacement);
-  const matches = useMemo(
-    () => replaceWords(transcript.words, previewFind, previewReplacement),
-    [transcript.words, previewFind, previewReplacement],
-  );
   const replace = useTranscriptChange(mediaId, () =>
-    replaceInTranscript(mediaId, { revision, find, replacement }),
+    replaceInTranscript(mediaId, { revision, find: state.find, replacement: state.replacement }),
   );
-  const previewCurrent = previewFind === find && previewReplacement === replacement;
-  const searching = find.trim().length > 0;
+  const searching = state.find.trim().length > 0;
+  const ready = state.changeCount > 0 && state.previewCurrent && !replace.isPending;
   return (
     <form
       aria-label="Find and replace"
-      className="space-y-4 rounded-xl border p-5"
+      className="mt-3 grid gap-2 rounded-xl bg-subtle p-3 shadow-[inset_0_0_0_1px_var(--color-border)] sm:grid-cols-[1fr_1fr_auto] sm:items-end"
       onSubmit={(event) => {
         event.preventDefault();
-        if (replace.isPending || matches.length === 0 || !previewCurrent) return;
-        const count = matches.length;
+        if (!ready) return;
+        const count = state.changeCount;
         replace.mutate(undefined, { onSuccess: () => setReplaced(count) });
       }}
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <label htmlFor="transcript-find" className="block text-sm font-medium">
-            Find
-          </label>
+      <div>
+        <label htmlFor="transcript-find" className="mb-1.5 block text-xs font-medium">
+          Find
+        </label>
+        <div className="relative">
           <Input
             ref={focusOnMount}
             id="transcript-find"
             maxLength={maxReplaceCharacters}
-            value={find}
+            value={state.find}
             disabled={replace.isPending}
+            aria-describedby="transcript-find-count"
+            className="pr-16"
             onChange={(event) => {
-              setFind(event.target.value);
+              state.setFind(event.target.value);
               setReplaced(null);
             }}
-          />
-        </div>
-        <div className="space-y-2">
-          <label htmlFor="transcript-replacement" className="block text-sm font-medium">
-            Replace with
-          </label>
-          <Input
-            id="transcript-replacement"
-            maxLength={maxReplaceCharacters}
-            value={replacement}
-            disabled={replace.isPending}
-            onChange={(event) => {
-              setReplacement(event.target.value);
-              setReplaced(null);
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              state.step(event.shiftKey ? -1 : 1);
             }}
           />
+          <span
+            id="transcript-find-count"
+            className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-[11.5px] text-muted-foreground tabular-nums"
+          >
+            {searching && state.previewCurrent
+              ? state.count > 0
+                ? `${state.index + 1} of ${state.count}`
+                : "No matches"
+              : ""}
+          </span>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Matches whole words, ignoring case but not accents. Punctuation around each match is kept.
-        Leave the replacement empty to remove the matches.
-      </p>
-      <output aria-live="polite" className="block text-sm">
-        {replaced !== null
-          ? `Replaced ${replaced} ${replaced === 1 ? "match" : "matches"}.`
-          : searching && previewCurrent
-            ? `${matches.length} ${matches.length === 1 ? "match" : "matches"} to replace.`
-            : ""}
-      </output>
+      <div>
+        <label htmlFor="transcript-replacement" className="mb-1.5 block text-xs font-medium">
+          Replace with
+        </label>
+        <Input
+          id="transcript-replacement"
+          maxLength={maxReplaceCharacters}
+          value={state.replacement}
+          disabled={replace.isPending}
+          onChange={(event) => {
+            state.setReplacement(event.target.value);
+            setReplaced(null);
+          }}
+        />
+      </div>
+      <Button type="submit" aria-busy={replace.isPending} disabled={!ready}>
+        {replace.isPending ? <Spinner /> : null}
+        {replace.isPending ? "Replacing…" : "Replace all"}
+      </Button>
       {replace.isError ? (
-        <p role="alert" className="text-sm wrap-anywhere text-destructive">
+        <p role="alert" className="text-xs wrap-anywhere text-destructive sm:col-span-full">
           {replace.error.message}
         </p>
       ) : null}
-      {searching && matches.length > 0 ? (
-        <ul
-          aria-label="Changes to make"
-          className="max-h-72 divide-y overflow-y-auto rounded-md border text-sm"
-        >
-          {matches.slice(0, previewLimit).map((match) => (
-            <li key={match.firstWord} className="flex gap-4 px-4 py-2">
-              <span className="shrink-0 text-muted-foreground tabular-nums">
-                {formatDuration((match.removed[0]?.startMs ?? 0) / 1000)}
-              </span>
-              <span className="min-w-0 wrap-anywhere">
-                <del className="text-muted-foreground">{joined(match.removed)}</del>
-                {" → "}
-                {match.inserted.length > 0 ? (
-                  <ins className="no-underline">{joined(match.inserted)}</ins>
-                ) : (
-                  "removed"
-                )}
-              </span>
-            </li>
-          ))}
-          {matches.length > previewLimit ? (
-            <li className="px-4 py-2 text-muted-foreground">
-              and {matches.length - previewLimit} more
-            </li>
-          ) : null}
-        </ul>
-      ) : null}
-      <div className="flex flex-wrap gap-3">
-        <Button
-          type="submit"
-          className="h-10 px-3 text-sm"
-          disabled={replace.isPending || matches.length === 0 || !previewCurrent}
-        >
-          {replace.isPending ? "Replacing…" : "Replace all"}
-        </Button>
-        <Button variant="outline" className="h-10 px-3 text-sm" onClick={onClose}>
+      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground sm:col-span-full">
+        <output aria-live="polite" className="text-pretty">
+          {replaced !== null
+            ? `Replaced ${plural(replaced, "match")}. You can undo it from History.`
+            : searching && state.count > 0 && state.changeCount === 0
+              ? "Every match already reads like the replacement."
+              : searching && state.count > 0
+                ? `Matches whole words in ${state.passageCount} ${state.passageCount === 1 ? "passage" : "passages"}. You can undo it from History.`
+                : "Matches whole words, ignoring case. Leave the replacement empty to remove them."}
+        </output>
+        <Button variant="ghost" size="sm" className="-mr-1.5" onClick={onClose}>
           Close
         </Button>
       </div>

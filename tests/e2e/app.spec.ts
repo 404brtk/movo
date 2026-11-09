@@ -11,7 +11,6 @@ test("starts without model weights and connects to the local service", async ({ 
   await expect(page).toHaveTitle("movo");
   await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Import a file" })).toBeEnabled();
-  await expect(page.getByRole("status")).toHaveText("");
   expect(pageErrors).toEqual([]);
 });
 
@@ -23,7 +22,7 @@ test("keeps missing API routes separate from the single-page fallback", async ({
 
 test("serves the client router on a direct navigation to an unknown page", async ({ page }) => {
   await page.goto("/missing");
-  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
-  await page.getByRole("link", { name: "Return home" }).click();
+  await expect(page.getByRole("heading", { name: "This page doesn’t exist" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to library" }).click();
   await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
 });

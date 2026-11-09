@@ -106,20 +106,21 @@ test("copies plain text and downloads UTF-8 transcripts with keyboard-accessible
 }, testInfo) => {
   const { title } = recording;
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
-  const copy = panel.getByRole("button", { name: "Copy text", exact: true });
+  const copy = panel.getByRole("button", { name: "Copy transcript", exact: true });
   await expect(copy).toBeVisible();
   await copy.focus();
   await page.keyboard.press("Enter");
   await expect(panel.getByRole("status")).toHaveText("Transcript copied.");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(plainText);
   await page.keyboard.press("Tab");
-  await expect(panel.getByRole("link", { name: "Download TXT", exact: true })).toBeFocused();
+  const exportMenu = panel.getByRole("button", { name: "Export transcript", exact: true });
+  await expect(exportMenu).toBeFocused();
   for (const exported of exports) {
-    const link = panel.getByRole("link", {
-      name: `Download ${exported.format.toUpperCase()}`,
-      exact: true,
+    await exportMenu.press("Enter");
+    const item = page.getByRole("menuitem", {
+      name: new RegExp(`^Download ${exported.format.toUpperCase()}`, "u"),
     });
-    await link.focus();
+    await item.focus();
     const downloadPromise = page.waitForEvent("download");
     await page.keyboard.press("Enter");
     const download = await downloadPromise;
@@ -170,8 +171,9 @@ test("keeps the recording title when downloading the export URL directly", async
   page,
   recording,
 }, testInfo) => {
+  await page.getByRole("button", { name: "Export transcript", exact: true }).click();
   const url = await page
-    .getByRole("link", { name: "Download VTT", exact: true })
+    .getByRole("menuitem", { name: /^Download VTT/u })
     .evaluate((link: HTMLAnchorElement) => link.href);
   const downloadPromise = page.waitForEvent("download");
   await expect(page.goto(url)).rejects.toThrow(/Download is starting|net::ERR_ABORTED/u);
@@ -186,7 +188,7 @@ test("reports denied or unavailable clipboard access and allows retrying after r
   page,
 }) => {
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
-  const copy = panel.getByRole("button", { name: "Copy text", exact: true });
+  const copy = panel.getByRole("button", { name: "Copy transcript", exact: true });
   await page.evaluate(() => {
     navigator.clipboard.writeText = async () => {
       throw new DOMException("Denied", "NotAllowedError");
@@ -198,7 +200,7 @@ test("reports denied or unavailable clipboard access and allows retrying after r
   );
   await expect(panel.getByRole("status")).toBeEmpty();
   await expect(copy).toBeEnabled();
-  await expect(panel.getByRole("link", { name: "Download TXT", exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Export transcript", exact: true })).toBeVisible();
   await page.evaluate(() => {
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
   });
@@ -215,38 +217,45 @@ test("removes the saved copy after confirmation while keeping the transcript rea
   page,
   recording,
 }, testInfo) => {
-  const removeTrigger = page.getByRole("button", { name: "Remove saved copy", exact: true });
+  const more = page.getByRole("button", { name: "More actions", exact: true });
+  const removeTrigger = page.getByRole("menuitem", { name: "Remove saved copy…", exact: true });
+  await more.click();
   await removeTrigger.click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toContainText(`Remove the saved copy of “${recording.title}”?`);
   await dialog.getByRole("button", { name: "Keep saved copy", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator("audio")).toHaveCount(1);
+  await more.click();
   await removeTrigger.click();
   await dialog.getByRole("button", { name: "Remove saved copy", exact: true }).click();
   await expect(dialog).toBeHidden();
   for (const reload of [false, true]) {
     if (reload) await page.reload();
     await expect(
-      page.getByText(
-        "The saved copy was removed to free up space. The transcript is still available.",
-      ),
+      page.getByText("Saved copy removed to free up space.", { exact: true }),
     ).toBeVisible();
     await expect(page.locator("audio")).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Save a copy" })).toHaveCount(0);
-    await expect(removeTrigger).toHaveCount(0);
     const panel = page.getByRole("region", { name: "Transcription", exact: true });
     await expect(panel.getByText("Zażółć gęślą jaźń.")).toBeVisible();
     await expect(panel.getByRole("button", { name: /^Go to / })).toHaveCount(0);
-    await expect(panel.getByRole("button", { name: "Transcribe again" })).toHaveCount(0);
+    await more.click();
+    await expect(page.getByRole("menuitem", { name: "Rename recording" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Save a copy" })).toHaveCount(0);
+    await expect(removeTrigger).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: /^Transcribe again/u })).toHaveCount(0);
+    await page.keyboard.press("Escape");
   }
+  await page.getByRole("button", { name: "Export transcript", exact: true }).click();
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Download TXT", exact: true }).click();
+  await page.getByRole("menuitem", { name: /^Download TXT/u }).click();
   const path = testInfo.outputPath("removed-copy.txt");
   await (await downloadPromise).saveAs(path);
   expect(readFileSync(path, "utf8")).toBe(plainText);
   await page.getByRole("link", { name: "Back to library" }).click();
   await expect(
-    page.getByRole("link", { name: `Open ${recording.title}`, exact: true }),
-  ).toContainText("Removed");
+    page
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("link", { name: `Open ${recording.title}`, exact: true }) }),
+  ).toContainText("Saved copy removed");
 });

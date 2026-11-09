@@ -81,14 +81,21 @@ test("searches transcripts, opens a matching passage and restores the search on 
   library,
 }) => {
   await page.goto(library.origin);
-  const results = page.getByRole("list", { name: "Media library" });
+  const results = page.getByRole("region", { name: "Media library" });
   const titles = results.getByRole("link", { name: /^Open / });
   await expect(titles).toHaveCount(2);
   const search = page.getByRole("searchbox", { name: "Search" });
   await search.fill("SPOTKAN");
   await expect(page).toHaveURL(/\?q=SPOTKAN$/u);
-  await expect(page.getByRole("status").filter({ hasText: "result" })).toHaveText("1 result");
-  await expect(page.getByRole("combobox", { name: "Sort by" })).toHaveValue("relevance");
+  await expect(page.getByRole("status").filter({ hasText: "recording" })).toHaveText(
+    "1 recording ·",
+  );
+  await page.getByRole("button", { name: "Sort by Best match" }).click();
+  await page.getByRole("menuitemradio", { name: "Oldest" }).click();
+  await expect(page).toHaveURL(/\?q=SPOTKAN&sort=oldest$/u);
+  await page.getByRole("button", { name: "Sort by Oldest" }).click();
+  await page.getByRole("menuitemradio", { name: "Best match" }).click();
+  await expect(page).toHaveURL(/\?q=SPOTKAN$/u);
   const matches = page.getByRole("list", { name: "Matches in Łódź meeting" });
   const passage = matches.getByRole("link", { name: /^0:01 ?Plan spotkania na jutro\.$/u });
   await expect(passage.locator("mark")).toHaveText("spotkania");
@@ -115,26 +122,37 @@ test("keeps filters and order in the URL and recovers from an empty result", asy
   library,
 }) => {
   await page.goto(library.origin);
-  const results = page.getByRole("list", { name: "Media library" });
+  const results = page.getByRole("region", { name: "Media library" });
   const titles = results.getByRole("link", { name: /^Open / });
+  const type = page.getByRole("group", { name: "Type" });
+  const transcript = page.getByRole("group", { name: "Transcript" });
   await expect(titles).toHaveText([/Budget review/u, /Łódź meeting/u]);
-  await page.getByRole("combobox", { name: "Sort by" }).selectOption("oldest");
+  await page.getByRole("button", { name: "Sort by Newest" }).click();
+  await page.getByRole("menuitemradio", { name: "Oldest" }).click();
   await expect(titles).toHaveText([/Łódź meeting/u, /Budget review/u]);
-  await page.getByRole("combobox", { name: "Transcript" }).selectOption("missing");
+  await transcript.getByRole("button", { name: "Not yet" }).click();
   await expect(page).toHaveURL(/sort=oldest/u);
   await expect(page).toHaveURL(/transcript=missing/u);
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "Transcript" })).toHaveValue("missing");
+  await expect(transcript.getByRole("button", { name: "Not yet" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(titles).toHaveText([/Budget review/u]);
-  await page.getByRole("combobox", { name: "Type" }).selectOption("audio");
-  await expect(page.getByRole("heading", { name: "No recordings match" })).toBeVisible();
+  await type.getByRole("button", { name: "Audio" }).click();
+  await expect(
+    page.getByRole("heading", { name: "No untranscribed audio recordings match these filters" }),
+  ).toBeVisible();
   await page.goBack();
-  await expect(page.getByRole("combobox", { name: "Type" })).toHaveValue("");
+  await expect(type.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
   await expect(titles).toHaveText([/Budget review/u]);
-  await page.getByRole("combobox", { name: "Type" }).selectOption("audio");
+  await type.getByRole("button", { name: "Audio" }).click();
   await page.getByRole("link", { name: "Clear search and filters" }).click();
   await expect(page).toHaveURL(`${library.origin}/`);
-  await expect(page.getByRole("combobox", { name: "Transcript" })).toHaveValue("");
+  await expect(transcript.getByRole("button", { name: "Any" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(titles).toHaveCount(2);
   await page.goto(`${library.origin}/?kind=image&q=123&sort=size`);
   await expect(titles).toHaveCount(2);

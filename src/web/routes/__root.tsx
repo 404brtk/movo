@@ -1,31 +1,14 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { createRootRouteWithContext, Link, Outlet } from "@tanstack/react-router";
-import { DownloadActivity } from "../components/download-activity.tsx";
+import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
+import { AppHeader } from "../components/app-header.tsx";
+import { NotFound } from "../components/not-found.tsx";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: () => (
     <div className="min-h-svh">
-      <header className="border-b">
-        <div className="mx-auto flex h-20 max-w-5xl items-center justify-between gap-5 px-5 sm:px-8">
-          <Link
-            to="/"
-            aria-label="movo home"
-            className="rounded-sm text-2xl font-semibold tracking-[-0.065em] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-          >
-            movo
-          </Link>
-          <DownloadActivity />
-        </div>
-      </header>
+      <AppHeader />
       <Outlet />
     </div>
   ),
-  notFoundComponent: () => (
-    <main className="mx-auto max-w-xl space-y-4 px-6 py-20">
-      <h1 className="text-2xl font-semibold">Page not found</h1>
-      <Link to="/" className="underline underline-offset-4">
-        Return home
-      </Link>
-    </main>
-  ),
+  notFoundComponent: () => <NotFound />,
 });

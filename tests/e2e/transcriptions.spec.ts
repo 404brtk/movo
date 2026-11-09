@@ -49,15 +49,21 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   await page.goto(`/media/${media.id}`);
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
   await expect(panel.getByRole("button", { name: "Transcribe", exact: true })).toBeEnabled();
-  await expect(panel.getByRole("button", { name: "Copy text", exact: true })).toHaveCount(0);
-  await expect(panel.getByRole("link", { name: /^Download /u })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Copy transcript", exact: true })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Export transcript", exact: true })).toHaveCount(
+    0,
+  );
   expect(attempts).toBe(0);
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("alert")).toContainText("Download Parakeet Ultra");
-  await expect(panel.getByRole("link", { name: "Models", exact: true })).toBeVisible();
+  await expect(
+    panel.getByRole("link", { name: "Download Parakeet Ultra in Models", exact: true }),
+  ).toBeVisible();
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Transcribing");
-  await expect(panel.getByRole("link", { name: /^Download /u })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Export transcript", exact: true })).toHaveCount(
+    0,
+  );
   await page.getByRole("link", { name: "Back to library", exact: true }).click();
   job = {
     mediaId: media.id,
@@ -81,7 +87,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   };
   await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   await expect(panel.getByText("Second saved passage.", { exact: true })).toBeVisible();
-  await expect(panel.getByText("Transcribed on Test GPU · Vulkan", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Parakeet Ultra", { exact: true })).toBeVisible();
   await page.reload();
   await expect(panel.getByText("First saved passage.", { exact: true })).toBeVisible();
   const passages = panel.getByRole("list", { name: "Timestamped passages" }).getByRole("listitem");
@@ -159,10 +165,10 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
   await expect(panel.getByRole("status")).toContainText("Loading Parakeet Ultra");
   await panel.getByRole("button", { name: "Cancel transcription", exact: true }).click();
-  await expect(panel.getByRole("status")).toHaveText("Transcription cancelled.");
-  await panel.getByRole("button", { name: "Retry transcription", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: "Transcription stopped" })).toBeVisible();
+  await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("alert")).toHaveText("Check folder permissions and try again.");
-  await panel.getByRole("button", { name: "Retry transcription", exact: true }).click();
+  await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Transcribing");
   job = {
     ...job,
@@ -176,8 +182,10 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
     panel.getByText("No speech was detected in this recording.", { exact: true }),
   ).toBeVisible();
   await expect(panel.getByRole("alert")).toContainText("temporary transcription files");
-  await expect(panel.getByRole("button", { name: "Copy text", exact: true })).toHaveCount(0);
-  await expect(panel.getByRole("link", { name: /^Download /u })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Copy transcript", exact: true })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Export transcript", exact: true })).toHaveCount(
+    0,
+  );
   await expect(panel.getByRole("button", { name: "Retry transcription", exact: true })).toHaveCount(
     0,
   );
@@ -317,28 +325,26 @@ test("transcribes a completed recording again while keeping the previous transcr
   await page.goto(`/media/${media.id}`);
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
   const previousText = panel.getByText("The previous transcript.", { exact: true });
-  const notice = panel.getByText("Showing the previous transcript until a new one completes.", {
-    exact: true,
-  });
+  const notice = panel.getByText(/^Showing the previous transcript/u);
   await expect(previousText).toBeVisible();
   await expect(notice).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Retry transcription", exact: true })).toHaveCount(
     0,
   );
-  await panel.getByRole("button", { name: "Transcribe again", exact: true }).click();
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Transcribe again", exact: true }).click();
   await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
   await expect(previousText).toBeVisible();
   await expect(notice).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Copy text", exact: true })).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Transcribe again", exact: true })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Copy transcript", exact: true })).toBeVisible();
   await page.reload();
   await expect(previousText).toBeVisible();
   await expect(notice).toBeVisible();
   job = { ...job, status: "failed", phase: "finished", error: "The new attempt failed." };
-  await expect(panel.getByRole("alert")).toHaveText("The new attempt failed.");
+  await expect(panel.getByRole("alert")).toContainText("The new attempt failed.");
   await expect(previousText).toBeVisible();
   await expect(notice).toBeVisible();
-  const copyButton = panel.getByRole("button", { name: "Copy text", exact: true });
+  const copyButton = panel.getByRole("button", { name: "Copy transcript", exact: true });
   const copied = panel.getByText("Transcript copied.", { exact: true });
   await copyButton.click();
   await expect(copied).toBeVisible();
@@ -362,7 +368,6 @@ test("transcribes a completed recording again while keeping the previous transcr
   await expect(previousText).toHaveCount(0);
   await expect(notice).toHaveCount(0);
   await expect(copied).toHaveCount(0);
-  await expect(panel.getByText("Transcribed on Test GPU · Vulkan", { exact: true })).toBeVisible();
   await copyButton.click();
   await expect(copied).toBeVisible();
   await page.evaluate(async () => {
@@ -371,4 +376,78 @@ test("transcribes a completed recording again while keeping the previous transcr
   });
   await expect(copied).toBeVisible();
   expect(retries).toBe(2);
+});
+
+test("offers transcribing again after a cancelled, rejected or failed repeat attempt", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.wav` },
+  });
+  expect(uploaded.status()).toBe(201);
+  const media: { id: string } = await uploaded.json();
+  let job: TranscriptionJob = {
+    mediaId: media.id,
+    modelId: "parakeet-ultra-q8",
+    status: "cancelled",
+    phase: "finished",
+    transcript: { language: "en", words: timedWords(0, 1000, "The previous transcript.") },
+    revision: 0,
+    resultRevision: 0,
+    device: null,
+    error: null,
+    cleanupError: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  let retries = 0;
+  await page.route(`**/api/media/${media.id}/transcription`, (route) => {
+    expect(route.request().method()).toBe("GET");
+    return route.fulfill({ json: job });
+  });
+  await page.route(`**/api/media/${media.id}/transcription/retry`, (route) => {
+    expect(route.request().method()).toBe("POST");
+    if (++retries === 1)
+      return route.fulfill({
+        status: 500,
+        json: { error: "Close apps using the recording and try again." },
+      });
+    job = { ...job, status: "running", phase: "transcribing", error: null };
+    return route.fulfill({ status: 202, json: job });
+  });
+  await page.goto(`/media/${media.id}`);
+  const panel = page.getByRole("region", { name: "Transcription", exact: true });
+  await expect(panel.getByText("Showing the previous transcript.", { exact: true })).toBeVisible();
+  const more = page.getByRole("button", { name: "More actions", exact: true });
+  const transcribeAgain = page.getByRole("menuitem", { name: "Transcribe again", exact: true });
+  await more.click();
+  await transcribeAgain.click();
+  await expect(panel.getByRole("alert")).toHaveText(
+    "Close apps using the recording and try again.",
+  );
+  await more.click();
+  await transcribeAgain.click();
+  await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+
+  job = {
+    ...job,
+    status: "failed",
+    phase: "finished",
+    revision: 1,
+    error: "The new attempt failed.",
+  };
+  await expect(panel.getByRole("alert")).toContainText("The new attempt failed.");
+  await panel.getByRole("button", { name: "Retry transcription", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Replace your edits?" });
+  await dialog.getByRole("button", { name: "Keep edits" }).click();
+  await expect(dialog).toBeHidden();
+  expect(retries).toBe(2);
+  await panel.getByRole("button", { name: "Retry transcription", exact: true }).click();
+  await dialog.getByRole("button", { name: "Transcribe again" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
+  expect(retries).toBe(3);
 });

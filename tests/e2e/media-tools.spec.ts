@@ -42,7 +42,9 @@ test("offers explicit setup, retries a failed request and keeps progress after r
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Import a file", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Media tools", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Media tools are needed", exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Download media tools", exact: true }),
   ).toBeVisible();
@@ -51,10 +53,10 @@ test("offers explicit setup, retries a failed request and keeps progress after r
   await page.getByRole("button", { name: "Download media tools", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Could not start the download");
   await page.getByRole("button", { name: "Retry download", exact: true }).click();
-  await expect(page.getByRole("progressbar", { name: "Media tools download" })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Downloading media tools" })).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: "Media tools", exact: true }).click();
-  await expect(page.getByRole("progressbar", { name: "Media tools download" })).toBeVisible();
+  await page.getByRole("button", { name: "Import a file", exact: true }).click();
+  await expect(page.getByRole("progressbar", { name: "Downloading media tools" })).toBeVisible();
   expect(downloads).toBe(2);
   status = {
     ...initial,
@@ -62,7 +64,9 @@ test("offers explicit setup, retries a failed request and keeps progress after r
     ffmpeg: { state: "ready", source: "managed", version: "9.0.2" },
     installation: { phase: "complete", downloadedBytes: initial.download?.bytes ?? 0, error: null },
   };
-  await expect(page.getByText("Media tools are ready. You can import a file.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Media tools are ready", exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
   const chooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Import a file", exact: true }).click();
@@ -96,7 +100,9 @@ test("checks tools again before uploading when an executable disappears", async 
     buffer: Buffer.from("file bytes"),
   });
   await expect(page.getByRole("alert")).toContainText("Download media tools before importing");
-  await expect(page.getByRole("heading", { name: "Media tools", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Media tools are needed", exact: true }),
+  ).toBeVisible();
   expect(imports).toBe(0);
 });
 
@@ -111,15 +117,17 @@ test("shows actionable configuration errors and supports keyboard access", async
   };
   await page.route("**/api/media-tools", (route) => route.fulfill({ json: status }));
   await page.goto("/");
-  const trigger = page.getByRole("button", { name: "Media tools", exact: true });
+  const trigger = page.getByRole("button", { name: "Import a file", exact: true });
   await trigger.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText(/Correct or remove FFPROBE_PATH/u)).toBeVisible();
   await expect(page.getByRole("button", { name: "Download media tools", exact: true })).toHaveCount(
     0,
   );
-  await page.getByRole("button", { name: "Close", exact: true }).focus();
+  await page.getByRole("button", { name: "Not now", exact: true }).focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("heading", { name: "Media tools", exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Media tools are needed", exact: true }),
+  ).toHaveCount(0);
   await expect(trigger).toBeFocused();
 });

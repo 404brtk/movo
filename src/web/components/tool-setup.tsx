@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { Download04Icon, Wrench01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   type QueryKey,
   type UseQueryOptions,
@@ -12,7 +15,20 @@ import {
   type ToolInstallation,
 } from "../../shared/contracts/media-tools.ts";
 import { formatBytes } from "../lib/format.ts";
+import { cn } from "../lib/utils.ts";
+import { AccentIcon } from "./accent-icon.tsx";
+import { Spinner } from "./spinner.tsx";
+import { StatusIndicator } from "./status-indicator.tsx";
 import { Button } from "./ui/button.tsx";
+import { Progress, ProgressLabel, ProgressValue } from "./ui/progress.tsx";
+
+function ToolState({ tool }: { tool: ToolAvailability }) {
+  if (tool.state === "ready")
+    return <StatusIndicator tone="success">Ready · {tool.version}</StatusIndicator>;
+  if (tool.state === "broken")
+    return <StatusIndicator tone="warning">Needs repair</StatusIndicator>;
+  return <StatusIndicator tone="idle">Not found</StatusIndicator>;
+}
 
 export function ToolSetup<
   Status extends { download: ToolDownload | null; installation: ToolInstallation },
@@ -20,6 +36,7 @@ export function ToolSetup<
 >({
   id,
   title,
+  readyTitle,
   name,
   description,
   options,
@@ -29,9 +46,11 @@ export function ToolSetup<
   manualSetup,
   readyMessage,
   onClose,
+  className,
 }: {
   id: string;
   title: string;
+  readyTitle: string;
   name: string;
   description: string;
   options: UseQueryOptions<Status, Error, Status, Key>;
@@ -41,7 +60,9 @@ export function ToolSetup<
   manualSetup: string;
   readyMessage: string;
   onClose: () => void;
+  className?: string | undefined;
 }) {
+  const [showManualSetup, setShowManualSetup] = useState(false);
   const queryClient = useQueryClient();
   const query = useQuery(options);
   const install = useMutation({
@@ -53,10 +74,14 @@ export function ToolSetup<
   const busy =
     install.isPending || activeInstallationPhases.includes(status?.installation.phase ?? "");
   const ready = tools.length > 0 && tools.every(([, tool]) => tool.state === "ready");
+  const brokenMessages = tools.flatMap(([, tool]) =>
+    tool.state === "broken" ? [tool.message] : [],
+  );
   const configuredError = tools.some(
     ([, tool]) => tool.state === "broken" && tool.source === "configured",
   );
   const failure = install.error?.message ?? query.error?.message ?? status?.installation.error;
+  const download = ready ? null : status?.download;
   const phase = status?.installation.phase;
   const announcement =
     phase === "downloading"
@@ -75,85 +100,112 @@ export function ToolSetup<
     <section
       id={id}
       aria-labelledby={`${id}-heading`}
-      className="w-full max-w-sm space-y-4 rounded-xl border bg-background p-5 text-left text-sm"
+      className={cn("w-full text-left", className)}
     >
-      <div className="flex items-start justify-between gap-4">
-        <h2 id={`${id}-heading`} className="font-medium">
-          {title}
-        </h2>
-        <Button variant="ghost" onClick={onClose}>
-          Close
-        </Button>
-      </div>
-      <p className="leading-6 text-muted-foreground">{description}</p>
+      <h2
+        id={`${id}-heading`}
+        className="flex items-center gap-2 text-[15px]/[22px] font-semibold tracking-[-0.01em]"
+      >
+        <AccentIcon icon={Wrench01Icon} size={18} />
+        {ready ? readyTitle : title}
+      </h2>
+      <p className="mt-1.5 text-[13px]/5 text-muted-foreground">
+        {ready ? readyMessage : description}
+      </p>
       {status ? (
-        <ul className="space-y-2">
+        <ul className="mt-3.5 rounded-[10px] bg-subtle shadow-[inset_0_0_0_1px_var(--color-border)]">
           {tools.map(([label, tool]) => (
-            <li key={label}>
-              <span className="font-medium">{label}: </span>
-              {tool.state === "ready"
-                ? `Ready · ${tool.version} · ${tool.source}`
-                : tool.state === "broken"
-                  ? tool.message
-                  : "Not found"}
+            <li
+              key={label}
+              className="flex h-10 items-center justify-between gap-3 border-t px-3 text-[13px] first:border-t-0"
+            >
+              <span className="font-medium">{label}</span>
+              <ToolState tool={tool} />
             </li>
           ))}
         </ul>
       ) : null}
-      {status?.download && !ready ? (
-        <p className="text-muted-foreground">
-          Download: {formatBytes(status.download.bytes)} · version {status.download.version}. Built
-          by{" "}
+      {brokenMessages.map((message) => (
+        <p key={message} className="mt-2.5 text-xs/[17px] wrap-anywhere text-destructive">
+          {message}
+        </p>
+      ))}
+      {busy && status?.download ? (
+        <Progress
+          className="mt-3.5"
+          value={status.installation.downloadedBytes}
+          max={status.download.bytes}
+        >
+          <ProgressLabel>Downloading {name}</ProgressLabel>
+          <ProgressValue>
+            {() =>
+              `${formatBytes(status.installation.downloadedBytes)} of ${formatBytes(status.download?.bytes ?? 0)}`
+            }
+          </ProgressValue>
+        </Progress>
+      ) : null}
+      {download ? (
+        <p className="mt-2.5 text-xs/[17px] text-muted-foreground">
+          From{" "}
           <a
-            className="underline underline-offset-4"
-            href={status.download.sourceUrl}
+            className="text-foreground underline decoration-border-strong underline-offset-3"
+            href={download.sourceUrl}
             target="_blank"
             rel="noreferrer"
           >
-            {status.download.provider}
+            {download.provider}
           </a>
-          , {provider}. Saved in Movo’s data folder.
+          , {provider} · {formatBytes(download.bytes)}. Stored only inside Movo.{" "}
+          <button
+            type="button"
+            aria-expanded={showManualSetup}
+            onClick={() => setShowManualSetup((shown) => !shown)}
+            className="whitespace-nowrap text-foreground underline decoration-border-strong underline-offset-3"
+          >
+            Set up manually
+          </button>
         </p>
       ) : null}
-      {status && !status.download && !ready ? (
-        <p>Automatic downloads are unavailable on this platform. {manualSetup}</p>
+      {status && !ready && (!status.download || showManualSetup) ? (
+        <p className="mt-2.5 text-xs/[17px] text-muted-foreground">
+          {status.download ? "" : "Automatic downloads are unavailable on this platform. "}
+          {manualSetup}
+        </p>
       ) : null}
-      <output className="block text-muted-foreground">{announcement}</output>
-      {busy && status?.download ? (
-        <div className="space-y-2">
-          <progress
-            aria-label={`${title} download`}
-            className="h-2 w-full accent-primary"
-            value={status.installation.downloadedBytes}
-            max={status.download.bytes}
-          />
-          <p className="text-xs text-muted-foreground">
-            {formatBytes(status.installation.downloadedBytes)} of{" "}
-            {formatBytes(status.download.bytes)}. You can close this panel; the download continues.
-          </p>
-        </div>
+      {busy ? (
+        <p className="mt-2.5 text-xs/[17px] text-muted-foreground">
+          You can close this panel; the download continues.
+        </p>
       ) : null}
+      <output className="sr-only">{announcement}</output>
       {failure ? (
-        <p role="alert" className="wrap-anywhere text-destructive">
+        <p role="alert" className="mt-2.5 text-xs/[17px] wrap-anywhere text-destructive">
           {failure}
         </p>
       ) : null}
-      <div className="flex flex-wrap gap-2">
-        {status?.download && !ready && !configuredError ? (
-          <Button className="h-10 px-3" disabled={busy} onClick={() => install.mutate()}>
-            {busy ? `Preparing ${name}…` : failure ? "Retry download" : `Download ${name}`}
-          </Button>
-        ) : null}
-        {!busy ? (
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        {!busy && !ready && (!status?.download || configuredError) ? (
           <Button
-            className="h-10 px-3"
-            variant="outline"
+            variant="ghost"
             onClick={() => {
               install.reset();
               void query.refetch();
             }}
           >
             Check again
+          </Button>
+        ) : null}
+        <Button variant="ghost" onClick={onClose}>
+          {ready ? "Close" : "Not now"}
+        </Button>
+        {status?.download && !ready && !configuredError ? (
+          <Button aria-busy={busy} disabled={busy} onClick={() => install.mutate()}>
+            {busy ? (
+              <Spinner />
+            ) : (
+              <HugeiconsIcon icon={Download04Icon} data-icon="inline-start" aria-hidden="true" />
+            )}
+            {busy ? "Downloading…" : failure ? "Retry download" : `Download ${name}`}
           </Button>
         ) : null}
       </div>
