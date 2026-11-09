@@ -97,12 +97,12 @@ export function MediaPlayer({
       <section
         ref={frame}
         aria-label="Video player"
-        className="group/video relative mt-5 overflow-hidden rounded-[14px] bg-black shadow-[0_0_0_1px_oklch(0.2_0.01_262/0.06),0_8px_24px_-10px_oklch(0.2_0.01_262/0.25)]"
+        className="group/video relative mt-5 overflow-hidden rounded-[14px] bg-black shadow-[0_0_0_1px_oklch(0.2_0.01_262/0.06),0_8px_24px_-10px_oklch(0.2_0.01_262/0.25)] [&:fullscreen]:rounded-none"
       >
         <video
           ref={attach}
           aria-label={item.title}
-          className="block aspect-video max-h-[65svh] w-full"
+          className="block aspect-video max-h-[65svh] w-full in-[:fullscreen]:aspect-auto in-[:fullscreen]:h-full in-[:fullscreen]:max-h-none"
           onClick={controls.toggle}
           {...mediaProps}
         >
