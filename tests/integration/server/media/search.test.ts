@@ -109,12 +109,17 @@ it("finds titles and transcript passages regardless of case, diacritics and word
         ...timedWords(0, 900, "Źródło budżetu jest jasne."),
         ...timedWords(1000, 1900, "Plan na jutro."),
       ]);
+      const listedMeeting = { ...meeting, transcription: "none" };
+      const listedReview = { ...review, transcription: "done" };
       expect(yield* library.list({ q: "LODZ" })).toEqual([
-        { ...meeting, match: { title: [{ start: 0, end: 4 }], passages: [], passageCount: 0 } },
+        {
+          ...listedMeeting,
+          match: { title: [{ start: 0, end: 4 }], passages: [], passageCount: 0 },
+        },
       ]);
       expect(yield* library.list({ q: "zrodl budzet" })).toEqual([
         {
-          ...review,
+          ...listedReview,
           match: {
             title: [],
             passages: [
@@ -135,7 +140,7 @@ it("finds titles and transcript passages regardless of case, diacritics and word
       expect(yield* library.list({ q: "lodz jutro" })).toEqual([]);
       expect(yield* library.list({ q: "jutro", kind: "audio" })).toEqual([]);
       expect(yield* library.list({ q: '"OR NOT title:(' })).toEqual([]);
-      expect(yield* library.list({ q: " ?! " })).toEqual([review, meeting]);
+      expect(yield* library.list({ q: " ?! " })).toEqual([listedReview, listedMeeting]);
     }),
   );
 });
@@ -146,10 +151,12 @@ it("filters by type and transcript, ranks title matches first and applies the ch
   await withLibrary(signal, ({ library, meeting, review, transcribe }) =>
     Effect.gen(function* () {
       yield* transcribe(meeting, timedWords(0, 1500, "The budget meeting starts now."));
-      expect(yield* library.list({ kind: "audio" })).toEqual([meeting]);
-      expect(yield* library.list({ kind: "video" })).toEqual([review]);
-      expect(yield* library.list({ transcript: "available" })).toEqual([meeting]);
-      expect(yield* library.list({ transcript: "missing" })).toEqual([review]);
+      const listedMeeting = { ...meeting, transcription: "done" };
+      const listedReview = { ...review, transcription: "none" };
+      expect(yield* library.list({ kind: "audio" })).toEqual([listedMeeting]);
+      expect(yield* library.list({ kind: "video" })).toEqual([listedReview]);
+      expect(yield* library.list({ transcript: "available" })).toEqual([listedMeeting]);
+      expect(yield* library.list({ transcript: "missing" })).toEqual([listedReview]);
       expect(ids(yield* library.list({ q: "budget" }))).toEqual([review.id, meeting.id]);
       expect(ids(yield* library.list({ q: "budget", kind: "audio" }))).toEqual([meeting.id]);
       expect(ids(yield* library.list({ q: "budget", sort: "oldest" }))).toEqual([
@@ -218,13 +225,31 @@ it("reports a running transcription even when its recording is filtered out", as
         items: [],
         transcribing: true,
       });
+      expect((yield* library.browse({ kind: "audio" })).items).toEqual([
+        { ...meeting, transcription: "active" },
+      ]);
       yield* Deferred.succeed(held, undefined);
       yield* Effect.promise(async () => {
         await expect
           .poll(async () => await Effect.runPromise(library.browse({ transcript: "available" })), {
             timeout: 10000,
           })
-          .toEqual({ items: [meeting], transcribing: false });
+          .toEqual({ items: [{ ...meeting, transcription: "done" }], transcribing: false });
+      });
+    }),
+  );
+});
+
+it("reports a transcription cancelled before its transcript as stopped", async ({ signal }) => {
+  await withLibrary(signal, ({ library, meeting, transcriptions, holdTranscriptions }) =>
+    Effect.gen(function* () {
+      const held = yield* holdTranscriptions();
+      yield* transcriptions.enqueue(meeting.id);
+      yield* transcriptions.cancel(meeting.id);
+      yield* Deferred.succeed(held, undefined);
+      expect(yield* library.browse({ kind: "audio" })).toEqual({
+        items: [{ ...meeting, transcription: "stopped" }],
+        transcribing: false,
       });
     }),
   );

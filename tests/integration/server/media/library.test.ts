@@ -67,7 +67,7 @@ describe("managed media library", () => {
             const database = yield* openDatabase(join(directory, "test.sqlite"));
             const reopened = createMediaLibrary(database, directory, resolveProbe);
             expect(yield* reopened.get(item.id)).toEqual(renamed);
-            expect(yield* reopened.list()).toEqual([renamed]);
+            expect(yield* reopened.list()).toEqual([{ ...renamed, transcription: "none" }]);
             expect((yield* reopened.file(item.id)).path).toBe(before.path);
             expect(readFileSync(before.path)).toEqual(wave);
           }),
@@ -129,7 +129,9 @@ describe("managed media library", () => {
       }
       const { path } = await Effect.runPromise(library.file(item.id));
       expect(await Effect.runPromise(library.remove(item.id))).toEqual(item);
-      expect(await Effect.runPromise(library.list())).toEqual([other]);
+      expect(await Effect.runPromise(library.list())).toEqual([
+        { ...other, transcription: "none" },
+      ]);
       expect(database.select().from(transcriptionJobs).all()).toEqual([]);
       expect(database.select().from(downloadJobs).all()).toEqual([]);
       expect(existsSync(path)).toBe(false);
@@ -241,7 +243,7 @@ describe("managed media library", () => {
           Effect.gen(function* () {
             const reopened = yield* openDatabase(join(directory, "test.sqlite"));
             expect(yield* createMediaLibrary(reopened, directory, resolveProbe).list()).toEqual([
-              removed,
+              { ...removed, transcription: "done" },
             ]);
           }),
         ),
@@ -541,7 +543,7 @@ describe("managed media library", () => {
           Effect.gen(function* () {
             const database = yield* openDatabase(databasePath);
             const library = createMediaLibrary(database, directory, resolveProbe);
-            expect(yield* library.list()).toEqual([imported]);
+            expect(yield* library.list()).toEqual([{ ...imported, transcription: "none" }]);
             const stored = yield* library.file(imported.id);
             expect(readFileSync(stored.path)).toEqual(wave);
             expect(stored.path).not.toBe(original);

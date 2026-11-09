@@ -4,7 +4,7 @@ import { lstat, mkdir, open, realpath, rename, rm, stat } from "node:fs/promises
 import { basename, isAbsolute, join, parse, relative } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { and, eq, getTableColumns, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, eq, getTableColumns, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { Effect, Result, Schema } from "effect";
 import {
   librarySort,
@@ -12,16 +12,17 @@ import {
   type LibraryList,
   type LibraryQuery,
   type LibrarySort,
+  type LibraryTranscription,
 } from "../../shared/contracts/library.ts";
 import {
   maxImportBytes,
   MediaFileName,
   MediaId,
   MediaItem,
-  MediaList,
   MediaTitle,
   type MediaDeletion,
 } from "../../shared/contracts/media.ts";
+import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
 import { searchTerms } from "../../shared/search-text.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { downloadJobs } from "../downloads/downloads.schema.ts";
@@ -70,6 +71,15 @@ function compareItems(sort: LibrarySort, ranks: ReadonlyMap<string, number> | nu
       titleOrder.compare(first.title, second.title) || newestFirst(first, second),
   };
   return comparators[sort];
+}
+
+function describeTranscription(
+  status: TranscriptionJob["status"] | null,
+  transcribed: boolean,
+): LibraryTranscription {
+  if (status === "queued" || status === "running") return "active";
+  if (transcribed) return "done";
+  return status === null ? "none" : "stopped";
 }
 
 const storageError = (cause: unknown) =>
@@ -272,24 +282,30 @@ export function createMediaLibrary(
     const terms = searchTerms(query.q ?? "");
     const ranks = terms.length > 0 ? rankSearchMatches(database, terms) : null;
     if (ranks?.size === 0) return [];
-    const items = Schema.decodeUnknownSync(MediaList)(
-      database
-        .select(getTableColumns(mediaItems))
-        .from(mediaItems)
-        .leftJoin(transcriptionJobs, eq(transcriptionJobs.mediaId, mediaItems.id))
-        .where(
-          and(
-            query.kind ? eq(mediaItems.kind, query.kind) : undefined,
-            query.transcript === "available"
-              ? isNotNull(transcriptionJobs.transcript)
-              : query.transcript === "missing"
-                ? isNull(transcriptionJobs.transcript)
-                : undefined,
-            ranks ? inArray(mediaItems.id, [...ranks.keys()]) : undefined,
-          ),
-        )
-        .all(),
-    );
+    const rows = database
+      .select({
+        item: getTableColumns(mediaItems),
+        status: transcriptionJobs.status,
+        transcribed: sql<number>`${transcriptionJobs.transcript} is not null`,
+      })
+      .from(mediaItems)
+      .leftJoin(transcriptionJobs, eq(transcriptionJobs.mediaId, mediaItems.id))
+      .where(
+        and(
+          query.kind ? eq(mediaItems.kind, query.kind) : undefined,
+          query.transcript === "available"
+            ? isNotNull(transcriptionJobs.transcript)
+            : query.transcript === "missing"
+              ? isNull(transcriptionJobs.transcript)
+              : undefined,
+          ranks ? inArray(mediaItems.id, [...ranks.keys()]) : undefined,
+        ),
+      )
+      .all();
+    const items = rows.map(({ item, status, transcribed }) => ({
+      ...Schema.decodeUnknownSync(MediaItem)(item),
+      transcription: describeTranscription(status, transcribed === 1),
+    }));
     const ordered = items.toSorted(compareItems(librarySort(query), ranks));
     if (!ranks) return ordered;
     const passages = findPassageMatches(
