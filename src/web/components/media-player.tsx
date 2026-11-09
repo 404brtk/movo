@@ -10,21 +10,46 @@ import { VideoControls } from "./video-controls.tsx";
 function SubtitleTrack({
   content,
   language,
-  showing,
+  onCaptionChange,
 }: {
   content: string;
   language: string | null;
-  showing: boolean;
+  onCaptionChange: (caption: string) => void;
 }) {
   const attachContent = useCallback(
     (track: HTMLTrackElement | null) => {
       if (!track) return undefined;
       const url = URL.createObjectURL(new Blob([content], { type: "text/vtt" }));
+      const textTrack = track.track;
+      const showCues = (cues: Iterable<TextTrackCue>) =>
+        onCaptionChange(
+          Array.from(cues)
+            .filter((cue) => cue instanceof VTTCue)
+            .map((cue) => cue.getCueAsHTML().textContent)
+            .join("\n"),
+        );
+      const showActiveCues = () => showCues(textTrack.activeCues ?? []);
+      const showCuesAtCurrentTime = () => {
+        const media = track.parentElement;
+        if (!(media instanceof HTMLMediaElement)) return;
+        showCues(
+          Array.from(textTrack.cues ?? []).filter(
+            (cue) => cue.startTime <= media.currentTime && media.currentTime < cue.endTime,
+          ),
+        );
+      };
       track.src = url;
-      track.track.mode = showing ? "showing" : "hidden";
-      return () => URL.revokeObjectURL(url);
+      textTrack.mode = "hidden";
+      textTrack.addEventListener("cuechange", showActiveCues);
+      track.addEventListener("load", showCuesAtCurrentTime);
+      return () => {
+        textTrack.removeEventListener("cuechange", showActiveCues);
+        track.removeEventListener("load", showCuesAtCurrentTime);
+        URL.revokeObjectURL(url);
+        onCaptionChange("");
+      };
     },
-    [content, showing],
+    [content, onCaptionChange],
   );
   return (
     <track
@@ -76,6 +101,7 @@ export function MediaPlayer({
     [item.kind, transcript],
   );
   const [subtitlesShowing, setSubtitlesShowing] = useState(true);
+  const [caption, setCaption] = useState("");
   const attach = useCallback(
     (media: HTMLMediaElement | null) => {
       attachPlayback(media);
@@ -116,7 +142,8 @@ export function MediaPlayer({
       <section
         ref={frame}
         aria-label="Video player"
-        className="group/video relative overflow-hidden rounded-[14px] bg-black shadow-[0_0_0_1px_oklch(0.2_0.01_262/0.06),0_8px_24px_-10px_oklch(0.2_0.01_262/0.25)] [&:fullscreen]:rounded-none"
+        data-playing={playback.state.playing || undefined}
+        className="relative overflow-hidden rounded-[14px] bg-black shadow-[0_0_0_1px_oklch(0.2_0.01_262/0.06),0_8px_24px_-10px_oklch(0.2_0.01_262/0.25)] [&:fullscreen]:rounded-none"
       >
         <video
           ref={attach}
@@ -130,10 +157,15 @@ export function MediaPlayer({
               key={subtitles}
               content={subtitles}
               language={transcript?.language ?? null}
-              showing={subtitlesShowing}
+              onCaptionChange={setCaption}
             />
           )}
         </video>
+        {subtitlesShowing && caption ? (
+          <p className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit max-w-[90%] -translate-y-11 rounded-md bg-black/75 px-2.5 py-1 text-center text-base/snug text-balance whitespace-pre-line text-white transition-transform duration-200 ease-snappy in-[:fullscreen]:text-2xl sm:text-lg video-idle:translate-y-0">
+            {caption}
+          </p>
+        ) : null}
         <VideoControls
           playback={playback}
           frame={frame}

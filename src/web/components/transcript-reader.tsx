@@ -119,7 +119,7 @@ const Passage = memo(function Passage({
           aria-label={`Go to ${time}`}
           className={cn(
             timeClassName,
-            "rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+            "cursor-pointer rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
           )}
           onClick={() => onSeek(passage.startMs)}
         >

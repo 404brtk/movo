@@ -160,7 +160,7 @@ export function ToolSetup<
             type="button"
             aria-expanded={showManualSetup}
             onClick={() => setShowManualSetup((shown) => !shown)}
-            className="whitespace-nowrap text-foreground underline decoration-border-strong underline-offset-3"
+            className="cursor-pointer whitespace-nowrap text-foreground underline decoration-border-strong underline-offset-3"
           >
             Set up manually
           </button>

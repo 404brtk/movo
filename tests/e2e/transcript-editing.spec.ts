@@ -146,21 +146,56 @@ test("previews and applies find and replace, then undoes and restores versions",
     /^Replaced “kubernetis” with “Kubernetes”2 replacements · /u,
     /^Transcription result/u,
   ]);
-  await page.getByRole("button", { name: "Restore version 2" }).click();
+  await page.getByRole("button", { name: /^Restore: Replaced “kubernetis”/u }).click();
   await expect(page.getByRole("status").filter({ hasText: "Restored" })).toHaveText(
-    "Restored version 2.",
+    "Restored an earlier version.",
+  );
+  await expect(versions.first()).toHaveText(
+    /^Restored an earlier versionBack to: Replaced “kubernetis” with “Kubernetes” · .*Current$/u,
   );
   await page.keyboard.press("Escape");
   await expect(history).toBeFocused();
   await expect(passages(page).last()).toContainText("Kubernetes keeps running.");
   await history.click();
-  await page.getByRole("button", { name: "Restore version 1" }).click();
-  await expect(versions.first()).toHaveText(/^Restored the transcription result.*Current$/u);
+  await page.getByRole("button", { name: /^Restore: Transcription result/u }).click();
+  await expect(versions).toHaveText([
+    /^Restored the transcription result.*Current$/u,
+    /^Edited passage at 0:01/u,
+    /^Replaced “kubernetis” with “Kubernetes”/u,
+    /^Transcription result/u,
+  ]);
   await page.getByRole("button", { name: "Close history" }).click();
   await expect(passages(page)).toHaveText([
     /We deploy kubernetis daily\./u,
     /Kubernetis keeps running\./u,
   ]);
+
+  await history.click();
+  let openHistory: (() => void) | undefined;
+  const historyGate = new Promise<void>((open) => {
+    openHistory = open;
+  });
+  await page.route("**/transcription/changes?*", async (route) => {
+    await historyGate;
+    await route.fallback();
+  });
+  await page.getByRole("button", { name: /^Restore: Edited passage at 0:01/u }).click();
+  await expect(page.getByRole("list", { name: "Transcript versions" })).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  await expect(versions.getByText("Current", { exact: true })).toHaveCount(0);
+  for (const restoreButton of await versions.getByRole("button").all())
+    await expect(restoreButton).toBeDisabled();
+  openHistory?.();
+  await page.unroute("**/transcription/changes?*");
+  await expect(versions).toHaveText([
+    /^Edited passage at 0:01.*Current$/u,
+    /^Replaced “kubernetis” with “Kubernetes”/u,
+    /^Transcription result/u,
+  ]);
+  await page.getByRole("button", { name: "Close history" }).click();
+  await expect(passages(page).last()).toContainText("Kubernetes keeps working.");
 });
 
 test("asks before transcribing again replaces edits and then starts a new history", async ({

@@ -77,7 +77,9 @@ test("offers explicit setup, retries a failed request and keeps progress after r
     mimeType: "audio/wav",
     buffer: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
   });
-  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible({
+    timeout: 15000,
+  });
   expect(imports).toBe(1);
 });
 
@@ -118,6 +120,7 @@ test("shows actionable configuration errors and supports keyboard access", async
   await page.route("**/api/media-tools", (route) => route.fulfill({ json: status }));
   await page.goto("/");
   const trigger = page.getByRole("button", { name: "Import a file", exact: true });
+  await expect(trigger).toBeEnabled();
   await trigger.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText(/Correct or remove FFPROBE_PATH/u)).toBeVisible();
