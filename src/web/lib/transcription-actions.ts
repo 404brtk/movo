@@ -35,3 +35,7 @@ export function useTranscriptionAction(mediaId: string) {
       ]),
   });
 }
+
+export type TranscriptionActionMutation = ReturnType<typeof useTranscriptionAction>;
+
+export const hasEdits = (job: TranscriptionJob) => job.revision > job.resultRevision;

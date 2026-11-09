@@ -14,6 +14,10 @@ import { Skeleton } from "../components/ui/skeleton.tsx";
 import { ApiError, mediaItemOptions, transcriptionOptions } from "../lib/api.ts";
 import { formatBytes, formatDuration } from "../lib/format.ts";
 import { searchParams } from "../lib/search-params.ts";
+import {
+  type TranscriptionActionMutation,
+  useTranscriptionAction,
+} from "../lib/transcription-actions.ts";
 
 export const Route = createFileRoute("/media/$mediaId")({
   validateSearch: searchParams(
@@ -23,6 +27,7 @@ export const Route = createFileRoute("/media/$mediaId")({
       ),
     }),
   ),
+  remountDeps: ({ params }) => params.mediaId,
   component: MediaDetail,
 });
 
@@ -58,9 +63,11 @@ function SavedCopyRemoved() {
 
 function PlaybackWithTranscript({
   item,
+  transcribe,
   startMs,
 }: {
   item: MediaItem;
+  transcribe: TranscriptionActionMutation;
   startMs: number | undefined;
 }) {
   const player = useRef<HTMLMediaElement | null>(null);
@@ -83,6 +90,7 @@ function PlaybackWithTranscript({
       />
       <TranscriptionPanel
         mediaId={item.id}
+        action={transcribe}
         playback={{ positionMs, onSeek: seek }}
         revealMs={startMs}
       />
@@ -94,6 +102,7 @@ function MediaDetail() {
   const { mediaId } = Route.useParams();
   const { startMs } = Route.useSearch();
   const media = useQuery(mediaItemOptions(mediaId));
+  const transcribe = useTranscriptionAction(mediaId);
   const item = media.data;
   if (media.isError && media.error instanceof ApiError && media.error.status === 404)
     return (
@@ -112,7 +121,7 @@ function MediaDetail() {
           <HugeiconsIcon icon={ArrowLeft02Icon} data-icon="inline-start" aria-hidden="true" />
           Library
         </Link>
-        {item ? <RecordingMenu key={item.id} item={item} /> : null}
+        {item ? <RecordingMenu item={item} transcribe={transcribe} /> : null}
       </div>
       {media.isPending ? (
         <output aria-label="Loading recording" className="mt-4 grid gap-3 opacity-50">
@@ -138,11 +147,16 @@ function MediaDetail() {
             {describeRecording(item)}
           </p>
           {item.fileRemovedAt === null ? (
-            <PlaybackWithTranscript key={`${item.id}:${startMs}`} item={item} startMs={startMs} />
+            <PlaybackWithTranscript
+              key={startMs}
+              item={item}
+              transcribe={transcribe}
+              startMs={startMs}
+            />
           ) : (
             <>
               <SavedCopyRemoved />
-              <TranscriptionPanel mediaId={item.id} revealMs={startMs} />
+              <TranscriptionPanel mediaId={item.id} action={transcribe} revealMs={startMs} />
             </>
           )}
         </>

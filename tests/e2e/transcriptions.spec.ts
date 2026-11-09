@@ -377,3 +377,77 @@ test("transcribes a completed recording again while keeping the previous transcr
   await expect(copied).toBeVisible();
   expect(retries).toBe(2);
 });
+
+test("offers transcribing again after a cancelled, rejected or failed repeat attempt", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.wav` },
+  });
+  expect(uploaded.status()).toBe(201);
+  const media: { id: string } = await uploaded.json();
+  let job: TranscriptionJob = {
+    mediaId: media.id,
+    modelId: "parakeet-ultra-q8",
+    status: "cancelled",
+    phase: "finished",
+    transcript: { language: "en", words: timedWords(0, 1000, "The previous transcript.") },
+    revision: 0,
+    resultRevision: 0,
+    device: null,
+    error: null,
+    cleanupError: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  let retries = 0;
+  await page.route(`**/api/media/${media.id}/transcription`, (route) => {
+    expect(route.request().method()).toBe("GET");
+    return route.fulfill({ json: job });
+  });
+  await page.route(`**/api/media/${media.id}/transcription/retry`, (route) => {
+    expect(route.request().method()).toBe("POST");
+    if (++retries === 1)
+      return route.fulfill({
+        status: 500,
+        json: { error: "Close apps using the recording and try again." },
+      });
+    job = { ...job, status: "running", phase: "transcribing", error: null };
+    return route.fulfill({ status: 202, json: job });
+  });
+  await page.goto(`/media/${media.id}`);
+  const panel = page.getByRole("region", { name: "Transcription", exact: true });
+  await expect(panel.getByText("Showing the previous transcript.", { exact: true })).toBeVisible();
+  const more = page.getByRole("button", { name: "More actions", exact: true });
+  const transcribeAgain = page.getByRole("menuitem", { name: "Transcribe again", exact: true });
+  await more.click();
+  await transcribeAgain.click();
+  await expect(panel.getByRole("alert")).toHaveText(
+    "Close apps using the recording and try again.",
+  );
+  await more.click();
+  await transcribeAgain.click();
+  await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+
+  job = {
+    ...job,
+    status: "failed",
+    phase: "finished",
+    revision: 1,
+    error: "The new attempt failed.",
+  };
+  await expect(panel.getByRole("alert")).toContainText("The new attempt failed.");
+  await panel.getByRole("button", { name: "Retry transcription", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Replace your edits?" });
+  await dialog.getByRole("button", { name: "Keep edits" }).click();
+  await expect(dialog).toBeHidden();
+  expect(retries).toBe(2);
+  await panel.getByRole("button", { name: "Retry transcription", exact: true }).click();
+  await dialog.getByRole("button", { name: "Transcribe again" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
+  expect(retries).toBe(3);
+});

@@ -5,9 +5,14 @@ import { useQuery } from "@tanstack/react-query";
 import type { Transcript, TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
 import { modelsOptions, transcriptionOptions } from "../lib/api.ts";
 import { formatDevice } from "../lib/format.ts";
-import { isActiveTranscription, useTranscriptionAction } from "../lib/transcription-actions.ts";
+import {
+  hasEdits,
+  isActiveTranscription,
+  type TranscriptionActionMutation,
+} from "../lib/transcription-actions.ts";
 import { cn } from "../lib/utils.ts";
 import { ChangeHistory } from "./change-history.tsx";
+import { ReplaceEditsDialog } from "./confirm-dialog.tsx";
 import { FindAndReplace, useFindAndReplace } from "./find-and-replace.tsx";
 import { TranscriptActions } from "./transcript-actions.tsx";
 import {
@@ -41,7 +46,7 @@ function TranscriptView({
   const [findOpen, setFindOpen] = useState(false);
   const find = useFindAndReplace(transcript);
   const { revision, resultRevision } = job;
-  const edited = revision > resultRevision;
+  const edited = hasEdits(job);
   const editable = !isActiveTranscription(job);
   const editing = useMemo<TranscriptEditing | undefined>(
     () => (editable ? { mediaId, revision } : undefined),
@@ -112,16 +117,18 @@ function TranscriptView({
 
 export function TranscriptionPanel({
   mediaId,
+  action,
   playback,
   revealMs,
 }: {
   mediaId: string;
+  action: TranscriptionActionMutation;
   playback?: TranscriptPlayback | undefined;
   revealMs?: number | undefined;
 }) {
   const query = useQuery(transcriptionOptions(mediaId));
   const models = useQuery(modelsOptions);
-  const action = useTranscriptionAction(mediaId);
+  const [confirmingRetry, setConfirmingRetry] = useState(false);
   const job = query.data;
   const fileAvailable = playback !== undefined;
   const modelName =
@@ -170,9 +177,14 @@ export function TranscriptionPanel({
         <FailedTranscriptionCard
           job={job}
           retrying={action.isPending}
-          onRetry={() => action.mutate("retry")}
+          onRetry={() => (hasEdits(job) ? setConfirmingRetry(true) : action.mutate("retry"))}
         />
       ) : null}
+      <ReplaceEditsDialog
+        open={confirmingRetry}
+        onOpenChange={setConfirmingRetry}
+        transcribe={action}
+      />
       {job && (job.status === "failed" || job.status === "interrupted") && !fileAvailable ? (
         <p role="alert" className="mt-5 text-[13px]/5 wrap-anywhere text-destructive">
           {job.error}

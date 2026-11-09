@@ -1,5 +1,7 @@
 import { type RefObject, useRef } from "react";
+import { RefreshIcon } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import type { TranscriptionActionMutation } from "../lib/transcription-actions.ts";
 import { AccentIcon } from "./accent-icon.tsx";
 import { Spinner } from "./spinner.tsx";
 import {
@@ -31,7 +33,7 @@ export function ConfirmDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  returnFocus: RefObject<HTMLButtonElement | null> | false;
+  returnFocus?: RefObject<HTMLButtonElement | null> | false | undefined;
   icon: IconSvgElement;
   title: string;
   description: string;
@@ -77,6 +79,35 @@ export function ConfirmDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+export function ReplaceEditsDialog({
+  open,
+  onOpenChange,
+  returnFocus,
+  transcribe,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  returnFocus?: RefObject<HTMLButtonElement | null> | undefined;
+  transcribe: TranscriptionActionMutation;
+}) {
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      returnFocus={returnFocus}
+      icon={RefreshIcon}
+      title="Replace your edits?"
+      description="The new transcript replaces your edits and their history when it completes. Until then, the edited transcript stays available and editing is paused."
+      keep="Keep edits"
+      confirm="Transcribe again"
+      pending="Starting…"
+      busy={transcribe.isPending}
+      error={transcribe.error?.message ?? null}
+      onConfirm={() => transcribe.mutate("retry", { onSuccess: () => onOpenChange(false) })}
+    />
   );
 }
 

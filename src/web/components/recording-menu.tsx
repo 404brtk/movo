@@ -22,8 +22,12 @@ import {
   removeMediaFile,
   transcriptionOptions,
 } from "../lib/api.ts";
-import { isActiveTranscription, useTranscriptionAction } from "../lib/transcription-actions.ts";
-import { CleanupNotice, ConfirmDialog } from "./confirm-dialog.tsx";
+import {
+  hasEdits,
+  isActiveTranscription,
+  type TranscriptionActionMutation,
+} from "../lib/transcription-actions.ts";
+import { CleanupNotice, ConfirmDialog, ReplaceEditsDialog } from "./confirm-dialog.tsx";
 import { RenameRecordingDialog } from "./rename-recording-dialog.tsx";
 import { Button } from "./ui/button.tsx";
 import {
@@ -41,16 +45,21 @@ function MenuIcon({ icon }: { icon: IconSvgElement }) {
   return <HugeiconsIcon icon={icon} aria-hidden="true" className="text-muted-foreground" />;
 }
 
-export function RecordingMenu({ item }: { item: MediaItem }) {
+export function RecordingMenu({
+  item,
+  transcribe,
+}: {
+  item: MediaItem;
+  transcribe: TranscriptionActionMutation;
+}) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const trigger = useRef<HTMLButtonElement>(null);
   const [dialog, setDialog] = useState<RecordingDialog | null>(null);
   const transcription = useQuery(transcriptionOptions(item.id));
-  const transcribe = useTranscriptionAction(item.id);
   const job = transcription.data;
   const fileAvailable = item.fileRemovedAt === null;
-  const edited = job ? job.revision > job.resultRevision : false;
+  const edited = job ? hasEdits(job) : false;
   const leaveRecording = async () => {
     await navigate({ to: "/", replace: true });
     queryClient.removeQueries({ queryKey: mediaItemOptions(item.id).queryKey, exact: true });
@@ -87,8 +96,8 @@ export function RecordingMenu({ item }: { item: MediaItem }) {
       await queryClient.invalidateQueries({ queryKey: mediaListKey });
     },
   });
-  const canRemoveFile = fileAvailable && job?.transcript != null && !isActiveTranscription(job);
-  const canTranscribeAgain = fileAvailable && job?.status === "completed";
+  const canReplaceTranscript =
+    fileAvailable && job?.transcript != null && !isActiveTranscription(job);
   const openDialog = (next: RecordingDialog) => () => {
     remove.reset();
     removeFile.reset();
@@ -154,7 +163,7 @@ export function RecordingMenu({ item }: { item: MediaItem }) {
               View original source
             </DropdownMenuItem>
           ) : null}
-          {canTranscribeAgain ? (
+          {canReplaceTranscript ? (
             <DropdownMenuItem
               disabled={transcribe.isPending}
               onClick={edited ? openDialog("retranscribe") : () => transcribe.mutate("retry")}
@@ -164,7 +173,7 @@ export function RecordingMenu({ item }: { item: MediaItem }) {
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuSeparator />
-          {canRemoveFile ? (
+          {canReplaceTranscript ? (
             <DropdownMenuItem onClick={openDialog("remove-file")}>
               <MenuIcon icon={Cancel01Icon} />
               Remove saved copy…
@@ -182,19 +191,11 @@ export function RecordingMenu({ item }: { item: MediaItem }) {
         onOpenChange={closeDialog}
         returnFocus={trigger}
       />
-      <ConfirmDialog
+      <ReplaceEditsDialog
         open={dialog === "retranscribe"}
         onOpenChange={closeDialog}
         returnFocus={trigger}
-        icon={RefreshIcon}
-        title="Replace your edits?"
-        description="The new transcript replaces your edits and their history when it completes. Until then, the edited transcript stays available and editing is paused."
-        keep="Keep edits"
-        confirm="Transcribe again"
-        pending="Starting…"
-        busy={transcribe.isPending}
-        error={transcribe.error?.message ?? null}
-        onConfirm={() => transcribe.mutate("retry", { onSuccess: () => setDialog(null) })}
+        transcribe={transcribe}
       />
       <ConfirmDialog
         open={dialog === "remove-file"}
