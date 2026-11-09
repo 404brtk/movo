@@ -8,7 +8,22 @@ import { timedWords } from "../helpers/timed-words.ts";
 const passageCount = 20;
 const passageStartMs = (index: number) => 50 + index * 95;
 
-async function openTranscribedVideo(page: Page, request: APIRequestContext) {
+function heldTranscript() {
+  const held: { release?: () => void } = {};
+  const promise = new Promise<void>((resolve) => {
+    held.release = resolve;
+  });
+  return { promise, release: () => held.release?.() };
+}
+
+async function openTranscribedVideo(
+  page: Page,
+  request: APIRequestContext,
+  {
+    transcriptReady = Promise.resolve(),
+    startMs,
+  }: { transcriptReady?: Promise<void>; startMs?: number } = {},
+) {
   const uploaded = await request.post("/api/media", {
     data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
     headers: { "x-file-name": `${randomUUID()}.webm` },
@@ -38,14 +53,14 @@ async function openTranscribedVideo(page: Page, request: APIRequestContext) {
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
-  await page.route(`**/api/media/${media.id}/transcription`, (route) => {
+  await page.route(`**/api/media/${media.id}/transcription`, async (route) => {
     expect(route.request().method()).toBe("GET");
+    await transcriptReady;
     return route.fulfill({ json: job });
   });
-  await page.goto(`/media/${media.id}`);
+  await page.goto(`/media/${media.id}${startMs === undefined ? "" : `?startMs=${startMs}`}`);
   const video = page.locator("video");
   const passages = page.getByRole("list", { name: "Timestamped passages" }).getByRole("listitem");
-  await expect(passages).toHaveCount(passageCount);
   return {
     player: page.getByRole("region", { name: "Video player", exact: true }),
     video,
@@ -66,6 +81,7 @@ test("keeps the video pinned, follows the spoken passage and pauses when scrolle
     page,
     request,
   );
+  await expect(passages).toHaveCount(passageCount);
   const scrollPosition = () => page.evaluate(() => window.scrollY);
   const gapBelowPlayer = async (index: number) => {
     const playerBounds = await player.boundingBox();
@@ -106,6 +122,7 @@ test("keeps an open, empty find form in place and offers the way back after clos
   request,
 }) => {
   const { passages, backToCurrent, seek } = await openTranscribedVideo(page, request);
+  await expect(passages).toHaveCount(passageCount);
   await page.getByRole("button", { name: "Find and replace", exact: true }).click();
   await expect(page.getByLabel("Find", { exact: true })).toBeFocused();
 
@@ -128,6 +145,7 @@ test("offers the way back after editing elsewhere and keeps following after edit
   request,
 }) => {
   const { passages, backToCurrent, seek } = await openTranscribedVideo(page, request);
+  await expect(passages).toHaveCount(passageCount);
   const passageText = page.getByLabel("Passage text", { exact: true });
   await passages
     .nth(0)
@@ -150,5 +168,41 @@ test("offers the way back after editing elsewhere and keeps following after edit
   await expect(passageText).toBeFocused();
   await passageText.press("Escape");
   await expect(passages.nth(14)).toBeInViewport();
+  await expect(backToCurrent).toHaveCount(0);
+});
+
+test("brings the spoken passage into view when the transcript arrives after playback moved on", async ({
+  page,
+  request,
+}) => {
+  const transcript = heldTranscript();
+  const { player, passages, backToCurrent, seek } = await openTranscribedVideo(page, request, {
+    transcriptReady: transcript.promise,
+  });
+  await expect(player).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toBeInViewport();
+  await seek(1.4);
+  await expect(player).toContainText("0:01");
+  transcript.release();
+
+  await expect(passages.nth(14)).toHaveAttribute("aria-current", "time");
+  await expect(passages.nth(14)).toBeInViewport();
+  await expect(backToCurrent).toHaveCount(0);
+});
+
+test("keeps a passage opened from search where it was revealed", async ({ page, request }) => {
+  const { player, passages, backToCurrent } = await openTranscribedVideo(page, request, {
+    startMs: 1400,
+  });
+  await expect(passages).toHaveCount(passageCount);
+  await expect(passages.nth(14)).toHaveAttribute("aria-current", "time");
+  await expect(passages.nth(14)).toBeInViewport();
+  const revealedPosition = await page.evaluate(() => window.scrollY);
+  await expect.poll(async () => (await player.boundingBox())?.y).toBeCloseTo(20, 0);
+  const playerBounds = await player.boundingBox();
+  const passageBounds = await passages.nth(14).boundingBox();
+  if (!playerBounds || !passageBounds) throw new Error("Expected the player and passage.");
+  expect(passageBounds.y - (playerBounds.y + playerBounds.height)).toBeGreaterThan(100);
+  expect(await page.evaluate(() => window.scrollY)).toBe(revealedPosition);
   await expect(backToCurrent).toHaveCount(0);
 });

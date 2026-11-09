@@ -187,10 +187,13 @@ export function TranscriptReader({
   const revealedWord = revealMs === undefined ? -1 : currentWordIndex(transcript.words, revealMs);
   const list = useRef<HTMLOListElement>(null);
   const currentPassage = passages.find((passage) => contains(passage, currentWord));
+  const openingWord = currentWordIndex(transcript.words, revealMs ?? 0);
+  const openingPassage = passages.find((passage) => contains(passage, openingWord));
   const suspended = searching || Boolean(edited?.open);
   const { currentAbove } = useTranscriptFollow({
     list,
     passage: currentPassage?.firstWord,
+    openingPassage: openingPassage?.firstWord,
     following: playback?.following ?? false,
     suspended,
     onFollowingChange: playback?.onFollowingChange,

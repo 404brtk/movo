@@ -27,18 +27,20 @@ const scrollBehavior = (): ScrollBehavior =>
 export function useTranscriptFollow({
   list,
   passage,
+  openingPassage,
   following,
   suspended,
   onFollowingChange,
 }: {
   list: RefObject<HTMLElement | null>;
   passage: number | undefined;
+  openingPassage: number | undefined;
   following: boolean;
   suspended: boolean;
   onFollowingChange: ((following: boolean) => void) | undefined;
 }) {
   const [currentAbove, setCurrentAbove] = useState(false);
-  const followed = useRef({ following, passage });
+  const followed = useRef({ following, passage: openingPassage });
   const wasSuspended = useRef(suspended);
 
   useEffect(() => {
