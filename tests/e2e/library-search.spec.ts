@@ -88,8 +88,14 @@ test("searches transcripts, opens a matching passage and restores the search on 
   await search.fill("SPOTKAN");
   await expect(page).toHaveURL(/\?q=SPOTKAN$/u);
   await expect(page.getByRole("status").filter({ hasText: "recording" })).toHaveText(
-    "1 recording · sorted by best match",
+    "1 recording ·",
   );
+  await page.getByRole("button", { name: "Sort by Best match" }).click();
+  await page.getByRole("menuitemradio", { name: "Oldest" }).click();
+  await expect(page).toHaveURL(/\?q=SPOTKAN&sort=oldest$/u);
+  await page.getByRole("button", { name: "Sort by Oldest" }).click();
+  await page.getByRole("menuitemradio", { name: "Best match" }).click();
+  await expect(page).toHaveURL(/\?q=SPOTKAN$/u);
   const matches = page.getByRole("list", { name: "Matches in Łódź meeting" });
   const passage = matches.getByRole("link", { name: /^0:01 ?Plan spotkania na jutro\.$/u });
   await expect(passage.locator("mark")).toHaveText("spotkania");

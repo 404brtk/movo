@@ -2,7 +2,7 @@ import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { Schema } from "effect";
-import { LibraryQuery, librarySort } from "../../shared/contracts/library.ts";
+import { LibraryQuery, librarySort, librarySorts } from "../../shared/contracts/library.ts";
 import { sortLabels } from "../lib/library-view.ts";
 import { Button } from "./ui/button.tsx";
 import {
@@ -13,13 +13,15 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 
-const browseSorts = ["newest", "oldest", "title"] as const;
 const decodeSort = Schema.decodeUnknownSync(LibraryQuery.fields.sort);
 
 export function LibrarySort({ search }: { search: LibraryQuery }) {
   const navigate = useNavigate({ from: "/" });
   const sort = librarySort(search);
   const defaultSort = librarySort({ ...search, sort: undefined });
+  const options = librarySorts.filter(
+    (option) => option !== "relevance" || defaultSort === "relevance",
+  );
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -42,7 +44,7 @@ export function LibrarySort({ search }: { search: LibraryQuery }) {
             });
           }}
         >
-          {browseSorts.map((option) => (
+          {options.map((option) => (
             <DropdownMenuRadioItem key={option} value={option} closeOnClick>
               {sortLabels[option]}
             </DropdownMenuRadioItem>

@@ -13,7 +13,6 @@ import { LibrarySort } from "../components/library-sort.tsx";
 import { LibraryFacts, LibraryWelcome } from "../components/library-welcome.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { mediaListOptions } from "../lib/api.ts";
-import { sortLabels } from "../lib/library-view.ts";
 import { searchParams } from "../lib/search-params.ts";
 
 export const Route = createFileRoute("/")({
@@ -45,14 +44,15 @@ function Library() {
             {items ? (
               <LibraryFilters search={search}>
                 {items.length > 0 ? (
-                  searching ? (
-                    <output className="text-xs text-muted-foreground">
-                      {items.length} {items.length === 1 ? "recording" : "recordings"} · sorted by{" "}
-                      {sortLabels[sort].toLowerCase()}
-                    </output>
-                  ) : (
+                  <span className="flex items-center gap-1">
+                    {searching ? (
+                      <output className="text-xs text-muted-foreground">
+                        {items.length} {items.length === 1 ? "recording" : "recordings"}
+                        <span aria-hidden="true"> ·</span>
+                      </output>
+                    ) : null}
                     <LibrarySort search={search} />
-                  )
+                  </span>
                 ) : null}
               </LibraryFilters>
             ) : null}
