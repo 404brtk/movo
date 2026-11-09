@@ -57,6 +57,7 @@ it("preserves legacy jobs and media while allowing new variants of their URL", a
               mediaId: id,
               title: "Saved media",
               downloadedBytes: 100,
+              totalBytes: null,
               cleanupError: "Previous cleanup warning",
             });
             expect(yield* jobs.get(queuedId)).toMatchObject({

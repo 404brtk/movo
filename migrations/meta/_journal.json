@@ -85,6 +85,13 @@
       "when": 1794145050846,
       "tag": "0011_transcript_history",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794183957109,
+      "tag": "0012_download_total_size",
+      "breakpoints": true
     }
   ]
 }

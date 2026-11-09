@@ -216,6 +216,8 @@ describe("Media downloader protocol", () => {
           expect(JSON.parse(await readFile(join(directory, "source.info.json"), "utf8"))).toEqual(
             metadata,
           );
+          options.onLine?.("MOVO_SIZE:null");
+          options.onLine?.("MOVO_SIZE:259.6");
           options.onLine?.('MOVO_PROGRESS:{"downloaded_bytes":100,"filename":"video"}');
           options.onLine?.('MOVO_PROGRESS:{"downloaded_bytes":30,"filename":"audio"}');
           options.onLine?.("MOVO_PROCESSING");
@@ -230,6 +232,8 @@ describe("Media downloader protocol", () => {
         ),
       );
       expect(result.path).toBe(path);
+      expect(updates).toContainEqual({ totalBytes: null });
+      expect(updates).toContainEqual({ totalBytes: 260 });
       expect(updates).toContainEqual({ downloadedBytes: 130, phase: "downloading" });
       expect(updates.at(-1)).toEqual({ phase: "processing" });
     } finally {

@@ -23,6 +23,7 @@ const jobFixture = (): DownloadJob => ({
   status: "running",
   phase: "downloading",
   downloadedBytes: 1024,
+  totalBytes: 4096,
   error: null,
   cleanupError: null,
   mediaId: null,

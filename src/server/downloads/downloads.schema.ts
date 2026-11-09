@@ -29,6 +29,7 @@ export const downloadJobs = sqliteTable(
       enum: ["queued", "checking", "downloading", "processing", "saving", "finished"],
     }).notNull(),
     downloadedBytes: integer("downloaded_bytes").notNull().default(0),
+    totalBytes: integer("total_bytes"),
     error: text("error"),
     cleanupError: text("cleanup_error"),
     mediaId: text("media_id").references(() => mediaItems.id),
@@ -40,5 +41,6 @@ export const downloadJobs = sqliteTable(
     uniqueIndex("download_jobs_url_preset_unique").on(table.url, table.preset),
     index("download_queue_order").on(table.status, table.updatedAt),
     check("download_nonnegative_bytes", sql`${table.downloadedBytes} >= 0`),
+    check("download_positive_total_bytes", sql`${table.totalBytes} > 0`),
   ],
 );
