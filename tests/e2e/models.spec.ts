@@ -151,19 +151,22 @@ test("lists the media tools and opens yt-dlp setup from the models page", async 
       },
     }),
   );
+  let ytdlpChecks = 0;
   await page.route("**/api/ytdlp", (route) =>
-    route.fulfill({
-      json: {
-        ytdlp: { state: "missing" },
-        download: {
-          provider: "yt-dlp",
-          sourceUrl: "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.26",
-          version: "2026.10.26",
-          bytes: 18874368,
-        },
-        installation: { phase: "idle", downloadedBytes: 0, error: null },
-      },
-    }),
+    ++ytdlpChecks === 1
+      ? route.fulfill({ status: 500, json: { error: "Could not check yt-dlp." } })
+      : route.fulfill({
+          json: {
+            ytdlp: { state: "missing" },
+            download: {
+              provider: "yt-dlp",
+              sourceUrl: "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.26",
+              version: "2026.10.26",
+              bytes: 18874368,
+            },
+            installation: { phase: "idle", downloadedBytes: 0, error: null },
+          },
+        }),
   );
   await page.goto("/models");
   const tools = page.getByRole("list", { name: "Tools" });
@@ -171,6 +174,9 @@ test("lists the media tools and opens yt-dlp setup from the models page", async 
     "FFprobe 7.1 and FFmpeg 7.1 · private copy",
   );
   await expect(tools.getByText("Ready", { exact: true })).toBeVisible();
+  await expect(tools.getByRole("alert")).toHaveText("Could not check yt-dlp.");
+  await tools.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(tools.getByRole("alert")).toHaveCount(0);
   await tools.getByRole("button", { name: "Download yt-dlp", exact: true }).click();
   await expect(page.getByRole("heading", { name: "yt-dlp is needed", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Not now", exact: true }).click();

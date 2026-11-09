@@ -1,4 +1,4 @@
-import { type ComponentType, useState } from "react";
+import { type ComponentType, useId, useState } from "react";
 import { Download04Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { type QueryKey, type UseQueryOptions, useQuery } from "@tanstack/react-query";
@@ -48,7 +48,9 @@ export function ToolRow<Status extends { installation: ToolInstallation }, Key e
   setup: ComponentType<{ onClose: () => void }>;
 }) {
   const [open, setOpen] = useState(false);
-  const status = useQuery(options).data;
+  const query = useQuery(options);
+  const errorId = useId();
+  const status = query.data;
   const tools = status ? selectTools(status) : {};
   const states = Object.values(tools);
   const ready = states.length > 0 && states.every((tool) => tool.state === "ready");
@@ -61,11 +63,33 @@ export function ToolRow<Status extends { installation: ToolInstallation }, Key e
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-[13.5px]/[normal] font-medium">{title}</p>
-        <p className="mt-px truncate text-xs/[normal] text-muted-foreground">
-          {ready ? describeReadyTools(tools) : description}
-        </p>
+        {query.isLoadingError ? (
+          <p
+            id={errorId}
+            role="alert"
+            className="mt-px text-xs/[normal] wrap-anywhere text-destructive"
+          >
+            {query.error.message}
+          </p>
+        ) : (
+          <p className="mt-px truncate text-xs/[normal] text-muted-foreground">
+            {ready ? describeReadyTools(tools) : description}
+          </p>
+        )}
       </div>
-      {status === undefined ? null : ready && !open ? (
+      {query.isLoadingError ? (
+        <Button
+          variant="outline"
+          size="sm"
+          aria-describedby={errorId}
+          aria-busy={query.isFetching}
+          disabled={query.isFetching}
+          onClick={() => void query.refetch()}
+        >
+          {query.isFetching ? <Spinner /> : null}
+          Try again
+        </Button>
+      ) : status === undefined ? null : ready && !open ? (
         <StatusIndicator tone="success">Ready</StatusIndicator>
       ) : (
         <Popover open={open} onOpenChange={setOpen}>
