@@ -65,6 +65,7 @@ function HistoryVersions({
     restoreTranscript(mediaId, { revision, target }),
   );
   const [restored, setRestored] = useState<number | null>(null);
+  const reloading = history.isPlaceholderData;
   const changes = history.data?.pages.flatMap((page) => page.changes) ?? [];
   const versions = [
     ...changes.map((change) => ({
@@ -101,9 +102,9 @@ function HistoryVersions({
         </div>
       ) : null}
       {versions.length > 0 ? (
-        <ol aria-label="Transcript versions" className="px-3 pt-3">
+        <ol aria-label="Transcript versions" aria-busy={reloading} className="px-3 pt-3">
           {versions.map((version, index) => {
-            const current = index === 0;
+            const current = !reloading && index === 0;
             const restoring = restore.isPending && restore.variables === version.revision;
             return (
               <li
@@ -134,7 +135,7 @@ function HistoryVersions({
                     size="sm"
                     aria-label={`Restore: ${version.description} (${version.details})`}
                     aria-busy={restoring}
-                    disabled={restore.isPending}
+                    disabled={restore.isPending || reloading}
                     onClick={() =>
                       restore.mutate(version.revision, {
                         onSuccess: () => setRestored(version.revision),

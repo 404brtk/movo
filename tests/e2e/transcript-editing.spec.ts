@@ -171,7 +171,24 @@ test("previews and applies find and replace, then undoes and restores versions",
   ]);
 
   await history.click();
+  let openHistory: (() => void) | undefined;
+  const historyGate = new Promise<void>((open) => {
+    openHistory = open;
+  });
+  await page.route("**/transcription/changes?*", async (route) => {
+    await historyGate;
+    await route.fallback();
+  });
   await page.getByRole("button", { name: /^Restore: Edited passage at 0:01/u }).click();
+  await expect(page.getByRole("list", { name: "Transcript versions" })).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  await expect(versions.getByText("Current", { exact: true })).toHaveCount(0);
+  for (const restoreButton of await versions.getByRole("button").all())
+    await expect(restoreButton).toBeDisabled();
+  openHistory?.();
+  await page.unroute("**/transcription/changes?*");
   await expect(versions).toHaveText([
     /^Edited passage at 0:01.*Current$/u,
     /^Replaced “kubernetis” with “Kubernetes”/u,
