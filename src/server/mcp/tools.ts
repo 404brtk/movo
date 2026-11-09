@@ -191,7 +191,7 @@ export const movoTools = Toolkit.make(
   }).annotateMerge(reads),
   Tool.make("restore_transcript", {
     description:
-      "Return a transcript to an earlier revision, from resultRevision of get_recording (the transcription result) up to the current one. The restore is saved as a new change, so restoring the revision before it undoes it; restoring a revision with the same text changes nothing. revision must be the current one.",
+      "Return a transcript to an earlier revision, from resultRevision of get_recording (the transcription result) up to the current one. target must be listed by list_transcript_changes or be resultRevision. The restore is saved as a new change, but a restore right after another restore replaces it, and restoring the version before a restore removes that restore. Restoring a revision with the same text changes nothing. revision must be the current one.",
     parameters: Schema.Struct({ ...Recording.fields, ...TranscriptRestore.fields }),
     success: TranscriptionSummary,
     failure,
