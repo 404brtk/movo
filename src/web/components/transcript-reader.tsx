@@ -1,6 +1,7 @@
-import { Edit02Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, ArrowUp01Icon, Edit02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Fragment, memo, useMemo, useState } from "react";
+import { Fragment, memo, useMemo, useRef, useState } from "react";
+import type { MediaItem } from "../../shared/contracts/media.ts";
 import type { Transcript } from "../../shared/contracts/transcriptions.ts";
 import {
   currentWordIndex,
@@ -9,6 +10,7 @@ import {
 } from "../../shared/transcript-passages.ts";
 import { formatDuration } from "../lib/format.ts";
 import { marksByPassage, type PassageMark, type TranscriptMatches } from "../lib/passage-marks.ts";
+import { pinnedHeight, useTranscriptFollow } from "../lib/transcript-follow.ts";
 import { cn } from "../lib/utils.ts";
 import { PassageEditor } from "./passage-editor.tsx";
 import { Button } from "./ui/button.tsx";
@@ -16,7 +18,7 @@ import { Button } from "./ui/button.tsx";
 const revealElement = (element: HTMLElement | null) => element?.scrollIntoView({ block: "center" });
 const revealIfHidden = (element: HTMLElement | null) => {
   const bounds = element?.getBoundingClientRect();
-  if (bounds && (bounds.top < 0 || bounds.bottom > window.innerHeight - 120))
+  if (bounds && (bounds.top < pinnedHeight() || bounds.bottom > window.innerHeight - 120))
     element?.scrollIntoView({ block: "center" });
 };
 const focusElement = (element: HTMLElement | null) => element?.focus();
@@ -24,6 +26,9 @@ const focusElement = (element: HTMLElement | null) => element?.focus();
 export interface TranscriptPlayback {
   positionMs: number;
   onSeek: (milliseconds: number) => void;
+  mediaKind: MediaItem["kind"];
+  following: boolean;
+  onFollowingChange: (following: boolean) => void;
 }
 
 export interface TranscriptEditing {
@@ -102,7 +107,7 @@ const Passage = memo(function Passage({
       ref={revealed ? revealElement : undefined}
       aria-current={current ? "time" : undefined}
       className={cn(
-        "group/passage relative py-3",
+        "group/passage relative scroll-mt-14 py-3",
         editing && "-mx-3.5 rounded-xl px-3.5 transition-colors duration-150",
         editing && !editorOpen && "hover:bg-subtle has-focus-visible:bg-subtle",
         editorOpen && "my-1 rounded-[14px] bg-background pb-3.5 shadow-editor",
@@ -178,22 +183,54 @@ export function TranscriptReader({
   const marks = useMemo(() => marksByPassage(passages, matches), [passages, matches]);
   const currentWord = playback ? currentWordIndex(transcript.words, playback.positionMs) : -1;
   const revealedWord = revealMs === undefined ? -1 : currentWordIndex(transcript.words, revealMs);
+  const list = useRef<HTMLOListElement>(null);
+  const currentPassage = passages.find((passage) => contains(passage, currentWord));
+  const suspended = Boolean(matches) || Boolean(edited?.open);
+  const { currentAbove } = useTranscriptFollow({
+    list,
+    passage: currentPassage?.firstWord,
+    following: playback?.following ?? false,
+    suspended,
+    onFollowingChange: playback?.onFollowingChange,
+  });
   return (
-    <ol aria-label="Timestamped passages" className="mt-2">
-      {passages.map((passage) => (
-        <Passage
-          key={passage.firstWord}
-          passage={passage}
-          currentWord={contains(passage, currentWord) ? currentWord - passage.firstWord : -1}
-          dimmed={(Boolean(playback) && !matches) || Boolean(edited?.open)}
-          revealed={contains(passage, revealedWord)}
-          marks={marks.get(passage.firstWord)}
-          onSeek={playback?.onSeek}
-          editing={editing}
-          edited={edited?.firstWord === passage.firstWord ? edited : undefined}
-          onEdited={setEdited}
-        />
-      ))}
-    </ol>
+    <>
+      <ol ref={list} aria-label="Timestamped passages" className="mt-2">
+        {passages.map((passage) => (
+          <Passage
+            key={passage.firstWord}
+            passage={passage}
+            currentWord={contains(passage, currentWord) ? currentWord - passage.firstWord : -1}
+            dimmed={(Boolean(playback) && !matches) || Boolean(edited?.open)}
+            revealed={contains(passage, revealedWord)}
+            marks={marks.get(passage.firstWord)}
+            onSeek={playback?.onSeek}
+            editing={editing}
+            edited={edited?.firstWord === passage.firstWord ? edited : undefined}
+            onEdited={setEdited}
+          />
+        ))}
+      </ol>
+      {playback && !playback.following && !suspended && currentPassage ? (
+        <Button
+          variant="ghost"
+          className={cn(
+            "fixed left-1/2 z-40 h-9 -translate-x-1/2 gap-2 rounded-full bg-background/82 pr-4 pl-3 text-foreground shadow-player backdrop-blur-[20px] backdrop-saturate-[1.8] hover:bg-background hover:text-foreground",
+            playback.mediaKind === "audio" ? "bottom-24" : "bottom-6",
+          )}
+          onClick={() => playback.onFollowingChange(true)}
+        >
+          <HugeiconsIcon
+            icon={currentAbove ? ArrowUp01Icon : ArrowDown01Icon}
+            aria-hidden="true"
+            className="text-primary-strong"
+          />
+          Back to current{" "}
+          <span className="font-normal text-muted-foreground tabular-nums">
+            {formatDuration(currentPassage.startMs / 1000)}
+          </span>
+        </Button>
+      ) : null}
+    </>
   );
 }
