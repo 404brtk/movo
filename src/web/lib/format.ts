@@ -14,7 +14,9 @@ const byteUnits = ["B", "KiB", "MiB", "GiB"] as const;
 const byteExponent = (bytes: number) =>
   bytes < 1024 ? 0 : Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), byteUnits.length - 1);
 const formatScaled = (bytes: number, exponent: number) =>
-  new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / 1024 ** exponent);
+  new Intl.NumberFormat(undefined, { maximumFractionDigits: 1, useGrouping: false }).format(
+    bytes / 1024 ** exponent,
+  );
 
 export function formatBytes(bytes: number) {
   const exponent = byteExponent(bytes);
