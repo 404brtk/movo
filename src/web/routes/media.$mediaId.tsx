@@ -72,6 +72,7 @@ function PlaybackWithTranscript({
 }) {
   const player = useRef<HTMLMediaElement | null>(null);
   const [positionMs, setPositionMs] = useState(startMs ?? 0);
+  const [following, setFollowing] = useState(true);
   const transcription = useQuery(transcriptionOptions(item.id));
   const playerRef = useCallback((element: HTMLMediaElement | null) => {
     player.current = element;
@@ -79,6 +80,7 @@ function PlaybackWithTranscript({
   const seek = useCallback((milliseconds: number) => {
     if (player.current) player.current.currentTime = milliseconds / 1000;
   }, []);
+  const resumeFollowing = useCallback(() => setFollowing(true), []);
   return (
     <>
       <MediaPlayer
@@ -87,11 +89,18 @@ function PlaybackWithTranscript({
         playerRef={playerRef}
         startMs={startMs}
         onPositionChange={setPositionMs}
+        onSeeking={resumeFollowing}
       />
       <TranscriptionPanel
         mediaId={item.id}
         action={transcribe}
-        playback={{ positionMs, onSeek: seek }}
+        playback={{
+          positionMs,
+          onSeek: seek,
+          mediaKind: item.kind,
+          following,
+          onFollowingChange: setFollowing,
+        }}
         revealMs={startMs}
       />
     </>

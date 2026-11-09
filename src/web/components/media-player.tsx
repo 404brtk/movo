@@ -61,18 +61,33 @@ function SubtitleTrack({
   );
 }
 
+const pinToTop = (element: HTMLElement | null) => {
+  if (!element) return undefined;
+  const root = document.documentElement;
+  const observer = new ResizeObserver(() => {
+    root.style.scrollPaddingTop = `${element.offsetHeight}px`;
+  });
+  observer.observe(element);
+  return () => {
+    observer.disconnect();
+    root.style.removeProperty("scroll-padding-top");
+  };
+};
+
 export function MediaPlayer({
   item,
   transcript,
   playerRef,
   startMs,
   onPositionChange,
+  onSeeking,
 }: {
   item: MediaItem;
   transcript?: Transcript | null | undefined;
   playerRef?: (element: HTMLMediaElement | null) => void;
   startMs?: number | undefined;
   onPositionChange?: (milliseconds: number) => void;
+  onSeeking?: () => void;
 }) {
   const [failed, setFailed] = useState(false);
   const frame = useRef<HTMLElement>(null);
@@ -101,6 +116,7 @@ export function MediaPlayer({
       if (startMs !== undefined) event.currentTarget.currentTime = startMs / 1000;
     },
     onError: () => setFailed(true),
+    onSeeking,
     onTimeUpdate: (event: SyntheticEvent<HTMLMediaElement>) =>
       onPositionChange?.(event.currentTarget.currentTime * 1000),
   } as const;
@@ -119,12 +135,15 @@ export function MediaPlayer({
       </>
     );
   return (
-    <>
+    <div
+      ref={pinToTop}
+      className="sticky top-0 z-30 bg-background pt-5 after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-4 after:bg-linear-to-b after:from-background after:to-transparent"
+    >
       <section
         ref={frame}
         aria-label="Video player"
         data-playing={playback.state.playing || undefined}
-        className="relative mt-5 overflow-hidden rounded-[14px] bg-black shadow-[0_0_0_1px_oklch(0.2_0.01_262/0.06),0_8px_24px_-10px_oklch(0.2_0.01_262/0.25)] [&:fullscreen]:rounded-none"
+        className="relative overflow-hidden rounded-[14px] bg-black shadow-[0_0_0_1px_oklch(0.2_0.01_262/0.06),0_8px_24px_-10px_oklch(0.2_0.01_262/0.25)] [&:fullscreen]:rounded-none"
       >
         <video
           ref={attach}
@@ -161,6 +180,6 @@ export function MediaPlayer({
         />
       </section>
       {failure}
-    </>
+    </div>
   );
 }

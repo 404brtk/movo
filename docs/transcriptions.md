@@ -38,6 +38,8 @@ Startup marks persisted running jobs interrupted and clears terminal staging dir
 
 While the recording plays, the passage containing the current word is highlighted and marked with `aria-current="time"`, and the current word is wrapped in `<mark>`. The current word is the last word that started at or before the player's position. Only the passages whose state changes re-render. Word timestamps come in 80 ms steps and can be off by a word or two; selecting a passage's timestamp seeks to its first word.
 
+The video player stays pinned at the top of the page while the transcript scrolls under it. When a new passage starts, the page scrolls it to just below the player, or near the top for audio, leaving the end of the previous passage visible. Scrolling by hand with the wheel, middle-button autoscroll, touch, keyboard or scrollbar stops this, and **Back to current** brings the passage being spoken back into view; seeking also resumes following. Following is suspended while a passage is being edited or **Find and replace** is open; if the passage being spoken is off screen when they close, following stays paused and **Back to current** appears. Following scrolls instantly instead of smoothly when the system asks for reduced motion.
+
 A video with a saved, nonempty transcript also shows it as subtitles: one cue per passage in a `Transcript` subtitle track, shown by default and turned off through the player's caption control. The browser builds the track from the transcript it already loaded, using the same WebVTT text as **Download VTT**, so no extra request is made. When a new transcript completes, the track's content is replaced and the viewer's subtitle choice is kept. Audio recordings have no subtitle track.
 
 ## Copy and export
@@ -94,7 +96,7 @@ An invalid or missing media ID returns HTTP 404. Model/tool unavailability retur
 
 ## Verification
 
-Normal tests use real temporary SQLite and filesystem storage, real local FFmpeg conversion and controlled substitutes only at inference/process boundaries. Browser tests verify explicit initiation, setup errors, navigation during work, cancellation/retry, re-transcription with the previous transcript visible, saved passages, reload, empty output, seeking and the highlighted passage and word. They never download weights or inspect the user's model cache.
+Normal tests use real temporary SQLite and filesystem storage, real local FFmpeg conversion and controlled substitutes only at inference/process boundaries. Browser tests verify explicit initiation, setup errors, navigation during work, cancellation/retry, re-transcription with the previous transcript visible, saved passages, reload, empty output, seeking and the highlighted passage and word, the pinned video, following the spoken passage, pausing on a manual scroll and returning with **Back to current**. They never download weights or inspect the user's model cache.
 
 Editing tests cover timestamp reuse and redistribution, insertion, removal, overlapping words, whole-word and multi-word matching with punctuation and accents, and that undoing every change returns the original words. Storage tests use real SQLite for edits, replacements, restores, stale versions, versions that would repeat after transcribing again, restore history size, edits during a new attempt, search updates and deletion with history; browser tests edit with the keyboard, keep a draft through a conflicting change, preview and apply replacements, undo and restore versions and confirm transcribing again.
 
