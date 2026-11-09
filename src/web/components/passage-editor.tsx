@@ -94,7 +94,9 @@ export function PassageEditor({
       ) : null}
       <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
         <p id={hintId} className="text-xs text-muted-foreground">
-          <Kbd>{modifierKey}</Kbd> <Kbd>Enter</Kbd> to save · <Kbd>Esc</Kbd> to cancel
+          <span className="pointer-coarse:hidden">
+            <Kbd>{modifierKey}</Kbd> <Kbd>Enter</Kbd> to save · <Kbd>Esc</Kbd> to cancel
+          </span>
           <span className="sr-only">
             . Clear the text to remove the passage. Every change can be undone from History.
           </span>

@@ -183,6 +183,23 @@ test("follows seeking and playback, and lowers subtitles while the controls hide
   await expect.poll(() => captionClearsControls(page, "Druga kwestia.")).toBe(true);
 });
 
+test("starts with subtitles turned off on narrow screens", async ({ page, request }) => {
+  await page.setViewportSize({ width: 375, height: 740 });
+  await openRecording(page, request, "sample.webm", {
+    language: "pl",
+    words: timedWords(0, 1500, "Wąski ekran."),
+  });
+  const subtitlesToggle = page.getByRole("button", { name: "Subtitles", exact: true });
+
+  await expect(subtitlesToggle).toHaveAttribute("aria-pressed", "false");
+  await expect
+    .poll(() => subtitleTracks(page.locator("video")))
+    .toEqual(singleCueTrack("Wąski ekran."));
+  await expect(caption(page, "Wąski ekran.")).toBeHidden();
+  await subtitlesToggle.click();
+  await expect(caption(page, "Wąski ekran.")).toBeVisible();
+});
+
 test("adds no subtitle track to audio recordings", async ({ page, request }) => {
   await openRecording(page, request, "tone.wav", {
     language: "en",

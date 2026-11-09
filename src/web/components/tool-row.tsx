@@ -72,7 +72,7 @@ export function ToolRow<Status extends { installation: ToolInstallation }, Key e
             {query.error.message}
           </p>
         ) : (
-          <p className="mt-px truncate text-xs/[normal] text-muted-foreground">
+          <p className="mt-px text-xs/[normal] text-muted-foreground sm:truncate">
             {ready ? describeReadyTools(tools) : description}
           </p>
         )}
