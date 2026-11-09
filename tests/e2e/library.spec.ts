@@ -159,6 +159,7 @@ test("renames a recording, recovers from a rejected save and retains the title a
   await page.keyboard.press("F2");
   await expect(page.getByRole("textbox", { name: "Title", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeHidden();
   const newer = `Renamed elsewhere ${randomUUID()}`;
   const renamedElsewhere = await request.patch(`/api${new URL(page.url()).pathname}`, {
     data: { title: newer },

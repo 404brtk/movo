@@ -27,7 +27,7 @@ function Slider({
       className={cn("group/slider w-full", className)}
       {...props}
     >
-      <SliderPrimitive.Control className="relative flex h-4 w-full cursor-pointer touch-none items-center select-none data-disabled:cursor-default data-disabled:opacity-50">
+      <SliderPrimitive.Control className="relative flex h-4 w-full touch-none items-center select-none data-disabled:opacity-50">
         <SliderPrimitive.Track
           data-slot="slider-track"
           className={cn("relative h-1 w-full rounded-[2px] select-none", tones[tone].track)}
