@@ -508,14 +508,18 @@ it("edits, replaces and restores a transcript while keeping search and history c
       expect(restored?.revision).toBe(4);
       expect(restored?.transcript).toEqual(transcript);
       expect((yield* library.browse({ q: "saved" })).items).toHaveLength(1);
+      expect(yield* jobs.history(media.id, { limit: 1, offset: 0 })).toMatchObject({
+        total: 3,
+        changes: [{ revision: 4, kind: "restore", restoredRevision: 1, restored: null }],
+      });
       expect(wordTexts(yield* jobs.restore(media.id, { revision: 4, target: 3 }, "app"))).toBe(
         "A corrected section. Another section.",
       );
-      expect(yield* jobs.history(media.id, { limit: 1, offset: 1 })).toMatchObject({
-        total: 4,
-        changes: [{ revision: 4, kind: "restore", restoredRevision: 1 }],
+      expect(yield* jobs.history(media.id, { limit: 1, offset: 0 })).toMatchObject({
+        total: 2,
+        changes: [{ revision: 3, kind: "replace" }],
       });
-      for (const target of [0, 6]) {
+      for (const target of [0, 4, 6]) {
         const outsideHistory = yield* Effect.flip(
           jobs.restore(media.id, { revision: 5, target }, "app"),
         );
@@ -529,7 +533,7 @@ it("edits, replaces and restores a transcript while keeping search and history c
   );
 });
 
-it("stores restores as their net difference and skips restores that change nothing", async ({
+it("keeps one restore while switching versions and resolves restores of restores", async ({
   signal,
 }) => {
   await withRecording(signal, (database, directory, tools, _library, media) =>
@@ -538,31 +542,51 @@ it("stores restores as their net difference and skips restores that change nothi
       yield* jobs.enqueue(media.id);
       const worker = yield* jobs.start();
       yield* waitFor(jobs, media.id, "completed");
-      yield* jobs.edit(
-        media.id,
-        { revision: 1, firstWord: 3, wordCount: 2, text: "Another section." },
-        "app",
-      );
-      let revision = 2;
-      for (let round = 0; round < 6; round++) {
-        const target = round % 2 === 0 ? 1 : revision - 1;
-        revision = (yield* jobs.restore(media.id, { revision, target }, "app"))?.revision ?? 0;
-      }
-      expect(revision).toBe(8);
-      expect(
+      const restoreTo = (revision: number, target: number) =>
+        jobs.restore(media.id, { revision, target }, "app");
+      const changes = () =>
+        Effect.map(jobs.history(media.id, { limit: 10, offset: 0 }), (page) => page.changes);
+      const patchSizes = () =>
         database
           .select({ patch: transcriptChanges.patch })
           .from(transcriptChanges)
           .all()
           .map(({ patch }) =>
             patch.map(({ removed, inserted }) => removed.length + inserted.length),
-          ),
-      ).toEqual(Array.from({ length: 7 }, () => [2]));
-      expect(
-        yield* jobs.restore(media.id, { revision, target: revision - 2 }, "app"),
-      ).toMatchObject({
-        revision,
+          );
+
+      yield* jobs.edit(
+        media.id,
+        { revision: 1, firstWord: 3, wordCount: 2, text: "Another section." },
+        "app",
+      );
+      expect(wordTexts(yield* restoreTo(2, 1))).toBe("A saved passage. Another passage.");
+      expect(wordTexts(yield* restoreTo(3, 2))).toBe("A saved passage. Another section.");
+      expect(yield* changes()).toMatchObject([{ revision: 2, kind: "edit" }]);
+
+      yield* restoreTo(4, 1);
+      yield* jobs.edit(media.id, { revision: 5, firstWord: 1, wordCount: 1, text: "kept" }, "app");
+      expect(wordTexts(yield* restoreTo(6, 5))).toBe("A saved passage. Another passage.");
+      expect((yield* changes())[0]).toMatchObject({
+        revision: 7,
+        kind: "restore",
+        restoredRevision: 1,
+        restored: null,
       });
+      expect(wordTexts(yield* restoreTo(7, 2))).toBe("A saved passage. Another section.");
+      expect(yield* changes()).toMatchObject([
+        {
+          revision: 8,
+          kind: "restore",
+          restoredRevision: 2,
+          restored: { kind: "edit", before: "passage.", after: "section." },
+        },
+        { revision: 6, kind: "edit" },
+        { revision: 5, kind: "restore", restoredRevision: 1, restored: null },
+        { revision: 2, kind: "edit" },
+      ]);
+      expect(patchSizes()).toEqual([[2], [2], [2], [2, 2]]);
+      expect(yield* restoreTo(8, 2)).toMatchObject({ revision: 8 });
       yield* Fiber.interrupt(worker);
     }),
   );
