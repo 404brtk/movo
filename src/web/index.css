@@ -48,16 +48,19 @@
   --color-tint: var(--tint);
   --color-border-strong: var(--border-strong);
   --color-primary-deep: var(--primary-deep);
-  --color-primary-pressed: var(--primary-pressed);
+  --color-primary-from-pressed: var(--primary-from-pressed);
+  --color-primary-to-pressed: var(--primary-to-pressed);
   --color-destructive-tint: var(--destructive-tint);
   --color-destructive-subtle: var(--destructive-subtle);
   --color-destructive-from: var(--destructive-from);
   --color-destructive-from-hover: var(--destructive-from-hover);
   --color-destructive-to-hover: var(--destructive-to-hover);
   --color-destructive-muted: var(--destructive-muted);
-  --color-destructive-strong: var(--destructive-strong);
-  --color-destructive-pressed: var(--destructive-pressed);
+  --color-destructive-edge: var(--destructive-edge);
+  --color-destructive-from-pressed: var(--destructive-from-pressed);
+  --color-destructive-to-pressed: var(--destructive-to-pressed);
   --color-primary-strong: var(--primary-strong);
+  --color-primary-edge: var(--primary-edge);
   --color-primary-from: var(--primary-from);
   --color-primary-to: var(--primary-to);
   --color-primary-from-hover: var(--primary-from-hover);
@@ -117,13 +120,11 @@
   --shadow-button-primary:
     inset 0 0 1.5px 1px oklch(1 0 0 / 0.34), inset 0 1px 0 oklch(1 0 0 / 0.4),
     0 1px 2px oklch(0.3 0.12 259 / 0.16), 0 1px 4px -1px oklch(0.6 0.2 257 / 0.25);
-  --shadow-button-primary-pressed:
-    inset 0 0 1.5px 1px oklch(1 0 0 / 0.18), inset 0 1px 2px oklch(0.3 0.14 259 / 0.35);
+  --shadow-button-primary-pressed: inset 0 1px 2px oklch(0.3 0.14 259 / 0.3);
   --shadow-button-danger:
     inset 0 0 1.5px 1px oklch(1 0 0 / 0.34), inset 0 1px 0 oklch(1 0 0 / 0.4),
     0 1px 2px oklch(0.3 0.1 27 / 0.16), 0 1px 4px -1px oklch(0.62 0.24 25 / 0.25);
-  --shadow-button-danger-pressed:
-    inset 0 0 1.5px 1px oklch(1 0 0 / 0.18), inset 0 1px 2px oklch(0.35 0.14 27 / 0.35);
+  --shadow-button-danger-pressed: inset 0 1px 2px oklch(0.35 0.14 27 / 0.3);
   --shadow-sheet:
     0 0 0 1px oklch(0.2 0.01 262 / 0.06), inset 0 1px 0 oklch(1 0 0 / 0.8),
     0 8px 16px -4px oklch(0.2 0.01 262 / 0.08), 0 32px 64px -16px oklch(0.2 0.01 262 / 0.24);
@@ -145,11 +146,13 @@
   --primary: oklch(0.62 0.195 257);
   --primary-foreground: oklch(1 0 0);
   --primary-strong: oklch(0.55 0.2 260);
+  --primary-edge: oklch(0.5 0.21 261 / 0.55);
   --primary-from: oklch(0.7 0.16 253);
   --primary-to: oklch(0.585 0.2 259);
   --primary-from-hover: oklch(0.73 0.15 253);
   --primary-to-hover: oklch(0.615 0.19 258);
-  --primary-pressed: oklch(0.62 0.19 257);
+  --primary-from-pressed: oklch(0.655 0.18 255);
+  --primary-to-pressed: oklch(0.56 0.2 259);
   --primary-deep: oklch(0.49 0.19 261);
   --tint: oklch(0.975 0.012 255);
   --secondary: oklch(0.965 0.004 262);
@@ -170,8 +173,9 @@
   --destructive-from-hover: oklch(0.72 0.185 24);
   --destructive-to-hover: oklch(0.625 0.22 26);
   --destructive-muted: oklch(0.955 0.03 25);
-  --destructive-strong: oklch(0.54 0.22 27);
-  --destructive-pressed: oklch(0.6 0.22 26);
+  --destructive-edge: oklch(0.49 0.22 27 / 0.55);
+  --destructive-from-pressed: oklch(0.635 0.21 25);
+  --destructive-to-pressed: oklch(0.555 0.225 26);
   --border: oklch(0.94 0.005 262);
   --border-strong: oklch(0.86 0.008 262);
   --input: oklch(0.915 0.006 262);
