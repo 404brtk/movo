@@ -42,6 +42,7 @@ function describePreset(preset: DownloadPreset) {
 }
 
 export function DownloadLink() {
+  const [open, setOpen] = useState(false);
   const [links, setLinks] = useState("");
   const [checkedUrls, setCheckedUrls] = useState<string[]>([]);
   const [preset, setPreset] = useState<DownloadPreset>(defaultDownloadPreset);
@@ -57,6 +58,9 @@ export function DownloadLink() {
   const download = useMutation({
     mutationFn: enqueueDownload,
     onSuccess: async () => {
+      setOpen(false);
+      setLinks("");
+      setCheckedUrls([]);
       await queryClient.invalidateQueries({ queryKey: downloadsOptions.queryKey });
       await navigate({ to: "/downloads" });
     },
@@ -73,7 +77,7 @@ export function DownloadLink() {
       download.reset();
     };
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="outline" />}>
         <HugeiconsIcon icon={Link01Icon} data-icon="inline-start" aria-hidden="true" />
         Download from link

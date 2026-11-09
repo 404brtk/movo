@@ -113,7 +113,9 @@ for (const choice of [
   });
 }
 
-test("queues several pasted links without previewing them", async ({ page }) => {
+test("queues several pasted links from the downloads page without previewing them", async ({
+  page,
+}) => {
   const urls = [url, "https://x.com/example/status/123"];
   const jobs = urls.map((sourceUrl) => ({ ...jobFixture(), id: randomUUID(), url: sourceUrl }));
   let queued = false;
@@ -134,8 +136,9 @@ test("queues several pasted links without previewing them", async ({ page }) => 
     }
     return route.fulfill({ json: queued ? jobs : [] });
   });
-  await page.goto("/");
-  await page.getByRole("button", { name: "Download from link", exact: true }).click();
+  await page.goto("/downloads");
+  const openDialog = page.getByRole("button", { name: "Download from link", exact: true });
+  await openDialog.click();
   const links = page.getByRole("textbox", { name: "Video links" });
   await links.fill(` ${urls[0]}`);
   await links.press("Shift+Enter");
@@ -148,11 +151,13 @@ test("queues several pasted links without previewing them", async ({ page }) => 
     .getByRole("button", { name: "Audio only" })
     .click();
   await page.getByRole("button", { name: "Download all 2", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Downloads", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Download from a link" })).toBeHidden();
   await expect(page.getByRole("list", { name: "In progress" }).getByRole("listitem")).toHaveCount(
     2,
   );
   expect(previewed).toBe(false);
+  await openDialog.click();
+  await expect(links).toHaveValue("");
 });
 
 test("previews an X post, recovers from a source error and keeps polling while another recording is open", async ({
