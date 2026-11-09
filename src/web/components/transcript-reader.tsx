@@ -8,6 +8,7 @@ import {
   type TranscriptPassage,
 } from "../../shared/transcript-passages.ts";
 import { formatDuration } from "../lib/format.ts";
+import { marksByPassage, type PassageMark, type TranscriptMatches } from "../lib/passage-marks.ts";
 import { cn } from "../lib/utils.ts";
 import { PassageEditor } from "./passage-editor.tsx";
 import { Button } from "./ui/button.tsx";
@@ -30,20 +31,9 @@ export interface TranscriptEditing {
   revision: number;
 }
 
-export interface TranscriptMatches {
-  ranges: readonly { firstWord: number; wordCount: number }[];
-  current: number;
-}
-
 interface EditedPassage {
   firstWord: number;
   open: boolean;
-}
-
-interface PassageMark {
-  start: number;
-  end: number;
-  current: boolean;
 }
 
 function MarkedWords({
@@ -169,26 +159,6 @@ const Passage = memo(function Passage({
 
 const contains = (passage: TranscriptPassage, word: number) =>
   word >= passage.firstWord && word < passage.firstWord + passage.words.length;
-
-function marksByPassage(passages: TranscriptPassage[], matches: TranscriptMatches | undefined) {
-  const marks = new Map<number, PassageMark[]>();
-  if (!matches) return marks;
-  let passageIndex = 0;
-  matches.ranges.forEach((range, index) => {
-    while (
-      passageIndex < passages.length - 1 &&
-      range.firstWord >= (passages[passageIndex + 1]?.firstWord ?? Infinity)
-    )
-      passageIndex++;
-    const passage = passages[passageIndex];
-    if (!passage) return;
-    const start = range.firstWord - passage.firstWord;
-    const entries = marks.get(passage.firstWord) ?? [];
-    entries.push({ start, end: start + range.wordCount, current: index === matches.current });
-    marks.set(passage.firstWord, entries);
-  });
-  return marks;
-}
 
 export function TranscriptReader({
   transcript,

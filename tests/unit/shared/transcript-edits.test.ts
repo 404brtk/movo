@@ -10,6 +10,7 @@ import {
   applyPatch,
   diffWords,
   editWords,
+  findWords,
   invertPatch,
   replaceWords,
 } from "../../../src/shared/transcript-edits.ts";
@@ -133,10 +134,14 @@ describe("find and replace", () => {
     expect(texts(applyPatch(polish, replaceWords(polish, "zolw", "kot")))).toBe("żółw kot");
   });
 
-  it("skips matches that already read like the replacement", () => {
+  it("skips matches that already read like the replacement while still finding them", () => {
     const patch = replaceWords(words, "kubernetis", "KUBERNETIS");
     expect(patch).toHaveLength(1);
     expect(patch[0]?.firstWord).toBe(0);
+    expect(findWords(words, "KUBERNETIS")).toEqual([
+      { firstWord: 0, wordCount: 1 },
+      { firstWord: 6, wordCount: 1 },
+    ]);
   });
 
   it("deletes matches when the replacement is empty", () => {

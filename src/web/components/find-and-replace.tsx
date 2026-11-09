@@ -1,10 +1,10 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { maxReplaceCharacters, type Transcript } from "../../shared/contracts/transcriptions.ts";
-import { replaceWords } from "../../shared/transcript-edits.ts";
+import { findWords, replaceWords } from "../../shared/transcript-edits.ts";
 import { transcriptPassages } from "../../shared/transcript-passages.ts";
 import { replaceInTranscript } from "../lib/api.ts";
+import { marksByPassage, type TranscriptMatches } from "../lib/passage-marks.ts";
 import { useTranscriptChange } from "../lib/transcript-change.ts";
-import type { TranscriptMatches } from "./transcript-reader.tsx";
 import { Spinner } from "./spinner.tsx";
 import { Button } from "./ui/button.tsx";
 import { Input } from "./ui/input.tsx";
@@ -19,31 +19,27 @@ export function useFindAndReplace(transcript: Transcript) {
   const previewFind = useDeferredValue(find);
   const previewReplacement = useDeferredValue(replacement);
   const found = useMemo(
-    () => replaceWords(transcript.words, previewFind, previewReplacement),
+    () => findWords(transcript.words, previewFind),
+    [transcript.words, previewFind],
+  );
+  const changeCount = useMemo(
+    () => replaceWords(transcript.words, previewFind, previewReplacement).length,
     [transcript.words, previewFind, previewReplacement],
   );
-  const passageCount = useMemo(() => {
-    const starts = transcriptPassages(transcript.words).map((passage) => passage.firstWord);
-    return new Set(found.map((match) => starts.findLast((start) => start <= match.firstWord))).size;
-  }, [found, transcript.words]);
+  const passageCount = useMemo(
+    () => marksByPassage(transcriptPassages(transcript.words), { ranges: found, current: 0 }).size,
+    [found, transcript.words],
+  );
   const index = found.length === 0 ? 0 : Math.min(current, found.length - 1);
   const matches = useMemo<TranscriptMatches | undefined>(
-    () =>
-      found.length === 0
-        ? undefined
-        : {
-            ranges: found.map((match) => ({
-              firstWord: match.firstWord,
-              wordCount: match.removed.length,
-            })),
-            current: index,
-          },
+    () => (found.length === 0 ? undefined : { ranges: found, current: index }),
     [found, index],
   );
   return {
     find,
     replacement,
     count: found.length,
+    changeCount,
     passageCount,
     index,
     matches,
@@ -76,7 +72,7 @@ export function FindAndReplace({
     replaceInTranscript(mediaId, { revision, find: state.find, replacement: state.replacement }),
   );
   const searching = state.find.trim().length > 0;
-  const ready = state.count > 0 && state.previewCurrent && !replace.isPending;
+  const ready = state.changeCount > 0 && state.previewCurrent && !replace.isPending;
   return (
     <form
       aria-label="Find and replace"
@@ -84,7 +80,7 @@ export function FindAndReplace({
       onSubmit={(event) => {
         event.preventDefault();
         if (!ready) return;
-        const count = state.count;
+        const count = state.changeCount;
         replace.mutate(undefined, { onSuccess: () => setReplaced(count) });
       }}
     >
@@ -151,9 +147,11 @@ export function FindAndReplace({
         <output aria-live="polite" className="text-pretty">
           {replaced !== null
             ? `Replaced ${plural(replaced, "match")}. You can undo it from History.`
-            : searching && state.count > 0
-              ? `Matches whole words in ${state.passageCount} ${state.passageCount === 1 ? "passage" : "passages"}. You can undo it from History.`
-              : "Matches whole words, ignoring case. Leave the replacement empty to remove them."}
+            : searching && state.count > 0 && state.changeCount === 0
+              ? "Every match already reads like the replacement."
+              : searching && state.count > 0
+                ? `Matches whole words in ${state.passageCount} ${state.passageCount === 1 ? "passage" : "passages"}. You can undo it from History.`
+                : "Matches whole words, ignoring case. Leave the replacement empty to remove them."}
         </output>
         <Button variant="ghost" size="sm" className="-mr-1.5" onClick={onClose}>
           Close
