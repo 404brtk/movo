@@ -27,6 +27,8 @@ import { Switch } from "./ui/switch.tsx";
 import { Textarea } from "./ui/textarea.tsx";
 import { YtdlpSetup } from "./ytdlp-setup.tsx";
 
+const fullWidthOnMobile = "max-sm:w-full max-sm:*:flex-1 max-sm:*:px-0";
+
 const qualityOptions = downloadPresets
   .filter((option) => option.kind === "video")
   .map(
@@ -164,11 +166,12 @@ export function DownloadLink() {
               ) : (
                 <DownloadBatchCard count={checkedUrls.length} />
               )}
-              <div className="mt-[18px] grid items-center gap-x-4 gap-y-1.5 sm:grid-cols-[auto_1fr] sm:gap-y-3">
+              <div className="mt-[18px] grid grid-cols-1 items-center gap-x-4 gap-y-1.5 sm:grid-cols-[auto_1fr] sm:gap-y-3">
                 <span className="text-[12.5px] font-medium text-muted-foreground">Save as</span>
                 <div>
                   <SegmentedChoice
                     label="Save as"
+                    className={fullWidthOnMobile}
                     options={[
                       ["video", "Video"],
                       ["audio", "Audio only"],
@@ -186,6 +189,7 @@ export function DownloadLink() {
                     <div>
                       <SegmentedChoice
                         label="Quality"
+                        className={fullWidthOnMobile}
                         options={qualityOptions}
                         value={preset}
                         disabled={download.isPending}

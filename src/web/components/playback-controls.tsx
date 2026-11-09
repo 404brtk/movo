@@ -142,9 +142,11 @@ export function SkipButton({ playback, seconds }: { playback: MediaPlayback; sec
 export function SeekSlider({
   playback,
   tone = "default",
+  className,
 }: {
   playback: MediaPlayback;
   tone?: "default" | "overlay";
+  className?: string;
 }) {
   const { currentTime, duration } = playback.state;
   return (
@@ -157,7 +159,7 @@ export function SeekSlider({
       value={Math.min(currentTime, duration)}
       getAriaValueText={(_, value) => `${spokenTime(value)} of ${spokenTime(duration)}`}
       onValueChange={playback.controls.seek}
-      className="min-w-0 flex-1"
+      className={cn("min-w-0 flex-1", className)}
     />
   );
 }

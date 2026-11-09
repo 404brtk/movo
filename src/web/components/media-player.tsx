@@ -100,7 +100,9 @@ export function MediaPlayer({
         : undefined,
     [item.kind, transcript],
   );
-  const [subtitlesShowing, setSubtitlesShowing] = useState(true);
+  const [subtitlesShowing, setSubtitlesShowing] = useState(
+    () => !window.matchMedia("(width < 40rem)").matches,
+  );
   const [caption, setCaption] = useState("");
   const attach = useCallback(
     (media: HTMLMediaElement | null) => {
@@ -162,7 +164,7 @@ export function MediaPlayer({
           )}
         </video>
         {subtitlesShowing && caption ? (
-          <p className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit max-w-[90%] -translate-y-11 rounded-md bg-black/75 px-2.5 py-1 text-center text-base/snug text-balance whitespace-pre-line text-white transition-transform duration-200 ease-snappy in-[:fullscreen]:text-2xl sm:text-lg video-idle:translate-y-0">
+          <p className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit max-w-[90%] -translate-y-11 rounded-md bg-black/75 px-2.5 py-1 text-center text-base/snug text-balance whitespace-pre-line text-white transition-transform duration-200 ease-snappy in-[:fullscreen]:text-2xl max-sm:-translate-y-14 sm:text-lg video-idle:translate-y-0">
             {caption}
           </p>
         ) : null}
