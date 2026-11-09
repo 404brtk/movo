@@ -111,6 +111,7 @@ test("shows a useful missing-item page for a direct link", async ({ page }) => {
 
 test("renames a recording, recovers from a rejected save and retains the title after reload", async ({
   page,
+  request,
 }) => {
   const title = `Rename ${randomUUID()}`;
   const renamed = `Rozmowa 🎙️ ${randomUUID()}`;
@@ -158,9 +159,19 @@ test("renames a recording, recovers from a rejected save and retains the title a
   await page.keyboard.press("F2");
   await expect(page.getByRole("textbox", { name: "Title", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
+  const newer = `Renamed elsewhere ${randomUUID()}`;
+  const renamedElsewhere = await request.patch(`/api${new URL(page.url()).pathname}`, {
+    data: { title: newer },
+  });
+  expect(renamedElsewhere.ok()).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByRole("heading", { name: newer, exact: true })).toBeVisible();
+  await page.keyboard.press("F2");
+  await expect(page.getByRole("textbox", { name: "Title", exact: true })).toHaveValue(newer);
+  await page.keyboard.press("Escape");
   await page.getByRole("link", { name: "Back to library" }).click();
-  await expect(page.getByRole("link", { name: `Open ${renamed}`, exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: `Open ${newer}`, exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Open ${renamed}`, exact: true })).toHaveCount(0);
 });
 
 test("confirms deletion, preserves the recording after failure and removes it after retry", async ({

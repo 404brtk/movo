@@ -26,13 +26,15 @@ export function RenameRecordingDialog({
   returnFocus: RefObject<HTMLButtonElement | null>;
 }) {
   const queryClient = useQueryClient();
-  const [title, setTitle] = useState(item.title);
+  const [draft, setDraft] = useState<string | null>(null);
+  const title = draft ?? item.title;
   const input = useRef<HTMLInputElement>(null);
   const rename = useMutation({
     mutationFn: () => renameMedia(item.id, title.trim()),
     onMutate: () => queryClient.cancelQueries({ queryKey: mediaListKey }),
     onSuccess: async (updated) => {
       queryClient.setQueryData(mediaItemOptions(item.id).queryKey, updated);
+      setDraft(null);
       onOpenChange(false);
       await queryClient.invalidateQueries({ queryKey: mediaListKey });
     },
@@ -43,7 +45,7 @@ export function RenameRecordingDialog({
       onOpenChange={(next) => {
         if (rename.isPending) return;
         if (!next) {
-          setTitle(item.title);
+          setDraft(null);
           rename.reset();
         }
         onOpenChange(next);
@@ -72,7 +74,7 @@ export function RenameRecordingDialog({
               maxLength={512}
               value={title}
               disabled={rename.isPending}
-              onChange={(event) => setTitle(event.target.value)}
+              onChange={(event) => setDraft(event.target.value)}
               aria-invalid={rename.isError || undefined}
               aria-describedby={rename.isError ? "rename-error" : undefined}
             />
