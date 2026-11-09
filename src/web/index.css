@@ -5,6 +5,13 @@
 
 @custom-variant dark (&:is(.dark *));
 @custom-variant selected (&:is([data-pressed], [aria-current="page"]));
+@custom-variant video-idle {
+  @media (hover: hover) {
+    &:where([data-playing]:not(:hover, :focus-within) *) {
+      @slot;
+    }
+  }
+}
 
 @utility transition-press {
   transition:

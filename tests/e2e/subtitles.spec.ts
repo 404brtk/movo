@@ -60,12 +60,12 @@ const subtitleTracks = (player: Locator) =>
     })),
   );
 
-const singleCueTrack = (mode: TextTrackMode, text: string | null) => [
+const singleCueTrack = (text: string | null) => [
   {
     kind: "subtitles",
     label: "Transcript",
     language: "pl",
-    mode,
+    mode: "hidden",
     cues: text === null ? [] : [{ start: 0, end: 1.5, text }],
   },
 ];
@@ -89,7 +89,7 @@ test("shows the transcript as video subtitles and replaces them after transcribi
         kind: "subtitles",
         label: "Transcript",
         language: "pl",
-        mode: "showing",
+        mode: "hidden",
         cues: [
           { start: 0.125, end: 0.999, text: "Zażółć gęślą jaźń." },
           { start: 1, end: 1.8, text: "A & <b>B</b> --> end." },
@@ -111,26 +111,33 @@ test("shows the transcript as video subtitles and replaces them after transcribi
     await expect(panel.getByText(text, { exact: true })).toBeVisible();
   };
   const subtitlesToggle = page.getByRole("button", { name: "Subtitles", exact: true });
+  const caption = (text: string) =>
+    page
+      .getByRole("region", { name: "Video player", exact: true })
+      .getByText(text, { exact: true });
 
   await transcribeAgain("Nowa transkrypcja.");
+  await expect.poll(() => subtitleTracks(video)).toEqual(singleCueTrack("Nowa transkrypcja."));
+  await expect(caption("Nowa transkrypcja.")).toBeVisible();
   await expect
-    .poll(() => subtitleTracks(video))
-    .toEqual(singleCueTrack("showing", "Nowa transkrypcja."));
+    .poll(async () => {
+      const captionBox = await caption("Nowa transkrypcja.").boundingBox();
+      const playBox = await page.getByRole("button", { name: "Play", exact: true }).boundingBox();
+      return captionBox && playBox ? captionBox.y + captionBox.height <= playBox.y : false;
+    })
+    .toBe(true);
 
   await expect(subtitlesToggle).toHaveAttribute("aria-pressed", "true");
   await subtitlesToggle.click();
   await expect(subtitlesToggle).toHaveAttribute("aria-pressed", "false");
-  await expect
-    .poll(() => subtitleTracks(video))
-    .toEqual(singleCueTrack("hidden", "Nowa transkrypcja."));
+  await expect.poll(() => subtitleTracks(video)).toEqual(singleCueTrack("Nowa transkrypcja."));
+  await expect(caption("Nowa transkrypcja.")).toBeHidden();
   await transcribeAgain("Kolejna wersja.");
-  await expect
-    .poll(() => subtitleTracks(video))
-    .toEqual(singleCueTrack("hidden", "Kolejna wersja."));
+  await expect.poll(() => subtitleTracks(video)).toEqual(singleCueTrack("Kolejna wersja."));
+  await expect(caption("Kolejna wersja.")).toBeHidden();
   await subtitlesToggle.click();
-  await expect
-    .poll(() => subtitleTracks(video))
-    .toEqual(singleCueTrack("showing", "Kolejna wersja."));
+  await expect.poll(() => subtitleTracks(video)).toEqual(singleCueTrack("Kolejna wersja."));
+  await expect(caption("Kolejna wersja.")).toBeVisible();
 });
 
 test("adds no subtitle track to audio recordings", async ({ page, request }) => {
