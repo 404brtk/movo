@@ -31,6 +31,9 @@ const Progress = Schema.Struct({
   filename: Schema.optional(Schema.String),
   status: Schema.optional(Schema.String),
 });
+const EstimatedSize = Schema.NullOr(
+  Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
+);
 const baseArguments = [
   "--ignore-config",
   "--no-cache-dir",
@@ -142,6 +145,7 @@ export function createMediaDownloader(
         title?: string;
         durationSeconds?: number | null;
         downloadedBytes?: number;
+        totalBytes?: number | null;
         phase?: "downloading" | "processing";
       }) => void,
       preset: DownloadPreset = defaultDownloadPreset,
@@ -205,6 +209,8 @@ export function createMediaDownloader(
             "--progress-template",
             "postprocess:MOVO_PROCESSING",
             "--print",
+            "video:MOVO_SIZE:%(filesize,filesize_approx|null)s",
+            "--print",
             "after_move:MOVO_FILE:%(filepath)j",
           ],
           {
@@ -232,6 +238,11 @@ export function createMediaDownloader(
                 if (downloadedBytes > maxImportBytes)
                   throw new MediaError("tooLarge", "The download exceeds the 10 GiB limit.");
                 update({ downloadedBytes: Math.floor(downloadedBytes), phase: "downloading" });
+              } else if (line.startsWith("MOVO_SIZE:")) {
+                const size = Schema.decodeUnknownSync(EstimatedSize)(
+                  JSON.parse(line.slice("MOVO_SIZE:".length)),
+                );
+                update({ totalBytes: size === null ? null : Math.round(size) });
               } else if (line.startsWith("MOVO_PROCESSING")) update({ phase: "processing" });
               else if (line.startsWith("MOVO_FILE:"))
                 file = Schema.decodeUnknownSync(Schema.String)(

@@ -365,6 +365,7 @@ export function createDownloads(
               status: "queued",
               phase: "queued",
               downloadedBytes: 0,
+              totalBytes: null,
               error: null,
               ownerPid: null,
               updatedAt: Date.now(),
