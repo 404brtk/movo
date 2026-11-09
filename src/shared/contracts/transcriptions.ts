@@ -119,16 +119,22 @@ const ChangeVersion = {
   source: Schema.Literals(transcriptChangeSources),
   createdAt: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
 };
+export const TranscriptEdit = Schema.Struct({
+  kind: Schema.Literals(["edit", "replace"]),
+  replacementCount: Count,
+  startMs: Schema.NullOr(Milliseconds),
+  before: Schema.String,
+  after: Schema.String,
+});
+export type TranscriptEdit = typeof TranscriptEdit.Type;
 export const TranscriptChange = Schema.Union([
+  Schema.Struct({ ...ChangeVersion, ...TranscriptEdit.fields }),
   Schema.Struct({
     ...ChangeVersion,
-    kind: Schema.Literals(["edit", "replace"]),
-    replacementCount: Count,
-    startMs: Schema.NullOr(Milliseconds),
-    before: Schema.String,
-    after: Schema.String,
+    kind: Schema.Literal("restore"),
+    restoredRevision: Revision,
+    restored: Schema.NullOr(TranscriptEdit),
   }),
-  Schema.Struct({ ...ChangeVersion, kind: Schema.Literal("restore"), restoredRevision: Revision }),
 ]);
 export type TranscriptChange = typeof TranscriptChange.Type;
 export const defaultHistoryPage = 20;

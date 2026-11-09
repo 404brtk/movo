@@ -13,14 +13,28 @@ import {
   type TranscriptReplace,
   type TranscriptRestore,
 } from "../../shared/contracts/transcriptions.ts";
-import { applyPatch, diffWords, editWords, replaceWords } from "../../shared/transcript-edits.ts";
+import {
+  applyPatch,
+  diffWords,
+  editWords,
+  invertPatch,
+  replaceWords,
+} from "../../shared/transcript-edits.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
 import { setSearchTranscript } from "../media/search.ts";
-import { listChanges, patchesBackTo, recordChange, restartHistory } from "./history.ts";
+import {
+  hasVersion,
+  latestRestore,
+  listChanges,
+  patchesBackTo,
+  recordChange,
+  removeChange,
+  restartHistory,
+} from "./history.ts";
 import { queueTranscription } from "./queue.ts";
 import { transcriptionJobs, type transcriptChanges } from "./transcriptions.schema.ts";
 
@@ -237,7 +251,9 @@ export function createTranscriptions(
       transcript: Transcript,
       resultRevision: number,
     ) => Effect.Effect<
-      Pick<typeof transcriptChanges.$inferInsert, "kind" | "restoredRevision" | "patch">,
+      Pick<typeof transcriptChanges.$inferInsert, "kind" | "restoredRevision" | "patch"> & {
+        replacing?: { revision: number; words: Transcript["words"] } | undefined;
+      },
       MediaError
     >,
   ) =>
@@ -261,10 +277,10 @@ export function createTranscriptions(
             "The transcript changed since it was loaded. Reload it and make the change again.",
           ),
         );
-      const { patch, ...description } = yield* plan(job.transcript, job.resultRevision);
-      if (patch.length === 0) return job;
+      const { patch, replacing, ...description } = yield* plan(job.transcript, job.resultRevision);
+      if (patch.length === 0 && !replacing) return job;
       const previous = job.transcript;
-      const words = yield* storage(() => applyPatch(previous.words, patch));
+      const words = yield* storage(() => applyPatch(replacing?.words ?? previous.words, patch));
       if (words.length > maxTranscriptWords)
         return yield* Effect.fail(
           new MediaError(
@@ -280,13 +296,15 @@ export function createTranscriptions(
             .set({ transcript, revision: revision + 1, updatedAt: Date.now() })
             .where(eq(transcriptionJobs.mediaId, id))
             .run();
-          recordChange(transaction, {
-            mediaId: id,
-            revision: revision + 1,
-            source,
-            patch,
-            ...description,
-          });
+          if (replacing) removeChange(transaction, id, replacing.revision);
+          if (patch.length > 0)
+            recordChange(transaction, {
+              mediaId: id,
+              revision: revision + 1,
+              source,
+              patch,
+              ...description,
+            });
           setSearchTranscript(transaction, id, transcript);
         });
       });
@@ -328,15 +346,23 @@ export function createTranscriptions(
     restore: (id: string, request: TranscriptRestore, source: TranscriptChangeSource) =>
       change(id, request.revision, source, ({ words }, resultRevision) =>
         storage(() => {
-          if (request.target > request.revision || request.target < resultRevision)
+          if (
+            ![resultRevision, request.revision].includes(request.target) &&
+            !hasVersion(database, id, request.target)
+          )
             throw new MediaError("invalid", "Choose a version from the transcript history.");
+          const restored = patchesBackTo(database, id, request.target).reduce(applyPatch, words);
+          const description = { kind: "restore" as const, restoredRevision: request.target };
+          if (diffWords(words, restored).length === 0) return { ...description, patch: [] };
+          const previousRestore = latestRestore(database, id);
+          const replacing = previousRestore && {
+            revision: previousRestore.revision,
+            words: applyPatch(words, invertPatch(previousRestore.patch)),
+          };
           return {
-            kind: "restore" as const,
-            restoredRevision: request.target,
-            patch: diffWords(
-              words,
-              patchesBackTo(database, id, request.target).reduce(applyPatch, words),
-            ),
+            ...description,
+            patch: diffWords(replacing?.words ?? words, restored),
+            replacing,
           };
         }),
       ),
