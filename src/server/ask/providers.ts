@@ -162,12 +162,16 @@ async function listOpenAi(apiKey: string, signal?: AbortSignal) {
 }
 
 async function listOpenRouter(apiKey: string, signal?: AbortSignal) {
-  const page = await requestJson(
-    "OpenRouter",
-    "https://openrouter.ai/api/v1/models?supported_parameters=tools",
-    { headers: bearer(apiKey), signal, timeoutMs: listTimeoutMs },
-    OpenRouterModels,
-  );
+  const request = { headers: bearer(apiKey), signal, timeoutMs: listTimeoutMs };
+  const [, page] = await Promise.all([
+    requestJson("OpenRouter", "https://openrouter.ai/api/v1/key", request, Schema.Unknown),
+    requestJson(
+      "OpenRouter",
+      "https://openrouter.ai/api/v1/models?supported_parameters=tools",
+      request,
+      OpenRouterModels,
+    ),
+  ]);
   return page.data.map((model): AiModel => ({
     id: model.id,
     name: model.name,

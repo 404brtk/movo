@@ -6,7 +6,7 @@ Ask answers questions about transcripts with a language model the user connects.
 
 Connections are managed under **Ask** on the **Models** page.
 
-- **API keys** for Anthropic, OpenAI and OpenRouter (**Add key**). Connecting reads the provider's model list, which verifies the key without generating text. A rejected key is reported, stays in the field and nothing is saved. **…** on a connected provider replaces or removes the key.
+- **API keys** for Anthropic, OpenAI and OpenRouter (**Add key**). Connecting reads the provider's model list (for OpenRouter also its key details, because its model list is public), which verifies the key without generating text. A rejected key is reported, stays in the field and nothing is saved. **…** on a connected provider replaces or removes the key.
 - **Servers** that speak the OpenAI-compatible API, such as Ollama, LM Studio, Jan or llama-server. Movo checks Ollama (port 11434), LM Studio (1234) and Jan (1337) on `127.0.0.1` only while the Models page, the "Connect a model" panel or the model picker is open, about every 30 seconds. There is no background check and no network scan. Any other server is added with **Add address**.
 - Server addresses must be on this computer (loopback) or the home network (`10/8`, `172.16/12`, `192.168/16`, IPv6 unique-local addresses, `.local` names). The form says which one an address is while it is typed and warns that plain http crosses the network unencrypted. Internet addresses are rejected; use an API key instead. A key is optional for servers that require one. Ollama on another computer must listen on the network, for example with `OLLAMA_HOST=0.0.0.0:11434`.
 

@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { listModels } from "../../../../src/server/ask/providers.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
 
@@ -31,6 +31,42 @@ async function serve(handler: Handler) {
 
 const openAiList = (ids: string[]) => ({
   json: { object: "list", data: ids.map((id) => ({ id })) },
+});
+
+const openRouterReplies = (keyStatus: number) =>
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url === "https://openrouter.ai/api/v1/key")
+      return Response.json({ data: { label: "movo" } }, { status: keyStatus });
+    return Response.json({
+      data: [{ id: "anthropic/claude", name: "Anthropic: Claude", context_length: 200_000 }],
+    });
+  });
+
+describe("OpenRouter", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rejects a key its public model list would accept", async () => {
+    openRouterReplies(401);
+    await expect(
+      listModels({ kind: "openrouter", baseUrl: null, apiKey: "sk-or-dead" }),
+    ).rejects.toEqual(
+      new MediaError(
+        "invalid",
+        "OpenRouter didn't accept this key. Copy it again — OpenRouter shows a key only once.",
+      ),
+    );
+  });
+
+  it("lists tool-capable models for a key it accepts", async () => {
+    const fetch = openRouterReplies(200);
+    expect(await listModels({ kind: "openrouter", baseUrl: null, apiKey: "sk-or-live" })).toEqual([
+      { id: "anthropic/claude", name: "Anthropic: Claude", contextTokens: 200_000, tools: "yes" },
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("own server model lists", () => {

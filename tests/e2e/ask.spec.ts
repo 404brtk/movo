@@ -99,6 +99,12 @@ const answerMessage = (state: ChatMessage["state"], parts: ChatPart[]): ChatMess
   createdAt: Date.now(),
 });
 
+const failedAnswer = (
+  seq: number,
+  error: string,
+  errorKind: ChatMessage["errorKind"],
+): ChatMessage => ({ ...answerMessage("failed", []), seq, error, errorKind });
+
 async function connectedModel(page: Page) {
   await page.route("**/api/ask/local", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/ask/connections", (route) => route.fulfill({ json: [connection] }));
@@ -288,6 +294,37 @@ test("asks about a recording in the side panel, streams the answer and applies a
   await expect(panel).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await noHorizontalScroll(page)).toBe(true);
+});
+
+test("names the latest failure once, beside its fix, and keeps earlier failures in the chat", async ({
+  page,
+}) => {
+  const chatId = randomUUID();
+  const busy = "Anthropic is busy right now.";
+  const rejected = "Anthropic no longer accepts your key.";
+  const detail: ChatDetail = {
+    chat: summaryOf(chatId, null, "Who presents?"),
+    messages: [
+      userMessage("Who presents?"),
+      failedAnswer(2, busy, "busy"),
+      { ...userMessage("Who presents the numbers?"), seq: 3 },
+      failedAnswer(4, rejected, "key"),
+    ],
+    hiddenBeforeSeq: 0,
+  };
+  await connectedModel(page);
+  await page.route("**/api/media", (route) =>
+    route.fulfill({ json: { items: [], transcribing: false } satisfies LibraryList }),
+  );
+  await page.route("**/api/ask/chats", (route) => route.fulfill({ json: [detail.chat] }));
+  await page.route(`**/api/ask/chats/${chatId}`, (route) => route.fulfill({ json: detail }));
+
+  await page.goto(`/ask?chat=${chatId}`);
+  await expect(page.getByRole("alert")).toContainText(rejected);
+  await expect(page.getByText(rejected)).toHaveCount(1);
+  await expect(page.getByText(busy)).toHaveCount(1);
+  await page.getByRole("button", { name: "Update key" }).click();
+  await expect(page).toHaveURL(/\/models$/u);
 });
 
 test("asks across the library within a chosen scope and shows the sources grouped by recording", async ({

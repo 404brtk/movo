@@ -227,12 +227,14 @@ function EditCard({
 function Answer({
   message,
   live,
+  latest,
   chatId,
   mediaId,
   recordings,
 }: {
   message: ChatMessage;
   live: { text: string; activity: LiveActivity } | null;
+  latest: boolean;
   chatId: string;
   mediaId: string | null;
   recordings: ReadonlyMap<string, LibraryItem> | null;
@@ -265,7 +267,7 @@ function Answer({
       {message.state === "stopped" ? (
         <p className="ask-fade-in text-[12px] text-muted-foreground">Stopped</p>
       ) : null}
-      {message.state === "failed" ? (
+      {message.state === "failed" && !(latest && message.errorKind) ? (
         <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
           <HugeiconsIcon icon={Alert02Icon} size={13} aria-hidden="true" />
           {message.error}
@@ -360,6 +362,7 @@ export function AskConversation({
                   <Answer
                     message={message}
                     live={message.seq === lastSeq ? state.live : null}
+                    latest={message.seq === lastSeq}
                     chatId={detail.chat.id}
                     mediaId={mediaId}
                     recordings={recordings}
