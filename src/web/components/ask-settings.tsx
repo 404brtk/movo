@@ -1,6 +1,15 @@
 import { useId, useState, type ReactNode } from "react";
-import { Delete02Icon, MoreHorizontalIcon, RefreshIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  BubbleChatIcon,
+  ComputerIcon,
+  Delete02Icon,
+  Key01Icon,
+  LaptopIcon,
+  Link01Icon,
+  MoreHorizontalIcon,
+  RefreshIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import {
   providerKinds,
@@ -12,14 +21,15 @@ import {
 import { addressReach } from "../../shared/server-address.ts";
 import { connectionModelsOptions, defaultModelOptions, localServersOptions } from "../lib/api.ts";
 import {
-  modelChoice,
   useConnectService,
   useDisconnectService,
   useModelGroups,
   useSetDefaultModel,
 } from "../lib/ask-models.ts";
 import { connectionLabel, reachLabels } from "../lib/ask-view.ts";
+import { AccentIcon } from "./accent-icon.tsx";
 import { ProviderKeyForm } from "./ask-key-form.tsx";
+import { ModelPicker } from "./ask-model-picker.tsx";
 import { ConfirmDialog } from "./confirm-dialog.tsx";
 import { Spinner } from "./spinner.tsx";
 import { StatusIndicator } from "./status-indicator.tsx";
@@ -31,9 +41,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { Input } from "./ui/input.tsx";
-import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "./ui/native-select.tsx";
 
-const choiceValue = (connectionId: string, modelId: string) => `${connectionId}\n${modelId}`;
 const providerDescriptions = {
   anthropic: "Claude models from Anthropic",
   openai: "GPT models from OpenAI",
@@ -41,48 +49,64 @@ const providerDescriptions = {
 } as const satisfies Record<ProviderKind, string>;
 
 function Row({
+  icon,
+  idle,
   title,
   description,
   trailing,
   children,
 }: {
+  icon: IconSvgElement;
+  idle?: boolean;
   title: string;
   description: ReactNode;
   trailing?: ReactNode;
   children?: ReactNode;
 }) {
   return (
-    <li className="border-t py-3.5 pl-11 first:border-t-0">
-      <div className="flex items-center gap-3">
+    <li className="border-t py-3 first:border-t-0">
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
+        <span className="w-[30px] shrink-0">
+          {idle ? (
+            <HugeiconsIcon
+              icon={icon}
+              size={20}
+              aria-hidden="true"
+              className="block text-muted-foreground"
+            />
+          ) : (
+            <AccentIcon icon={icon} size={20} />
+          )}
+        </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[14px]/5 font-medium">{title}</p>
-          <div className="mt-0.5 truncate text-[12.5px] text-muted-foreground">{description}</div>
+          <p className="text-[13.5px]/[normal] font-medium">{title}</p>
+          <div className="mt-px truncate text-xs/[normal] text-muted-foreground">{description}</div>
         </div>
         {trailing}
       </div>
-      {children}
+      {children ? <div className="pl-11">{children}</div> : null}
     </li>
   );
 }
 
 function GroupHeading({ title, description }: { title: string; description: string }) {
   return (
-    <div className="mt-8 mb-1">
-      <h3 className="text-[12.5px] font-medium text-muted-foreground">{title}</h3>
-      <p className="mt-0.5 text-[12.5px]/[18px] text-pretty text-muted-foreground">{description}</p>
+    <div className="mt-8 mb-1.5">
+      <h3 className="text-xs/[normal] font-medium text-muted-foreground">{title}</h3>
+      <p className="mt-0.5 text-xs/[18px] text-pretty text-muted-foreground">{description}</p>
     </div>
   );
 }
 
 function DefaultModelField() {
-  const id = useId();
+  const [open, setOpen] = useState(false);
   const current = useQuery(defaultModelOptions);
   const { groups } = useModelGroups();
   const setDefault = useSetDefaultModel();
-  const value = current.data ? choiceValue(current.data.connectionId, current.data.modelId) : "";
   return (
     <ul>
       <Row
+        icon={BubbleChatIcon}
         title="New chats answer with"
         description={
           setDefault.error ? (
@@ -97,46 +121,17 @@ function DefaultModelField() {
         }
         trailing={
           groups.length === 0 ? null : (
-            <>
-              <label htmlFor={id} className="sr-only">
-                New chats answer with
-              </label>
-              <NativeSelect
-                id={id}
-                className="w-[240px] max-sm:w-[170px] [&_select]:h-9"
-                value={value}
+            <div className="max-sm:basis-full max-sm:pl-11">
+              <ModelPicker
+                field={{ label: "New chats answer with" }}
+                value={current.data ?? null}
+                local={false}
                 disabled={setDefault.isPending}
-                onChange={(event) => {
-                  for (const group of groups) {
-                    const model = group.models?.data?.find(
-                      (entry) => choiceValue(group.connection.id, entry.id) === event.target.value,
-                    );
-                    if (model) setDefault.mutate(modelChoice(group.connection, model));
-                  }
-                }}
-              >
-                {value ? null : <NativeSelectOption value="">Choose a model</NativeSelectOption>}
-                {groups.map((group) => (
-                  <NativeSelectOptGroup key={group.connection.id} label={group.label}>
-                    {group.models?.isPending ? (
-                      <NativeSelectOption disabled>Loading models…</NativeSelectOption>
-                    ) : null}
-                    {group.models?.isError ? (
-                      <NativeSelectOption disabled>{group.models.error.message}</NativeSelectOption>
-                    ) : null}
-                    {group.models?.data?.map((model) => (
-                      <NativeSelectOption
-                        key={model.id}
-                        value={choiceValue(group.connection.id, model.id)}
-                        disabled={model.tools === "no"}
-                      >
-                        {model.tools === "no" ? `${model.name} (can't use tools)` : model.name}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelectOptGroup>
-                ))}
-              </NativeSelect>
-            </>
+                open={open}
+                onOpenChange={setOpen}
+                onChoose={(choice) => setDefault.mutate(choice)}
+              />
+            </div>
           )
         }
       />
@@ -224,6 +219,8 @@ function ServerRow({ connection }: { connection: AiConnection }) {
   );
   return (
     <Row
+      icon={connection.reach === "network" ? ComputerIcon : LaptopIcon}
+      idle={models.isError}
       title={connectionLabel(connection).replace(/ on this computer$/u, "")}
       description={
         <>
@@ -252,6 +249,7 @@ function DetectedRow({ server }: { server: LocalServer }) {
   const names = modelNames(server.modelIds);
   return (
     <Row
+      icon={LaptopIcon}
       title={server.name}
       description={
         connect.error ? (
@@ -315,6 +313,8 @@ function AnotherServer() {
           : "Your network · questions cross it unencrypted over http";
   return (
     <Row
+      icon={Link01Icon}
+      idle
       title="Another server"
       description="A computer at home, or a port Movo doesn't check"
       trailing={
@@ -462,6 +462,8 @@ function ProviderRow({ kind, connection }: { kind: ProviderKind; connection?: Ai
       : providerDescriptions[kind];
   return (
     <Row
+      icon={Key01Icon}
+      idle={!connection && !editing}
       title={name}
       description={description}
       trailing={

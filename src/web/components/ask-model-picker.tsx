@@ -13,6 +13,7 @@ import { modelChoice, useModelGroups } from "../lib/ask-models.ts";
 import { reachLabels } from "../lib/ask-view.ts";
 import { cn } from "../lib/utils.ts";
 import { Spinner } from "./spinner.tsx";
+import { buttonVariants } from "./ui/button.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/u.test(navigator.platform);
@@ -37,6 +38,7 @@ export function ModelPicker({
   disabled,
   open,
   onOpenChange,
+  field,
 }: {
   value: Pick<ModelChoice, "connectionId" | "modelId" | "modelName"> | null;
   local: boolean;
@@ -44,6 +46,7 @@ export function ModelPicker({
   disabled?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  field?: { label: string };
 }) {
   const [search, setSearch] = useState("");
   const [active, setActive] = useState<string | null>(null);
@@ -51,15 +54,16 @@ export function ModelPicker({
   const { groups } = useModelGroups({ enabled: open });
   useEffect(() => {
     const toggle = (event: KeyboardEvent) => {
-      if (!isModelShortcut(event) || disabled) return;
+      if (field || !isModelShortcut(event) || disabled) return;
       event.preventDefault();
       onOpenChange(!open);
     };
     window.addEventListener("keydown", toggle);
     return () => window.removeEventListener("keydown", toggle);
-  }, [disabled, open, onOpenChange]);
+  }, [field, disabled, open, onOpenChange]);
   const terms = search.trim().toLowerCase();
   const chosenKey = value ? choiceKey(value.connectionId, value.modelId) : null;
+  const chosenGroup = groups.find((group) => group.connection.id === value?.connectionId);
   const shown = groups.map((group) => {
     const all = group.models?.data ?? [];
     const matching = all.filter(
@@ -105,25 +109,51 @@ export function ModelPicker({
         setActive(null);
       }}
     >
-      <PopoverTrigger
-        disabled={disabled}
-        title={`Choose a model (${modelShortcutLabel})`}
-        className="inline-flex h-7 max-w-[220px] min-w-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-45 aria-expanded:bg-muted aria-expanded:text-foreground"
-      >
-        {local ? (
+      {field ? (
+        <PopoverTrigger
+          disabled={disabled}
+          aria-label={`${field.label}: ${value?.modelName ?? "Choose a model"}`}
+          className={cn(
+            buttonVariants({ variant: "outline" }),
+            "max-w-[320px] min-w-[200px] justify-start font-normal max-sm:w-full max-sm:max-w-none",
+          )}
+        >
+          <span className="min-w-0 truncate font-medium">
+            {value?.modelName ?? "Choose a model"}
+          </span>
+          {chosenGroup ? (
+            <span className="min-w-0 shrink-[4] truncate text-muted-foreground">
+              {chosenGroup.label}
+            </span>
+          ) : null}
           <HugeiconsIcon
-            icon={LaptopIcon}
+            icon={ArrowDown01Icon}
             size={14}
-            aria-label="On this computer"
-            className="shrink-0"
+            aria-hidden="true"
+            className="ml-auto text-muted-foreground"
           />
-        ) : null}
-        <span className="truncate">{value?.modelName ?? "Choose a model"}</span>
-        <HugeiconsIcon icon={ArrowDown01Icon} size={14} aria-hidden="true" className="shrink-0" />
-      </PopoverTrigger>
+        </PopoverTrigger>
+      ) : (
+        <PopoverTrigger
+          disabled={disabled}
+          title={`Choose a model (${modelShortcutLabel})`}
+          className="inline-flex h-7 max-w-[220px] min-w-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-45 aria-expanded:bg-muted aria-expanded:text-foreground"
+        >
+          {local ? (
+            <HugeiconsIcon
+              icon={LaptopIcon}
+              size={14}
+              aria-label="On this computer"
+              className="shrink-0"
+            />
+          ) : null}
+          <span className="truncate">{value?.modelName ?? "Choose a model"}</span>
+          <HugeiconsIcon icon={ArrowDown01Icon} size={14} aria-hidden="true" className="shrink-0" />
+        </PopoverTrigger>
+      )}
       <PopoverContent
-        align="start"
-        side="top"
+        align={field ? "end" : "start"}
+        side={field ? "bottom" : "top"}
         initialFocus={searchInput}
         className="w-[320px] gap-0 p-0"
       >
@@ -219,13 +249,15 @@ export function ModelPicker({
             );
           })}
         </div>
-        <Link
-          to="/models"
-          className="flex items-center gap-2 border-t px-3.5 py-2.5 text-[13px] text-muted-foreground hover:text-foreground"
-        >
-          <HugeiconsIcon icon={Settings01Icon} size={15} aria-hidden="true" />
-          Manage models
-        </Link>
+        {field ? null : (
+          <Link
+            to="/models"
+            className="flex items-center gap-2 border-t px-3.5 py-2.5 text-[13px] text-muted-foreground hover:text-foreground"
+          >
+            <HugeiconsIcon icon={Settings01Icon} size={15} aria-hidden="true" />
+            Manage models
+          </Link>
+        )}
       </PopoverContent>
     </Popover>
   );

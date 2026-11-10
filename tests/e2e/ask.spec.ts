@@ -159,10 +159,13 @@ test("connects an API key on the Models page after a rejected key and picks the 
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByText("Key ending 1234 · 2 models")).toBeVisible();
   expect(keys).toEqual(["sk-wrong-0000", "sk-good-1234"]);
-  await expect(page.getByLabel("New chats answer with")).toHaveValue(`${connection.id}\nmodel-a`);
+  const defaultField = page.getByRole("button", { name: "New chats answer with: Model A" });
+  await expect(defaultField).toContainText("Anthropic");
   expect(saved).toEqual(choice);
-  await page.getByLabel("New chats answer with").selectOption({ label: "Model B" });
+  await defaultField.click();
+  await page.getByRole("dialog").getByRole("button", { name: "Model B" }).click();
   await expect.poll(() => saved?.modelId).toBe("model-b");
+  await expect(page.getByRole("button", { name: "New chats answer with: Model B" })).toBeVisible();
   expect(await page.evaluate(() => document.body.innerText)).not.toContain("sk-good-1234");
   await page.getByRole("button", { name: "Add address" }).click();
   await page.getByLabel("Server address").fill("192.168.1.20:11434");
