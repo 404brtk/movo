@@ -56,52 +56,57 @@ function ChooseRecordings({
   );
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-3 p-5 sm:max-w-[420px]">
+      <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>Choose recordings</DialogTitle>
           <DialogDescription>Ask answers only from the recordings you tick.</DialogDescription>
         </DialogHeader>
-        <label htmlFor={searchId} className="sr-only">
-          Find a recording
-        </label>
-        <Input
-          id={searchId}
-          placeholder="Find a recording"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-        <ul aria-label="Transcribed recordings" className="max-h-[300px] overflow-y-auto">
-          {recordings.isError ? (
-            <li role="alert" className="py-2 text-xs text-destructive">
-              {recordings.error.message}
-            </li>
-          ) : null}
-          {items.map((item) => (
-            <li key={item.id}>
-              <label className="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-muted">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
-                  checked={chosen.includes(item.id)}
-                  disabled={!chosen.includes(item.id) && chosen.length >= maxScopeRecordings}
-                  onChange={(event) =>
-                    setChosen((current) =>
-                      event.target.checked
-                        ? [...current, item.id]
-                        : current.filter((id) => id !== item.id),
-                    )
-                  }
-                />
-                <span className="truncate text-[13px]">{item.title}</span>
-              </label>
-            </li>
-          ))}
-          {recordings.isSuccess && items.length === 0 ? (
-            <li className="py-2 text-xs text-muted-foreground">
-              No transcribed recording matches.
-            </li>
-          ) : null}
-        </ul>
+        <div className="min-w-0 px-5 pt-3.5">
+          <label htmlFor={searchId} className="sr-only">
+            Find a recording
+          </label>
+          <Input
+            id={searchId}
+            placeholder="Find a recording"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <ul
+            aria-label="Transcribed recordings"
+            className="-mx-1.5 mt-2 max-h-[300px] overflow-y-auto"
+          >
+            {recordings.isError ? (
+              <li role="alert" className="px-1.5 py-2 text-xs text-destructive">
+                {recordings.error.message}
+              </li>
+            ) : null}
+            {items.map((item) => (
+              <li key={item.id}>
+                <label className="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-muted">
+                  <input
+                    type="checkbox"
+                    className="size-4 shrink-0 accent-primary"
+                    checked={chosen.includes(item.id)}
+                    disabled={!chosen.includes(item.id) && chosen.length >= maxScopeRecordings}
+                    onChange={(event) =>
+                      setChosen((current) =>
+                        event.target.checked
+                          ? [...current, item.id]
+                          : current.filter((id) => id !== item.id),
+                      )
+                    }
+                  />
+                  <span className="min-w-0 truncate text-[13px]">{item.title}</span>
+                </label>
+              </li>
+            ))}
+            {recordings.isSuccess && items.length === 0 ? (
+              <li className="px-1.5 py-2 text-xs text-muted-foreground">
+                No transcribed recording matches.
+              </li>
+            ) : null}
+          </ul>
+        </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel

@@ -399,6 +399,53 @@ test("names the latest failure once, beside its fix, and keeps earlier failures 
   await expect(page).toHaveURL(/\/models$/u);
 });
 
+test("keeps long recording titles inside the Choose recordings dialog", async ({ page }) => {
+  const titles = [
+    "Short",
+    "weekend z życia programisty - software factory, jesień i nowe projekty, które zaczynam",
+    "Bardzodługitytułbezspacjiktórysięniełamieanizawijawcalenawetwąskimoknie",
+  ];
+  const library: LibraryList = {
+    items: titles.map((title) => ({
+      id: randomUUID(),
+      title,
+      originalName: "recording.wav",
+      kind: "audio",
+      contentType: "audio/wav",
+      byteSize: 1000,
+      durationSeconds: 2,
+      importedAt: Date.now(),
+      sourceUrl: null,
+      fileRemovedAt: null,
+      transcription: "done",
+    })),
+    transcribing: false,
+  };
+  await connectedModel(page);
+  await page.route("**/api/ask/chats", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/media*", (route) => route.fulfill({ json: library }));
+
+  for (const width of [900, 360]) {
+    await page.setViewportSize({ width, height: 700 });
+    await page.goto("/ask");
+    await page.getByRole("button", { name: "Scope: All recordings" }).click();
+    await page.getByRole("menuitem", { name: "Choose recordings…" }).click();
+    const dialog = page.getByRole("dialog");
+    const boxes = dialog.getByRole("checkbox");
+    await expect(boxes).toHaveCount(titles.length);
+    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
+    const placed = await boxes.evaluateAll((elements) =>
+      elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        return `${box.left}:${box.width}`;
+      }),
+    );
+    expect(new Set(placed).size).toBe(1);
+  }
+});
+
 test("connects a detected local server with the model chosen in its card", async ({ page }) => {
   const server: AiConnection = {
     id: randomUUID(),
