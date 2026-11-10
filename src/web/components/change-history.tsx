@@ -45,7 +45,7 @@ function describeDetails(change: TranscriptChange) {
     change.kind === "replace"
       ? `${change.replacementCount} ${change.replacementCount === 1 ? "replacement" : "replacements"} · `
       : "";
-  const agent = change.source === "mcp" ? " · by an AI agent" : "";
+  const agent = { app: "", mcp: " · by an AI agent", chat: " · by Ask" }[change.source];
   return `${target}${count}${formatDayAndTime(change.createdAt)}${agent}`;
 }
 

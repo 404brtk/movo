@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +29,20 @@ it("holds ownership until scope exit and allows independent data directories", a
   await expect(
     Effect.runPromise(Effect.scoped(acquireDataDirectory(directory))),
   ).resolves.toBeDefined();
+});
+
+it("keeps the data directory, which holds API keys, private to the user on Unix", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "movo-instance-mode-"));
+  onTestFinished(() =>
+    rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }),
+  );
+  await chmod(directory, 0o755);
+  const created = join(directory, "created");
+  await Effect.runPromise(Effect.scoped(acquireDataDirectory(directory)));
+  await Effect.runPromise(Effect.scoped(acquireDataDirectory(created)));
+  const modes = [(await stat(directory)).mode & 0o777, (await stat(created)).mode & 0o777];
+  const unixModes = process.platform === "win32" ? modes : [0o700, 0o700];
+  expect(modes).toEqual(unixModes);
 });
 
 it("preserves storage errors and releases a failed lock connection for repair", async () => {

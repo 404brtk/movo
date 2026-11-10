@@ -1,6 +1,6 @@
 # movo
 
-A local media workspace. Import audio and video or download public videos from YouTube and X into a persistent library, play saved copies and generate local transcripts with word-level timestamps, then correct them with a version history. Downloads and transcription run in the background while you browse other recordings. Model installation is optional and explicit.
+A local media workspace. Import audio and video or download public videos from YouTube and X into a persistent library, play saved copies and generate local transcripts with word-level timestamps, then correct them with a version history and ask questions about them with a model you connect. Downloads and transcription run in the background while you browse other recordings. Model installation is optional and explicit.
 
 ## Requirements
 
@@ -158,3 +158,7 @@ Drizzle schemas live in `src/server/**/*.schema.ts`; generated, versioned migrat
 `bun run audit:runtime` checks production dependencies; `bun run audit` includes development tools. Inspect the current command output for findings rather than relying on a dated audit snapshot.
 
 Keep one Bun lockfile. Check the selected libraries' current documentation before changing APIs, then run all checks and browser tests. Update native dependencies using the pinned Node version. Model weights, downloaded media, databases and secrets do not belong in Git.
+
+## Ask
+
+**Ask** answers questions about transcripts with a model you connect on the **Models** page: an Anthropic, OpenAI or OpenRouter API key, or a server such as Ollama, LM Studio or Jan on this computer or your home network. Open it beside a recording with **Ask** or `/`, or across the library from the **Ask** tab. Every transcript change it proposes waits for your approval. See [Ask](docs/ask.md) for connections, keys, tools and context handling.

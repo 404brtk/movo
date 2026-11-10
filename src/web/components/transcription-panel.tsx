@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { SearchReplaceIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -35,6 +35,7 @@ function TranscriptView({
   modelName,
   playback,
   revealMs,
+  toolbarAction,
 }: {
   mediaId: string;
   job: TranscriptionJob;
@@ -42,6 +43,7 @@ function TranscriptView({
   modelName: string;
   playback: TranscriptPlayback | undefined;
   revealMs: number | undefined;
+  toolbarAction: ReactNode;
 }) {
   const [findOpen, setFindOpen] = useState(false);
   const find = useFindAndReplace(transcript);
@@ -86,6 +88,7 @@ function TranscriptView({
           />
         ) : null}
         <span className="ml-auto" />
+        {toolbarAction}
         {hasWords ? <TranscriptActions mediaId={mediaId} transcript={transcript} /> : null}
       </div>
       {showFind ? (
@@ -121,11 +124,13 @@ export function TranscriptionPanel({
   action,
   playback,
   revealMs,
+  toolbarAction,
 }: {
   mediaId: string;
   action: TranscriptionActionMutation;
   playback?: TranscriptPlayback | undefined;
   revealMs?: number | undefined;
+  toolbarAction?: ReactNode;
 }) {
   const query = useQuery(transcriptionOptions(mediaId));
   const models = useQuery(modelsOptions);
@@ -221,6 +226,7 @@ export function TranscriptionPanel({
             modelName={modelName}
             playback={playback}
             revealMs={revealMs}
+            toolbarAction={toolbarAction}
           />
         </>
       ) : null}

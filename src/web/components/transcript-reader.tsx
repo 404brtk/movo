@@ -106,8 +106,13 @@ const Passage = memo(function Passage({
     <li
       ref={revealed ? revealElement : undefined}
       aria-current={current ? "time" : undefined}
+      data-start-ms={passage.startMs}
       className={cn(
         "group/passage relative scroll-mt-14 py-3",
+        revealed &&
+          (current || !onSeek) &&
+          !editorOpen &&
+          "ask-washed -mx-3.5 rounded-xl bg-tint px-3.5",
         editing && "-mx-3.5 rounded-xl px-3.5 transition-colors duration-150",
         editing && !editorOpen && "hover:bg-subtle has-focus-visible:bg-subtle",
         editorOpen && "my-1 rounded-[14px] bg-background pb-3.5 shadow-editor",
