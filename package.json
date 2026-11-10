@@ -22,7 +22,6 @@
     "test:downloads:real": "vitest run --config vitest.real.config.ts tests/real/downloads.test.ts",
     "test:models:real": "vitest run --config vitest.real.config.ts tests/real/models.test.ts",
     "test:transcriptions:real": "vitest run --config vitest.real.config.ts tests/real/transcriptions.test.ts",
-    "test:ask:real": "vitest run --config vitest.real.config.ts tests/real/ask.test.ts",
     "test:e2e": "node tooling/test-e2e.ts",
     "test:e2e:install": "playwright install chromium",
     "check": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
