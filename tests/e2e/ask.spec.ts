@@ -327,6 +327,48 @@ test("names the latest failure once, beside its fix, and keeps earlier failures 
   await expect(page).toHaveURL(/\/models$/u);
 });
 
+test("keeps the chosen model visible in a folded group and starts the keyboard on it", async ({
+  page,
+}) => {
+  const many = Array.from({ length: 12 }, (_, index) => ({
+    id: `model-${index + 1}`,
+    name: `Model ${index + 1}`,
+    contextTokens: 200_000,
+    tools: "yes" as const,
+  }));
+  let saved: ModelChoice = { ...choice, modelId: "model-9", modelName: "Model 9" };
+  await page.route("**/api/ask/local", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/ask/connections", (route) => route.fulfill({ json: [connection] }));
+  await page.route(`**/api/ask/connections/${connection.id}/models`, (route) =>
+    route.fulfill({ json: many }),
+  );
+  await page.route("**/api/ask/default", (route) => {
+    if (route.request().method() === "PUT") saved = route.request().postDataJSON();
+    return route.fulfill({ json: saved });
+  });
+  await page.route("**/api/ask/chats", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/media", (route) =>
+    route.fulfill({ json: { items: [], transcribing: false } satisfies LibraryList }),
+  );
+
+  await page.goto("/ask");
+  await page.getByRole("button", { name: "Model 9" }).click();
+  const findModel = page.getByRole("textbox", { name: "Find a model" });
+  await expect(findModel).toBeFocused();
+  const picker = page.getByRole("dialog");
+  await expect(picker.getByRole("button", { name: "Model 9", pressed: true })).toBeVisible();
+  await expect(picker.getByRole("button", { name: /^Model \d+$/u })).toHaveCount(1);
+  await expect(picker.getByText("11 more — type to find one")).toBeVisible();
+  await findModel.press("Enter");
+  await expect(findModel).toHaveCount(0);
+  expect(saved.modelId).toBe("model-9");
+  await page.getByRole("button", { name: "Model 9" }).click();
+  await findModel.fill("model 1");
+  await findModel.press("ArrowDown");
+  await findModel.press("Enter");
+  await expect.poll(() => saved.modelId).toBe("model-10");
+});
+
 test("asks across the library within a chosen scope and shows the sources grouped by recording", async ({
   page,
 }) => {

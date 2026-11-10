@@ -20,6 +20,7 @@ export const modelShortcutLabel = isMac ? "⌘⌥/" : "Ctrl+Alt+/";
 const isModelShortcut = (event: KeyboardEvent) =>
   event.code === "Slash" && event.altKey && (isMac ? event.metaKey : event.ctrlKey);
 const foldedGroupSize = 8;
+const choiceKey = (connectionId: string, modelId: string) => `${connectionId}\n${modelId}`;
 
 function groupLabel(connection: AiConnection, label: string) {
   if (connection.kind !== "server" || !connection.reach) return label;
@@ -45,7 +46,7 @@ export function ModelPicker({
   onOpenChange: (open: boolean) => void;
 }) {
   const [search, setSearch] = useState("");
-  const [active, setActive] = useState(0);
+  const [active, setActive] = useState<string | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const { groups } = useModelGroups({ enabled: open });
   useEffect(() => {
@@ -58,6 +59,7 @@ export function ModelPicker({
     return () => window.removeEventListener("keydown", toggle);
   }, [disabled, open, onOpenChange]);
   const terms = search.trim().toLowerCase();
+  const chosenKey = value ? choiceKey(value.connectionId, value.modelId) : null;
   const shown = groups.map((group) => {
     const all = group.models?.data ?? [];
     const matching = all.filter(
@@ -67,25 +69,40 @@ export function ModelPicker({
         model.id.toLowerCase().includes(terms),
     );
     const folded = !terms && matching.length > foldedGroupSize;
-    return { ...group, matching: folded ? [] : matching, folded, total: all.length };
+    const isChosen = (model: AiModel) => choiceKey(group.connection.id, model.id) === chosenKey;
+    return {
+      ...group,
+      matching: folded ? matching.filter(isChosen) : matching,
+      folded,
+      total: all.length,
+    };
   });
   const choices = shown.flatMap((group) =>
     group.matching
       .filter((model) => model.tools !== "no")
-      .map((model) => ({ connection: group.connection, model })),
+      .map((model) => ({
+        connection: group.connection,
+        model,
+        key: choiceKey(group.connection.id, model.id),
+      })),
   );
-  const activeChoice = choices[Math.min(active, choices.length - 1)];
+  const indexOf = (key: string | null) => choices.findIndex((choice) => choice.key === key);
+  const activeIndex = [indexOf(active), indexOf(chosenKey)].find((index) => index >= 0) ?? 0;
+  const activeChoice = choices[activeIndex];
   const choose = (connection: AiConnection, model: AiModel) => {
     onChoose(modelChoice(connection, model));
     onOpenChange(false);
     setSearch("");
+    setActive(null);
   };
   return (
     <Popover
       open={open}
       onOpenChange={(next) => {
         onOpenChange(next);
-        if (!next) setSearch("");
+        if (next) return;
+        setSearch("");
+        setActive(null);
       }}
     >
       <PopoverTrigger
@@ -124,14 +141,14 @@ export function ModelPicker({
             value={search}
             onChange={(event) => {
               setSearch(event.target.value);
-              setActive(0);
+              setActive(null);
             }}
             onKeyDown={(event) => {
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              if ((event.key === "ArrowDown" || event.key === "ArrowUp") && choices.length > 0) {
                 event.preventDefault();
                 const step = event.key === "ArrowDown" ? 1 : -1;
-                setActive((current) =>
-                  choices.length === 0 ? 0 : (current + step + choices.length) % choices.length,
+                setActive(
+                  choices[(activeIndex + step + choices.length) % choices.length]?.key ?? null,
                 );
               }
               if (event.key === "Enter" && activeChoice) {
@@ -166,39 +183,38 @@ export function ModelPicker({
                     {models.error.message}
                   </p>
                 ) : null}
-                {folded ? (
-                  <p className="px-2 py-1.5 text-[13px] text-muted-foreground">
-                    {total} models — type to find one
-                  </p>
-                ) : null}
                 {matching.map((model) => {
-                  const selected =
-                    value?.connectionId === connection.id && value.modelId === model.id;
-                  const highlighted =
-                    activeChoice?.connection.id === connection.id &&
-                    activeChoice.model.id === model.id;
+                  const key = choiceKey(connection.id, model.id);
                   return (
                     <button
                       key={model.id}
                       type="button"
-                      aria-pressed={selected}
+                      aria-pressed={key === chosenKey}
                       disabled={model.tools === "no"}
                       onClick={() => choose(connection, model)}
+                      onPointerMove={() => setActive(key)}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] outline-none hover:bg-muted focus-visible:bg-muted disabled:opacity-45",
-                        highlighted && "bg-primary text-primary-foreground hover:bg-primary",
+                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] outline-none focus-visible:bg-muted disabled:opacity-45",
+                        activeChoice?.key === key && "bg-muted",
                       )}
                     >
                       <span className="min-w-0 flex-1 truncate">{model.name}</span>
                       {model.tools === "no" ? (
                         <span className="shrink-0 text-[11.5px]">Can't use tools</span>
                       ) : null}
-                      {selected ? (
+                      {key === chosenKey ? (
                         <HugeiconsIcon icon={Tick02Icon} size={14} aria-hidden="true" />
                       ) : null}
                     </button>
                   );
                 })}
+                {folded ? (
+                  <p className="px-2 py-1.5 text-[13px] text-muted-foreground">
+                    {matching.length > 0
+                      ? `${total - matching.length} more — type to find one`
+                      : `${total} models — type to find one`}
+                  </p>
+                ) : null}
               </div>
             );
           })}
