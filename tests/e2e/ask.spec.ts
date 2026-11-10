@@ -296,6 +296,43 @@ test("asks about a recording in the side panel, streams the answer and applies a
   expect(await noHorizontalScroll(page)).toBe(true);
 });
 
+test("wraps the transcript toolbar in groups and keeps Ask with its actions at the right edge", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  const media: { id: string } = await uploaded.json();
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/media/${media.id}`);
+  await expect(page.getByText("Parakeet Ultra · edited")).toBeVisible();
+  const top = async (name: string) => {
+    const found = await page.getByRole("button", { name, exact: true }).boundingBox();
+    if (!found) throw new Error(`${name} has no box.`);
+    return found.y;
+  };
+  await expect(async () => {
+    const heading = await page.getByRole("heading", { level: 1 }).boundingBox();
+    expect(await top("Find and replace")).toBe(await top("History"));
+    const ask = await top("Ask");
+    expect(await top("Copy transcript")).toBe(ask);
+    expect(await top("Export transcript")).toBe(ask);
+    const exportIcon = await page
+      .getByRole("button", { name: "Export transcript" })
+      .locator("svg")
+      .boundingBox();
+    expect((exportIcon?.x ?? 0) + (exportIcon?.width ?? 0)).toBe(
+      (heading?.x ?? 0) + (heading?.width ?? 0),
+    );
+  }).toPass();
+  expect(await noHorizontalScroll(page)).toBe(true);
+});
+
 test("moves the recording only as far as the open panel needs", async ({ page, request }) => {
   const uploaded = await request.post("/api/media", {
     data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),

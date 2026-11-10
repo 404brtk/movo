@@ -68,28 +68,35 @@ function TranscriptView({
           {modelName}
           {edited ? " · edited" : ""}
         </span>
-        {editable && hasWords ? (
-          <Button
-            variant="toggle"
-            size="sm"
-            aria-expanded={showFind}
-            onClick={() => setFindOpen(!findOpen)}
-          >
-            <HugeiconsIcon icon={SearchReplaceIcon} data-icon="inline-start" aria-hidden="true" />
-            Find and replace
-          </Button>
-        ) : null}
         {editable ? (
-          <ChangeHistory
-            mediaId={mediaId}
-            revision={revision}
-            resultRevision={resultRevision}
-            modelName={job.device ? `${modelName} · ${formatDevice(job.device)}` : modelName}
-          />
+          <div className="flex items-center gap-1.5">
+            {hasWords ? (
+              <Button
+                variant="toggle"
+                size="sm"
+                aria-expanded={showFind}
+                onClick={() => setFindOpen(!findOpen)}
+              >
+                <HugeiconsIcon
+                  icon={SearchReplaceIcon}
+                  data-icon="inline-start"
+                  aria-hidden="true"
+                />
+                Find and replace
+              </Button>
+            ) : null}
+            <ChangeHistory
+              mediaId={mediaId}
+              revision={revision}
+              resultRevision={resultRevision}
+              modelName={job.device ? `${modelName} · ${formatDevice(job.device)}` : modelName}
+            />
+          </div>
         ) : null}
-        <span className="ml-auto" />
-        {toolbarAction}
-        {hasWords ? <TranscriptActions mediaId={mediaId} transcript={transcript} /> : null}
+        <div className="ml-auto flex items-center gap-1.5">
+          {toolbarAction}
+          {hasWords ? <TranscriptActions mediaId={mediaId} transcript={transcript} /> : null}
+        </div>
       </div>
       {showFind ? (
         <FindAndReplace
