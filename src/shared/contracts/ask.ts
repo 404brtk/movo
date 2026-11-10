@@ -59,7 +59,19 @@ export const AiModel = Schema.Struct({
 export type AiModel = typeof AiModel.Type;
 export const AiModelList = Schema.Array(AiModel);
 
-export const localServerNames = ["Ollama", "LM Studio", "Jan"] as const;
+export const localServerNames = ["Ollama", "LM Studio", "Jan", "llama-server"] as const;
+export const localServers: readonly {
+  name: (typeof localServerNames)[number];
+  port: number;
+  ownedBy?: string;
+}[] = [
+  { name: "Ollama", port: 11434 },
+  { name: "LM Studio", port: 1234 },
+  { name: "Jan", port: 1337 },
+  { name: "llama-server", port: 8080, ownedBy: "llamacpp" },
+];
+export const localServerName = (baseUrl: string) =>
+  localServers.find((server) => String(server.port) === new URL(baseUrl).port)?.name;
 export const LocalServer = Schema.Struct({
   name: Schema.Literals(localServerNames),
   baseUrl: Schema.String,

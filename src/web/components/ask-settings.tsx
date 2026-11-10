@@ -316,7 +316,7 @@ function AnotherServer() {
   return (
     <Row
       title="Another server"
-      description="A computer at home, llama-server, or a port Movo doesn't check"
+      description="A computer at home, or a port Movo doesn't check"
       trailing={
         open ? null : (
           <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
@@ -395,8 +395,8 @@ function NoServerFound() {
     <div className="mt-2 ml-11 rounded-xl p-4 shadow-[inset_0_0_0_1px_var(--color-border)]">
       <p className="text-[13.5px] font-medium">No model server found</p>
       <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-        Movo checks Ollama, LM Studio and Jan on their usual ports. Opening one is enough — it
-        appears here within about 30 seconds while this page is open.
+        Movo checks Ollama, LM Studio, Jan and llama-server on their usual ports. Opening one is
+        enough — it appears here within about 30 seconds while this page is open.
       </p>
       <div className="mt-3 flex gap-2">
         <Button
@@ -431,7 +431,7 @@ function LocalModels({ servers }: { servers: AiConnection[] }) {
     <>
       <GroupHeading
         title="Local models"
-        description="Ollama, LM Studio and Jan on this computer are checked while this page is open; anything else is added by its address. Nothing you ask goes to the internet."
+        description="Ollama, LM Studio, Jan and llama-server on this computer are checked while this page is open; anything else is added by its address. Nothing you ask goes to the internet."
       />
       {servers.length === 0 && detected.length === 0 && local.isSuccess ? <NoServerFound /> : null}
       <ul>

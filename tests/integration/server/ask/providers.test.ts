@@ -128,6 +128,30 @@ describe("own server model lists", () => {
     expect(requests).toContain("GET /v1/models Bearer local-key-1");
   });
 
+  it("reads tool support and the context from llama-server's properties", async () => {
+    const { baseUrl, requests } = await serve((path) => {
+      if (path === "/v1/models")
+        return { json: { data: [{ id: "gemma-4-E4B-it-GGUF:Q4_K_M", owned_by: "llamacpp" }] } };
+      if (path === "/props")
+        return {
+          json: {
+            default_generation_settings: { n_ctx: 131_072 },
+            chat_template_caps: { supports_tools: true },
+          },
+        };
+      return undefined;
+    });
+    expect(await listModels({ kind: "server", baseUrl, apiKey: null })).toEqual([
+      {
+        id: "gemma-4-E4B-it-GGUF:Q4_K_M",
+        name: "gemma-4-E4B-it-GGUF:Q4_K_M",
+        contextTokens: 131_072,
+        tools: "yes",
+      },
+    ]);
+    expect(requests).toEqual(["GET /v1/models", "GET /props"]);
+  });
+
   it("lists models of other OpenAI-compatible servers without capability data", async () => {
     const { baseUrl } = await serve((path) =>
       path === "/v1/models" ? openAiList(["llama"]) : undefined,

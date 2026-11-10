@@ -4,7 +4,12 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
 import { Schema } from "effect";
-import { type AiModel, type ConnectionKind, type LocalServer } from "../../shared/contracts/ask.ts";
+import {
+  localServers,
+  type AiModel,
+  type ConnectionKind,
+  type LocalServer,
+} from "../../shared/contracts/ask.ts";
 import { MediaError } from "../media/error.ts";
 
 export interface ConnectionSecret {
@@ -17,13 +22,19 @@ const listTimeoutMs = 15_000;
 const localProbeTimeoutMs = 1500;
 const ollamaShowConcurrency = 4;
 
-export const localServers = [
-  { name: "Ollama", port: 11434 },
-  { name: "LM Studio", port: 1234 },
-  { name: "Jan", port: 1337 },
-] as const;
-
-const OpenAiModels = Schema.Struct({ data: Schema.Array(Schema.Struct({ id: Schema.String })) });
+const OpenAiModels = Schema.Struct({
+  data: Schema.Array(
+    Schema.Struct({ id: Schema.String, owned_by: Schema.optional(Schema.String) }),
+  ),
+});
+const LlamaCppProps = Schema.Struct({
+  default_generation_settings: Schema.optional(
+    Schema.Struct({ n_ctx: Schema.optional(Schema.Number) }),
+  ),
+  chat_template_caps: Schema.optional(
+    Schema.Struct({ supports_tools: Schema.optional(Schema.Boolean) }),
+  ),
+});
 const AnthropicModels = Schema.Struct({
   data: Schema.Array(
     Schema.Struct({
@@ -253,7 +264,37 @@ async function ollamaDetails(
   return details;
 }
 
-async function serverDetails(baseUrl: string, apiKey: string | null, ids: readonly string[]) {
+async function llamaCppDetails(
+  baseUrl: string,
+  apiKey: string | null,
+  ids: readonly string[],
+): Promise<ServerDetails> {
+  const props = await requestJson(
+    "The server",
+    `${baseUrl}/props`,
+    { headers: bearer(apiKey), timeoutMs: localProbeTimeoutMs * 2 },
+    LlamaCppProps,
+  );
+  const supportsTools = props.chat_template_caps?.supports_tools;
+  const detail = {
+    tools: supportsTools === undefined ? "unknown" : supportsTools ? "yes" : "no",
+    contextTokens: props.default_generation_settings?.n_ctx ?? null,
+  } as const;
+  return new Map(ids.map((id) => [id, detail]));
+}
+
+async function serverDetails(
+  baseUrl: string,
+  apiKey: string | null,
+  ids: readonly string[],
+  llamaCpp: boolean,
+) {
+  if (llamaCpp)
+    try {
+      return await llamaCppDetails(baseUrl, apiKey, ids);
+    } catch {
+      return new Map() as ServerDetails;
+    }
   try {
     return await lmStudioDetails(baseUrl, apiKey);
   } catch {
@@ -273,7 +314,12 @@ async function listServer(baseUrl: string, apiKey: string | null, signal?: Abort
     OpenAiModels,
   );
   const ids = page.data.map((model) => model.id);
-  const details = await serverDetails(baseUrl, apiKey, ids);
+  const details = await serverDetails(
+    baseUrl,
+    apiKey,
+    ids,
+    page.data.some((model) => model.owned_by === "llamacpp"),
+  );
   return ids.map((id): AiModel => ({
     id,
     name: id,
@@ -297,7 +343,7 @@ export const listModels = (connection: ConnectionSecret, signal?: AbortSignal) =
 
 export async function detectLocalServers(signal?: AbortSignal) {
   const found = await Promise.all(
-    localServers.map(async ({ name, port }): Promise<LocalServer | null> => {
+    localServers.map(async ({ name, port, ownedBy }): Promise<LocalServer | null> => {
       const baseUrl = `http://127.0.0.1:${port}`;
       try {
         const page = await requestJson(
@@ -306,6 +352,7 @@ export async function detectLocalServers(signal?: AbortSignal) {
           { signal, timeoutMs: localProbeTimeoutMs },
           OpenAiModels,
         );
+        if (ownedBy && !page.data.some((model) => model.owned_by === ownedBy)) return null;
         return { name, baseUrl, modelIds: page.data.map((model) => model.id) };
       } catch {
         return null;

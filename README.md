@@ -161,4 +161,4 @@ Keep one Bun lockfile. Check the selected libraries' current documentation befor
 
 ## Ask
 
-**Ask** answers questions about transcripts with a model you connect on the **Models** page: an Anthropic, OpenAI or OpenRouter API key, or a server such as Ollama, LM Studio or Jan on this computer or your home network. Open it beside a recording with **Ask** or `/`, or across the library from the **Ask** tab. Every transcript change it proposes waits for your approval. See [Ask](docs/ask.md) for connections, keys, tools and context handling.
+**Ask** answers questions about transcripts with a model you connect on the **Models** page: an Anthropic, OpenAI or OpenRouter API key, or a server such as Ollama, LM Studio, Jan or llama-server on this computer or your home network. Open it beside a recording with **Ask** or `/`, or across the library from the **Ask** tab. Every transcript change it proposes waits for your approval. See [Ask](docs/ask.md) for connections, keys, tools and context handling.

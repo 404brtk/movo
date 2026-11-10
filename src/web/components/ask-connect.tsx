@@ -123,7 +123,7 @@ function NothingLocalCard() {
       <CardTitle
         icon={LaptopIcon}
         title="Run a model on this computer"
-        description="Free and private, with Ollama, LM Studio or Jan"
+        description="Free and private, with Ollama, LM Studio, Jan or llama-server"
       />
       <div className="mt-3 flex gap-2">
         <a

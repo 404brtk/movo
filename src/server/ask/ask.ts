@@ -12,6 +12,7 @@ import { Effect, Schema } from "effect";
 import { Tool } from "effect/ai";
 import {
   ChatDetail,
+  localServerName,
   providerNames,
   type AiConnection,
   type AiModel,
@@ -269,14 +270,8 @@ function instructionsFor(mediaId: string | null, scope: ChatScope | null) {
   ].join("\n");
 }
 
-const serverNamesByPort: Record<string, string> = {
-  "11434": "Ollama",
-  "1234": "LM Studio",
-  "1337": "Jan",
-};
-
 const serverName = (baseUrl: string | null) =>
-  (baseUrl ? serverNamesByPort[new URL(baseUrl).port] : undefined) ?? "The server";
+  (baseUrl ? localServerName(baseUrl) : undefined) ?? "The server";
 
 const refusedConnection = /ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|fetch failed/u;
 const toolsUnsupported =

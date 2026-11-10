@@ -69,7 +69,10 @@ it("names connections by provider or by local server", () => {
   };
   expect(connectionLabel(base)).toBe("Ollama on this computer");
   expect(connectionLabel({ ...base, baseUrl: "http://192.168.1.20:8080", reach: "network" })).toBe(
-    "Server at 192.168.1.20:8080",
+    "llama-server on 192.168.1.20",
+  );
+  expect(connectionLabel({ ...base, baseUrl: "http://192.168.1.20:8000", reach: "network" })).toBe(
+    "Server at 192.168.1.20:8000",
   );
   expect(connectionLabel({ ...base, kind: "openrouter", baseUrl: null, reach: null })).toBe(
     "OpenRouter",

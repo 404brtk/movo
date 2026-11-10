@@ -1,4 +1,5 @@
 import {
+  localServerName,
   providerNames,
   type AiConnection,
   type ChatMessage,
@@ -6,17 +7,11 @@ import {
   type FailureKind,
 } from "../../shared/contracts/ask.ts";
 
-const serverNamesByPort: Record<string, string> = {
-  "11434": "Ollama",
-  "1234": "LM Studio",
-  "1337": "Jan",
-};
-
 export function connectionLabel(connection: AiConnection) {
   if (connection.kind !== "server") return providerNames[connection.kind];
   if (!connection.baseUrl) return "Server";
   const url = new URL(connection.baseUrl);
-  const name = serverNamesByPort[url.port];
+  const name = localServerName(connection.baseUrl);
   if (!name) return `Server at ${url.host}`;
   return connection.reach === "this-computer"
     ? `${name} on this computer`
