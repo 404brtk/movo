@@ -399,6 +399,61 @@ test("names the latest failure once, beside its fix, and keeps earlier failures 
   await expect(page).toHaveURL(/\/models$/u);
 });
 
+test("connects a detected local server with the model chosen in its card", async ({ page }) => {
+  const server: AiConnection = {
+    id: randomUUID(),
+    kind: "server",
+    baseUrl: "http://127.0.0.1:8080",
+    reach: "this-computer",
+    keyHint: null,
+    createdAt: Date.now(),
+  };
+  const served: AiModel[] = [
+    { id: "gemma-small", name: "gemma-small", contextTokens: 131_072, tools: "yes" },
+    { id: "gemma-large", name: "gemma-large", contextTokens: 131_072, tools: "yes" },
+  ];
+  let connected = false;
+  let saved: ModelChoice | null = null;
+  await page.route("**/api/ask/local", (route) =>
+    route.fulfill({
+      json: connected
+        ? []
+        : [
+            {
+              name: "llama-server",
+              baseUrl: server.baseUrl,
+              modelIds: served.map((model) => model.id),
+            },
+          ],
+    }),
+  );
+  await page.route("**/api/ask/connections", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: connected ? [server] : [] });
+    connected = true;
+    return route.fulfill({ status: 201, json: server });
+  });
+  await page.route(`**/api/ask/connections/${server.id}/models`, (route) =>
+    route.fulfill({ json: served }),
+  );
+  await page.route("**/api/ask/default", (route) => {
+    if (route.request().method() === "PUT") saved = route.request().postDataJSON();
+    return route.fulfill({ json: saved });
+  });
+  await page.route("**/api/ask/chats", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/media", (route) =>
+    route.fulfill({ json: { items: [], transcribing: false } satisfies LibraryList }),
+  );
+
+  await page.goto("/ask");
+  const card = page.getByRole("region", { name: "llama-server on this computer" });
+  await card.getByRole("button", { name: "Model: gemma-small" }).click();
+  await page.getByRole("menuitemradio", { name: "gemma-large" }).click();
+  await card.getByRole("button", { name: "Use it" }).click();
+  await expect.poll(() => saved?.modelId).toBe("gemma-large");
+  await expect(page.getByRole("textbox", { name: "Ask across your library…" })).toBeVisible();
+});
+
 test("keeps the chosen model visible in a folded group and starts the keyboard on it", async ({
   page,
 }) => {

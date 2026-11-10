@@ -1,5 +1,10 @@
-import { useId, useState } from "react";
-import { InformationCircleIcon, Key01Icon, LaptopIcon } from "@hugeicons/core-free-icons";
+import { useState } from "react";
+import {
+  ArrowDown01Icon,
+  InformationCircleIcon,
+  Key01Icon,
+  LaptopIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -16,7 +21,13 @@ import { SegmentedChoice } from "./segmented-choice.tsx";
 import { Spinner } from "./spinner.tsx";
 import { StatusIndicator } from "./status-indicator.tsx";
 import { Button, buttonVariants } from "./ui/button.tsx";
-import { NativeSelect, NativeSelectOption } from "./ui/native-select.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
 
 function CardTitle({
   icon,
@@ -49,7 +60,6 @@ const cardClassName = (first: boolean) =>
   );
 
 function LocalServerCard({ server, first }: { server: LocalServer; first: boolean }) {
-  const id = useId();
   const [modelId, setModelId] = useState(server.modelIds[0] ?? "");
   const connect = useConnectService();
   const count = server.modelIds.length;
@@ -70,22 +80,32 @@ function LocalServerCard({ server, first }: { server: LocalServer; first: boolea
       />
       {count > 0 ? (
         <div className="mt-3 flex gap-2">
-          <label htmlFor={id} className="sr-only">
-            Model
-          </label>
-          <NativeSelect
-            id={id}
-            size="sm"
-            className="min-w-0 flex-1 [&_select]:h-8 [&_select]:text-[13px]"
-            value={modelId}
-            onChange={(event) => setModelId(event.target.value)}
-          >
-            {server.modelIds.map((model) => (
-              <NativeSelectOption key={model} value={model}>
-                {model}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={`Model: ${modelId}`}
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                "min-w-0 flex-1 justify-start font-normal",
+              )}
+            >
+              <span className="min-w-0 truncate">{modelId}</span>
+              <HugeiconsIcon
+                icon={ArrowDown01Icon}
+                size={14}
+                aria-hidden="true"
+                className="ml-auto text-muted-foreground"
+              />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-(--anchor-width)">
+              <DropdownMenuRadioGroup value={modelId} onValueChange={setModelId}>
+                {server.modelIds.map((model) => (
+                  <DropdownMenuRadioItem key={model} value={model} closeOnClick>
+                    <span className="truncate">{model}</span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             aria-busy={connect.isPending}
             disabled={connect.isPending}
