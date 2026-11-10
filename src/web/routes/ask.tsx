@@ -274,7 +274,7 @@ function LibraryChat({ chatId }: { chatId: string }) {
   const detail = state.detail;
   return (
     <main className="mx-auto flex h-[calc(100svh-104px)] max-w-[800px] flex-col px-5 pt-5 sm:h-[calc(100svh-56px)]">
-      <div className="-mx-2.5 flex items-center justify-between">
+      <div className="-mr-1.5 -ml-2.5 flex items-center justify-between">
         <Link to="/ask" search={{}} className={buttonVariants({ variant: "ghost", size: "sm" })}>
           <HugeiconsIcon icon={ArrowLeft02Icon} data-icon="inline-start" aria-hidden="true" />
           Ask

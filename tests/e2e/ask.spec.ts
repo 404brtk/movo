@@ -296,6 +296,38 @@ test("asks about a recording in the side panel, streams the answer and applies a
   expect(await noHorizontalScroll(page)).toBe(true);
 });
 
+test("moves the recording only as far as the open panel needs", async ({ page, request }) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  const media: { id: string } = await uploaded.json();
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [] }));
+  const title = page.getByRole("heading", { level: 1 });
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const box = async (locator: typeof title) => {
+    const found = await locator.boundingBox();
+    if (!found) throw new Error("The element has no box.");
+    return found;
+  };
+
+  await page.setViewportSize({ width: 1830, height: 900 });
+  await page.goto(`/media/${media.id}`);
+  const closedLeft = (await box(title)).x;
+  await page.keyboard.press("/");
+  await expect(panel).toBeVisible();
+  await expect.poll(async () => (await box(title)).x).toBe(closedLeft);
+
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await expect
+    .poll(async () => {
+      const heading = await box(title);
+      return (await box(panel)).x - (heading.x + heading.width);
+    })
+    .toBe(36);
+});
+
 test("names the latest failure once, beside its fix, and keeps earlier failures in the chat", async ({
   page,
 }) => {

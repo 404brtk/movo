@@ -133,13 +133,13 @@ function MediaDetail() {
     <div
       className={cn(
         "transition-[padding] duration-260 ease-move motion-reduce:transition-none",
-        askOpen && item && "min-[1100px]:pr-[424px]",
+        askOpen && item && "min-[1100px]:pr-[clamp(0px,1568px_-_100%,424px)]",
       )}
     >
       <main
         className={`mx-auto max-w-[720px] px-5 pt-5 ${item?.kind === "audio" && item.fileRemovedAt === null ? "pb-32" : "pb-16"}`}
       >
-        <div className="-mx-2.5 flex items-center justify-between">
+        <div className="-mr-1.5 -ml-2.5 flex items-center justify-between">
           <Link
             to="/"
             aria-label="Back to library"
