@@ -32,6 +32,7 @@ import { Button } from "./ui/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
@@ -116,12 +117,14 @@ export function ChatHistory({
         <HugeiconsIcon icon={Clock01Icon} aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[260px]">
-        <DropdownMenuLabel>Earlier chats</DropdownMenuLabel>
-        {earlier.map((chat) => (
-          <DropdownMenuItem key={chat.id} onClick={() => onSelect(chat.id)}>
-            <span className="truncate">{chat.title}</span>
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Earlier chats</DropdownMenuLabel>
+          {earlier.map((chat) => (
+            <DropdownMenuItem key={chat.id} onClick={() => onSelect(chat.id)}>
+              <span className="truncate">{chat.title}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

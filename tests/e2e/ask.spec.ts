@@ -399,6 +399,46 @@ test("names the latest failure once, beside its fix, and keeps earlier failures 
   await expect(page).toHaveURL(/\/models$/u);
 });
 
+test("opens an earlier chat about the recording from the panel's history", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  const media: { id: string } = await uploaded.json();
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
+  const chat = (title: string, answer: string): ChatDetail => ({
+    chat: summaryOf(randomUUID(), media.id, title),
+    messages: [userMessage(title), answerMessage("done", [{ type: "text", text: answer }])],
+    hiddenBeforeSeq: 0,
+  });
+  const latest = chat("Who presents?", "Anna presents.");
+  const earlier = chat("What is shown?", "The numbers are shown.");
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) =>
+    route.fulfill({ json: [latest.chat, earlier.chat] }),
+  );
+  for (const detail of [latest, earlier])
+    await page.route(`**/api/ask/chats/${detail.chat.id}`, (route) =>
+      route.fulfill({ json: detail }),
+    );
+
+  await page.goto(`/media/${media.id}`);
+  await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
+  await page.keyboard.press("/");
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  await expect(panel.getByText("Anna presents.")).toBeVisible();
+  await panel.getByRole("button", { name: "Earlier chats" }).click();
+  await expect(page.getByRole("group").getByText("Earlier chats")).toBeVisible();
+  await page.getByRole("menuitem", { name: "What is shown?" }).click();
+  await expect(panel.getByText("The numbers are shown.")).toBeVisible();
+  await expect(panel.getByText("Anna presents.")).toHaveCount(0);
+});
+
 test("keeps long recording titles inside the Choose recordings dialog", async ({ page }) => {
   const titles = [
     "Short",
