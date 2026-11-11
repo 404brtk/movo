@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import type {
   AiConnection,
   AiModel,
@@ -584,6 +584,54 @@ test("returns a queued question with its passage to the field when the panel swi
   await expect(removePassage).toBeVisible();
   await expect(panel.getByText("“And then?” is sent when this answer ends.")).toHaveCount(0);
   expect(requests).toEqual([]);
+});
+
+test("returns a queued question once when its send fails after the panel switched chats", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  expect(uploaded.status()).toBe(201);
+  const media: { id: string } = await uploaded.json();
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
+  const chatId = randomUUID();
+  const summary = summaryOf(chatId, media.id, "Who presents?");
+  const question = userMessage("Who presents?");
+  let detail: ChatDetail = {
+    chat: summary,
+    messages: [question, answerMessage("answering", [])],
+    hiddenBeforeSeq: 0,
+  };
+  const held: Route[] = [];
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [summary] }));
+  await page.route(`**/api/ask/chats/${chatId}`, (route) => route.fulfill({ json: detail }));
+  await page.route(`**/api/ask/chats/${chatId}/live`, (route) =>
+    route.fulfill({ headers: { "content-type": "text/event-stream" }, body: liveBody("Anna") }),
+  );
+  await page.route(`**/api/ask/chats/${chatId}/messages`, (route) => {
+    held.push(route);
+  });
+
+  await page.goto(`/media/${media.id}`);
+  await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
+  await page.keyboard.press("/");
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const composer = panel.getByRole("textbox", { name: "Ask about this recording…" });
+  await composer.fill("And then?");
+  await composer.press("Enter");
+  detail = { ...detail, messages: [question, answerMessage("done", [])] };
+  await expect.poll(() => held.length).toBe(1);
+  await panel.getByRole("button", { name: "New chat" }).click();
+  await held[0]?.fulfill({ status: 503, json: { error: "Movo isn't reachable." } });
+  await expect(panel.getByText("Movo isn't reachable.")).toBeVisible();
+  await expect(composer).toHaveValue("And then?");
+  expect(held).toHaveLength(1);
 });
 
 const passageStart = (index: number) => index * 4000;

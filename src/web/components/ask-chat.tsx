@@ -445,8 +445,10 @@ export function AskComposer({
       setDraft(withQuestion(queued.text));
       if (queued.passage) onPassageChange(queued.passage);
     };
-    if (queued.chatId !== chatId) returnToField();
-    else if (!answering && !waitingApproval && !send.isPending)
+    const sending = send.variables === queued;
+    if (queued.chatId !== chatId) {
+      if (!sending) returnToField();
+    } else if (!answering && !waitingApproval && !send.isPending)
       send.mutate(queued, { onSuccess: () => setQueued(null), onError: returnToField });
   }, [answering, waitingApproval, queued, send, chatId, onPassageChange]);
   const submit = () => {
