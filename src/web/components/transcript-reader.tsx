@@ -77,6 +77,7 @@ const Passage = memo(function Passage({
   currentWord,
   dimmed,
   revealed,
+  scrollsIntoView,
   marks,
   onSeek,
   editing,
@@ -87,6 +88,7 @@ const Passage = memo(function Passage({
   currentWord: number;
   dimmed: boolean;
   revealed: boolean;
+  scrollsIntoView: boolean;
   marks: PassageMark[] | undefined;
   onSeek: ((milliseconds: number) => void) | undefined;
   editing: TranscriptEditing | undefined;
@@ -104,7 +106,7 @@ const Passage = memo(function Passage({
   );
   return (
     <li
-      ref={revealed ? revealElement : undefined}
+      ref={revealed && scrollsIntoView ? revealElement : undefined}
       aria-current={current ? "time" : undefined}
       data-start-ms={passage.startMs}
       className={cn(
@@ -186,6 +188,8 @@ export function TranscriptReader({
   matches?: TranscriptMatches | undefined;
 }) {
   const [edited, setEdited] = useState<EditedPassage | null>(null);
+  const [openingMs, setOpeningMs] = useState(revealMs);
+  if (openingMs !== undefined && openingMs !== revealMs) setOpeningMs(undefined);
   const passages = useMemo(() => transcriptPassages(transcript.words), [transcript.words]);
   const marks = useMemo(() => marksByPassage(passages, matches), [passages, matches]);
   const currentWord = playback ? currentWordIndex(transcript.words, playback.positionMs) : -1;
@@ -213,6 +217,7 @@ export function TranscriptReader({
             currentWord={contains(passage, currentWord) ? currentWord - passage.firstWord : -1}
             dimmed={(Boolean(playback) && !matches) || Boolean(edited?.open)}
             revealed={contains(passage, revealedWord)}
+            scrollsIntoView={!playback || revealMs === openingMs}
             marks={marks.get(passage.firstWord)}
             onSeek={playback?.onSeek}
             editing={editing}

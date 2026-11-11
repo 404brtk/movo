@@ -408,16 +408,37 @@ test("names the latest failure once, beside its fix, and keeps earlier failures 
 
 const passageStart = (index: number) => index * 4000;
 
-test("brings the cited passage into view when a moment in the panel is chosen", async ({
+function silentWav(seconds: number) {
+  const rate = 8000;
+  const samples = rate * seconds;
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + samples, 4);
+  header.write("WAVEfmt ", 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(rate, 24);
+  header.writeUInt32LE(rate, 28);
+  header.writeUInt16LE(1, 32);
+  header.writeUInt16LE(8, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(samples, 40);
+  return Buffer.concat([header, Buffer.alloc(samples, 0x80)]);
+}
+
+test("moves the open recording to each chosen moment, again on a repeated choice", async ({
   page,
   request,
 }) => {
   const uploaded = await request.post("/api/media", {
-    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
-    headers: { "x-file-name": `${randomUUID()}.webm` },
+    data: silentWav(300),
+    headers: { "x-file-name": `${randomUUID()}.wav` },
   });
+  expect(uploaded.status()).toBe(201);
   const media: { id: string } = await uploaded.json();
   const cited = passageStart(50);
+  const earlier = passageStart(20);
   await page.route(`**/api/media/${media.id}/transcription`, (route) =>
     route.fulfill({
       json: {
@@ -440,10 +461,15 @@ test("brings the cited passage into view when a moment in the panel is chosen", 
     chat: summaryOf(chatId, media.id, "Where is it?"),
     messages: [
       userMessage("Where is it?"),
-      answerMessage("done", [{ type: "text", text: `It is said here [${cited}].` }]),
+      answerMessage("done", [
+        { type: "text", text: `It is said here [${cited}] and first here [${earlier}].` },
+      ]),
     ],
     hiddenBeforeSeq: 0,
-    moments: [{ startMs: cited, mediaId: media.id }],
+    moments: [
+      { startMs: cited, mediaId: media.id },
+      { startMs: earlier, mediaId: media.id },
+    ],
   };
   await connectedModel(page);
   await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [detail.chat] }));
@@ -452,11 +478,45 @@ test("brings the cited passage into view when a moment in the panel is chosen", 
   await page.setViewportSize({ width: 1400, height: 800 });
   await page.goto(`/media/${media.id}`);
   await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
+  const player = page.locator("audio");
+  await player.evaluate((element) => {
+    element.dataset.probe = "kept";
+  });
   await page.keyboard.press("/");
   const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const passage = (startMs: number) => page.locator(`li[data-start-ms="${startMs}"]`);
+  const playerSeconds = () => player.evaluate((element: HTMLMediaElement) => element.currentTime);
+
   await panel.getByRole("link", { name: "3:20" }).click();
   await expect(page).toHaveURL(new RegExp(`startMs=${cited}`, "u"));
-  await expect(page.locator(`li[data-start-ms="${cited}"]`)).toBeInViewport();
+  await expect(passage(cited)).toBeInViewport();
+  await expect.poll(playerSeconds).toBeCloseTo(cited / 1000, 0);
+
+  let lastScroll = -1;
+  await expect
+    .poll(
+      async () => {
+        const scroll = await page.evaluate(() => scrollY);
+        const settled = scroll === lastScroll;
+        lastScroll = scroll;
+        return settled;
+      },
+      { intervals: [150] },
+    )
+    .toBe(true);
+  await page.mouse.move(640, 400);
+  for (let step = 0; step < 6; step += 1) await page.mouse.wheel(0, -500);
+  await expect(passage(cited)).not.toBeInViewport();
+  const entries = await page.evaluate(() => history.length);
+  await panel.getByRole("link", { name: "3:20" }).click();
+  await expect(passage(cited)).toBeInViewport();
+  expect(await page.evaluate(() => history.length)).toBe(entries);
+
+  await panel.getByRole("link", { name: "1:20" }).click();
+  await expect(page).toHaveURL(new RegExp(`startMs=${earlier}`, "u"));
+  await expect(passage(earlier)).toBeInViewport();
+  await expect.poll(playerSeconds).toBeCloseTo(earlier / 1000, 0);
+  expect(await player.evaluate((element) => element.dataset.probe)).toBe("kept");
 });
 
 test("opens an earlier chat about the recording from the panel's history", async ({

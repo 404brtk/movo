@@ -5,29 +5,39 @@ import Markdown, { type Components } from "react-markdown";
 import { normalizeCitations, type MomentIndex } from "../../shared/citations.ts";
 import { mediaLink, revealHiddenCharacters } from "../lib/ask-view.ts";
 import { formatDuration } from "../lib/format.ts";
+import { useMomentNavigation } from "../lib/moment-link.ts";
 
 export const MomentContext = createContext<(() => void) | null>(null);
 
-function MomentLink({
-  mediaId,
-  startMs,
-  children,
-}: {
-  mediaId: string;
-  startMs: number | undefined;
-  children: React.ReactNode;
-}) {
+const chipClassName =
+  "inline-flex h-5 items-center rounded-md bg-tint px-1.5 align-baseline text-[12px] font-medium text-primary-deep tabular-nums no-underline transition-[scale] duration-120 ease-snappy hover:bg-highlight focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring active:scale-[0.97]";
+
+function RecordingLink({ mediaId, children }: { mediaId: string; children: React.ReactNode }) {
   const onMoment = use(MomentContext);
   return (
     <Link
       to="/media/$mediaId"
       params={{ mediaId }}
-      search={startMs === undefined ? {} : { startMs }}
-      resetScroll={startMs === undefined}
       onClick={() => onMoment?.()}
-      className="inline-flex h-5 items-center rounded-md bg-tint px-1.5 align-baseline text-[12px] font-medium text-primary-deep tabular-nums no-underline transition-[scale] duration-120 ease-snappy hover:bg-highlight focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring active:scale-[0.97]"
+      className={chipClassName}
     >
       {children}
+    </Link>
+  );
+}
+
+function MomentLink({ mediaId, startMs }: { mediaId: string; startMs: number }) {
+  const onMoment = use(MomentContext);
+  return (
+    <Link
+      to="/media/$mediaId"
+      params={{ mediaId }}
+      search={{ startMs }}
+      {...useMomentNavigation(mediaId, startMs)}
+      onClick={() => onMoment?.()}
+      className={chipClassName}
+    >
+      {formatDuration(startMs / 1000)}
     </Link>
   );
 }
@@ -36,10 +46,10 @@ const components: Components = {
   a: ({ href, children }) => {
     const target = mediaLink(href);
     if (target)
-      return (
-        <MomentLink mediaId={target.mediaId} startMs={target.startMs}>
-          {target.startMs === undefined ? children : formatDuration(target.startMs / 1000)}
-        </MomentLink>
+      return target.startMs === undefined ? (
+        <RecordingLink mediaId={target.mediaId}>{children}</RecordingLink>
+      ) : (
+        <MomentLink mediaId={target.mediaId} startMs={target.startMs} />
       );
     if (!href || !/^https?:\/\//iu.test(href)) return <span>{children}</span>;
     return (

@@ -1,8 +1,8 @@
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft02Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useLocation } from "@tanstack/react-router";
 import { Schema } from "effect";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import { AskButton, AskPanel, useAskPanelOpen } from "../components/ask-panel.tsx";
@@ -67,16 +67,33 @@ function PlaybackWithTranscript({
   item,
   transcribe,
   startMs,
+  moment,
   toolbarAction,
 }: {
   item: MediaItem;
   transcribe: TranscriptionActionMutation;
   startMs: number | undefined;
+  moment: number | undefined;
   toolbarAction: ReactNode;
 }) {
   const player = useRef<HTMLMediaElement | null>(null);
   const [positionMs, setPositionMs] = useState(startMs ?? 0);
   const [following, setFollowing] = useState(true);
+  const [request, setRequest] = useState({ startMs, moment });
+  if (request.startMs !== startMs || request.moment !== moment) {
+    setRequest({ startMs, moment });
+    if (startMs !== undefined) {
+      setPositionMs(startMs);
+      setFollowing(true);
+    }
+  }
+  const sought = useRef(request);
+  useEffect(() => {
+    if (sought.current === request) return;
+    sought.current = request;
+    if (player.current && request.startMs !== undefined)
+      player.current.currentTime = request.startMs / 1000;
+  }, [request]);
   const transcription = useQuery(transcriptionOptions(item.id));
   const playerRef = useCallback((element: HTMLMediaElement | null) => {
     player.current = element;
@@ -115,6 +132,7 @@ function PlaybackWithTranscript({
 function MediaDetail() {
   const { mediaId } = Route.useParams();
   const { startMs } = Route.useSearch();
+  const moment = useLocation({ select: (location) => location.state.moment });
   const media = useQuery(mediaItemOptions(mediaId));
   const transcribe = useTranscriptionAction(mediaId);
   const [askOpen, setAskOpen] = useAskPanelOpen();
@@ -180,16 +198,18 @@ function MediaDetail() {
             </p>
             {item.fileRemovedAt === null ? (
               <PlaybackWithTranscript
-                key={startMs}
+                key={item.id}
                 item={item}
                 transcribe={transcribe}
                 startMs={startMs}
+                moment={moment}
                 toolbarAction={askButton}
               />
             ) : (
               <>
                 <SavedCopyRemoved />
                 <TranscriptionPanel
+                  key={moment}
                   mediaId={item.id}
                   action={transcribe}
                   revealMs={startMs}

@@ -9,6 +9,7 @@ import { matchedRanges, searchTerms } from "../../shared/search-text.ts";
 import { transcriptPassages } from "../../shared/transcript-passages.ts";
 import { transcriptionOptions } from "../lib/api.ts";
 import { formatDay, formatDuration } from "../lib/format.ts";
+import { useMomentNavigation } from "../lib/moment-link.ts";
 import { HighlightedText } from "./highlighted-text.tsx";
 import { MediaRow } from "./media-row.tsx";
 
@@ -20,6 +21,35 @@ function searchedWords(parts: readonly ChatPart[]) {
     return typeof query === "string" ? [query] : [];
   });
   return searchTerms(queries.join(" "));
+}
+
+function QuotedMoment({
+  mediaId,
+  startMs,
+  text,
+  terms,
+}: {
+  mediaId: string;
+  startMs: number;
+  text: string;
+  terms: readonly string[];
+}) {
+  return (
+    <li className="relative col-span-2 grid grid-cols-subgrid rounded-lg px-2.5 py-2 text-[13.5px]/[21px] hover:bg-subtle has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring/50">
+      <Link
+        to="/media/$mediaId"
+        params={{ mediaId }}
+        search={{ startMs }}
+        {...useMomentNavigation(mediaId, startMs)}
+        className="font-medium text-primary-strong tabular-nums outline-none after:absolute after:inset-0 after:rounded-lg"
+      >
+        {formatDuration(startMs / 1000)}
+      </Link>
+      <span className="text-pretty">
+        <HighlightedText text={text} ranges={matchedRanges(text, terms)} />
+      </span>
+    </li>
+  );
 }
 
 function SourceGroup({
@@ -56,23 +86,13 @@ function SourceGroup({
       {quoted.length > 0 ? (
         <ul className="ml-[58px] grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
           {quoted.map((moment) => (
-            <li
+            <QuotedMoment
               key={moment.startMs}
-              className="relative col-span-2 grid grid-cols-subgrid rounded-lg px-2.5 py-2 text-[13.5px]/[21px] hover:bg-subtle has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring/50"
-            >
-              <Link
-                to="/media/$mediaId"
-                params={{ mediaId: item.id }}
-                search={{ startMs: moment.startMs }}
-                resetScroll={false}
-                className="font-medium text-primary-strong tabular-nums outline-none after:absolute after:inset-0 after:rounded-lg"
-              >
-                {formatDuration(moment.startMs / 1000)}
-              </Link>
-              <span className="text-pretty">
-                <HighlightedText text={moment.text} ranges={matchedRanges(moment.text, terms)} />
-              </span>
-            </li>
+              mediaId={item.id}
+              startMs={moment.startMs}
+              text={moment.text}
+              terms={terms}
+            />
           ))}
         </ul>
       ) : null}
