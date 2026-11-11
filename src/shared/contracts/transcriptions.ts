@@ -112,7 +112,7 @@ export type TranscriptReplace = typeof TranscriptReplace.Type;
 export const TranscriptRestore = Schema.Struct({ revision: Revision, target: Revision });
 export type TranscriptRestore = typeof TranscriptRestore.Type;
 export const transcriptChangeKinds = ["edit", "replace", "restore"] as const;
-export const transcriptChangeSources = ["app", "mcp"] as const;
+export const transcriptChangeSources = ["app", "mcp", "chat"] as const;
 export type TranscriptChangeSource = (typeof transcriptChangeSources)[number];
 const ChangeVersion = {
   revision: Revision.check(Schema.isGreaterThan(0)),

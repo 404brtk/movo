@@ -1,13 +1,16 @@
 import { Effect, Layer } from "effect";
 import { McpProtocol, McpServer } from "effect/ai";
 import { HttpRouter, HttpServer } from "effect/http";
-import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
+import type {
+  TranscriptChangeSource,
+  TranscriptionJob,
+} from "../../shared/contracts/transcriptions.ts";
 import { transcriptPassages } from "../../shared/transcript-passages.ts";
 import { requestDownload, type Downloads } from "../downloads/jobs.ts";
 import { MediaError } from "../media/error.ts";
 import type { createMediaLibrary } from "../media/library.ts";
 import type { Transcriptions } from "../transcriptions/jobs.ts";
-import { movoTools } from "./tools.ts";
+import { defaultListLimit, movoTools } from "./tools.ts";
 import { defaultPagePassages, transcriptPage } from "./transcript-page.ts";
 
 export interface McpServices {
@@ -16,8 +19,6 @@ export interface McpServices {
   transcriptions: Transcriptions;
   port: number;
 }
-
-const defaultListLimit = 20;
 
 const summarize = (job: TranscriptionJob | null) =>
   job && {
@@ -33,8 +34,11 @@ const reported = <A>(operation: Effect.Effect<A, MediaError>) =>
     error.reason === "storage" ? Effect.sync(() => console.error(error)) : Effect.void,
   );
 
-const handlers = ({ library, downloads, transcriptions }: McpServices) =>
-  movoTools.toLayer({
+export const toolHandlers = (
+  { library, downloads, transcriptions }: Omit<McpServices, "port">,
+  source: TranscriptChangeSource,
+) =>
+  ({
     search_library: ({ limit = defaultListLimit, offset = 0, ...query }) =>
       reported(
         library.browse(query).pipe(
@@ -91,22 +95,22 @@ const handlers = ({ library, downloads, transcriptions }: McpServices) =>
     retry_transcription: ({ mediaId }) =>
       reported(transcriptions.retry(mediaId).pipe(Effect.map(summarize))),
     edit_transcript: ({ mediaId, ...request }) =>
-      reported(transcriptions.edit(mediaId, request, "mcp").pipe(Effect.map(summarize))),
+      reported(transcriptions.edit(mediaId, request, source).pipe(Effect.map(summarize))),
     replace_in_transcript: ({ mediaId, ...request }) =>
-      reported(transcriptions.replace(mediaId, request, "mcp").pipe(Effect.map(summarize))),
+      reported(transcriptions.replace(mediaId, request, source).pipe(Effect.map(summarize))),
     list_transcript_changes: ({ mediaId, limit = defaultListLimit, offset = 0 }) =>
       reported(transcriptions.history(mediaId, { limit, offset })),
     restore_transcript: ({ mediaId, ...request }) =>
-      reported(transcriptions.restore(mediaId, request, "mcp").pipe(Effect.map(summarize))),
+      reported(transcriptions.restore(mediaId, request, source).pipe(Effect.map(summarize))),
     rename_recording: ({ mediaId, title }) => reported(library.rename(mediaId, title)),
     remove_saved_copy: ({ mediaId }) => reported(transcriptions.removeMediaFile(mediaId)),
     delete_recording: ({ mediaId }) => reported(transcriptions.removeMedia(mediaId)),
-  });
+  }) satisfies Parameters<typeof movoTools.toLayer>[0];
 
 export function createMcpHandler(services: McpServices) {
   return HttpRouter.toWebHandler(
     McpServer.toolkit(movoTools).pipe(
-      Layer.provide(handlers(services)),
+      Layer.provide(movoTools.toLayer(toolHandlers(services, "mcp"))),
       Layer.provideMerge(
         McpServer.layerHttp({
           name: "movo",

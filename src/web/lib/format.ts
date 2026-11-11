@@ -41,3 +41,13 @@ const backendNames: Record<string, string> = {
 
 export const formatDevice = (device: TranscriptionDevice) =>
   `${device.name} · ${backendNames[device.backend] ?? device.backend}`;
+
+const dayFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+const dayMs = 86_400_000;
+
+export function formatDay(timestamp: number, now = Date.now()) {
+  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
+  if (timestamp >= startOfToday) return "Today";
+  if (timestamp >= startOfToday - dayMs) return "Yesterday";
+  return dayFormat.format(timestamp);
+}

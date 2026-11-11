@@ -2,6 +2,7 @@ import { useId } from "react";
 import { Link01Icon, Wrench01Icon } from "@hugeicons/core-free-icons";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { AskSettings } from "../components/ask-settings.tsx";
 import { ListSkeleton } from "../components/list-skeleton.tsx";
 import { MediaToolsSetup } from "../components/media-tools-setup.tsx";
 import { ModelCard } from "../components/model-card.tsx";
@@ -20,8 +21,9 @@ function Models() {
     <main className="mx-auto max-w-[800px] px-5 pt-9 pb-16">
       <PageHeader
         title="Models"
-        description="Everything here runs on this computer. Nothing you import is uploaded."
+        description="Transcription always runs on this computer. Ask answers with a model you connect."
       />
+      <h2 className="mt-9 text-[17px]/6 font-semibold tracking-[-0.01em]">Transcription</h2>
       {models.isPending ? <ListSkeleton label="Loading models" /> : null}
       {models.isError ? (
         <div role="alert" className="mt-8 space-y-4 rounded-lg border p-6">
@@ -62,6 +64,7 @@ function Models() {
           />
         </ul>
       </section>
+      <AskSettings />
     </main>
   );
 }

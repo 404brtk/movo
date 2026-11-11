@@ -94,6 +94,7 @@
 
 @theme {
   --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-move: cubic-bezier(0.77, 0, 0.175, 1);
   --shadow-well: inset 0 1px 2px oklch(0.2 0.01 262 / 0.06);
   --shadow-field: inset 0 1px 2px oklch(0.2 0.01 262 / 0.05);
   --shadow-switch-on:
@@ -239,5 +240,121 @@
   }
   html {
     @apply font-sans antialiased;
+  }
+}
+
+@keyframes ask-enter {
+  from {
+    opacity: 0;
+    transform: translate(var(--ask-from-x, 0), var(--ask-from-y, 0));
+  }
+}
+
+@keyframes ask-leave {
+  to {
+    opacity: 0;
+    transform: translate(var(--ask-from-x, 0), var(--ask-from-y, 0));
+  }
+}
+
+@keyframes ask-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes ask-sweep {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
+@keyframes ask-wash {
+  from {
+    background-color: var(--highlight-strong);
+  }
+}
+
+@layer components {
+  .ask-panel-in {
+    --ask-from-x: 12px;
+    animation: ask-enter 220ms var(--ease-snappy);
+  }
+  .ask-panel-out {
+    --ask-from-x: 12px;
+    animation: ask-leave 160ms var(--ease-snappy) forwards;
+  }
+  .ask-rise {
+    --ask-from-y: 8px;
+    animation: ask-enter 180ms var(--ease-snappy);
+  }
+  .ask-card-in {
+    --ask-from-y: 6px;
+    animation: ask-enter 200ms var(--ease-snappy);
+  }
+  .ask-pill-in {
+    --ask-from-y: 6px;
+    animation: ask-enter 160ms var(--ease-snappy);
+  }
+  .ask-fade-in {
+    animation: ask-fade 150ms linear;
+  }
+  .ask-swap {
+    animation: ask-enter 120ms var(--ease-snappy);
+    --ask-from-x: 0;
+  }
+  .ask-word {
+    animation: ask-fade 150ms linear;
+  }
+  .ask-sweep {
+    background-image: linear-gradient(
+      90deg,
+      var(--muted-foreground) 0%,
+      var(--muted-foreground) 40%,
+      var(--foreground) 50%,
+      var(--muted-foreground) 60%,
+      var(--muted-foreground) 100%
+    );
+    background-size: 200% 100%;
+    background-clip: text;
+    color: transparent;
+    animation: ask-sweep 1.6s linear infinite;
+  }
+  .ask-fold {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 200ms var(--ease-move);
+  }
+  .ask-fold[data-folded] {
+    grid-template-rows: 0fr;
+  }
+  .ask-fold > * {
+    overflow: hidden;
+  }
+  .ask-washed {
+    animation: ask-wash 800ms var(--ease-snappy);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-panel-in,
+  .ask-panel-out,
+  .ask-rise,
+  .ask-card-in,
+  .ask-pill-in,
+  .ask-swap {
+    --ask-from-x: 0;
+    --ask-from-y: 0;
+  }
+  .ask-sweep {
+    animation: none;
+    background-image: none;
+    color: var(--muted-foreground);
+  }
+  .ask-fold {
+    transition: none;
   }
 }

@@ -4,6 +4,16 @@ import { sql } from "drizzle-orm";
 import { Effect, Result, Schema } from "effect";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { streamSSE } from "hono/streaming";
+import {
+  ApprovalDecision,
+  ChatListQuery,
+  ChatQuestion,
+  ConnectRequest,
+  ModelChoice,
+  NewChat,
+  ScopeChange,
+} from "../../shared/contracts/ask.ts";
 import { DownloadPreviewRequest, DownloadRequest } from "../../shared/contracts/downloads.ts";
 import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
 import { RenameMediaRequest } from "../../shared/contracts/media.ts";
@@ -34,6 +44,7 @@ import { createModels, type Models } from "../models/models.ts";
 import { createTranscriptions, type Transcriptions } from "../transcriptions/jobs.ts";
 import { createTranscriptionEngine } from "../transcriptions/engine.ts";
 import type { McpHandler } from "../mcp/server.ts";
+import { createAsk, type Ask, type LiveAnswerEvent } from "../ask/ask.ts";
 import { attachmentDisposition } from "./attachment.ts";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -76,6 +87,13 @@ const readDownloadRequest = <S extends Schema.ConstraintDecoder<unknown>>(
     "Provide a valid JSON object with at least one video URL and supported download options.",
   );
 
+const askLimit = bodyLimit({
+  maxSize: 64 * 1024,
+  onError: (context) => context.json({ error: "Ask requests must be 64 KiB or smaller." }, 413),
+});
+
+const modelChoiceMessage = "Choose a model from a connected service.";
+
 const transcriptChangeLimit = bodyLimit({
   maxSize: 64 * 1024,
   onError: (context) =>
@@ -103,6 +121,7 @@ export function createApp(
       createTranscriptionEngine(tools, models),
     ),
     mcp,
+    ask: askService,
   }: {
     tools?: MediaTools;
     ytdlp?: Ytdlp;
@@ -110,11 +129,13 @@ export function createApp(
     models?: Models;
     transcriptions?: Transcriptions;
     mcp?: Pick<McpHandler, "handler">;
+    ask?: Ask;
   } = {},
 ) {
   const library = createMediaLibrary(database, config.dataDirectory, () =>
     tools.resolve("ffprobe"),
   );
+  const ask = askService ?? createAsk(database, { library, downloads, transcriptions });
   const app = new Hono();
   app.use("*", async (context, next) => {
     const requestUrl = new URL(context.req.url);
@@ -135,6 +156,7 @@ export function createApp(
   });
   app.use("/api/downloads", downloadBodyLimit);
   app.use("/api/downloads/*", downloadBodyLimit);
+  app.use("/api/ask/*", askLimit);
   if (mcp)
     app.all(
       "/mcp",
@@ -326,6 +348,136 @@ export function createApp(
     .post("/media/:id/transcription/retry", async (context) =>
       context.json(await runMedia(transcriptions.retry(context.req.param("id"))), 202),
     )
+    .get("/ask/connections", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(ask.connections()));
+    })
+    .post("/ask/connections", async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        ConnectRequest,
+        "Provide an API key for Anthropic, OpenAI or OpenRouter, or a server address.",
+      );
+      return context.json(await runMedia(ask.connect(request), context.req.raw.signal), 201);
+    })
+    .delete("/ask/connections/:id", async (context) =>
+      context.json(await runMedia(ask.disconnect(context.req.param("id")))),
+    )
+    .get("/ask/connections/:id/models", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(
+        await runMedia(ask.models(context.req.param("id")), context.req.raw.signal),
+      );
+    })
+    .get("/ask/local", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(ask.localServers(), context.req.raw.signal));
+    })
+    .get("/ask/default", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(ask.defaultModel()));
+    })
+    .put("/ask/default", async (context) => {
+      const choice = await readJson(context.req.json(), ModelChoice, modelChoiceMessage);
+      return context.json(await runMedia(ask.setDefaultModel(choice)));
+    })
+    .get(
+      "/ask/chats",
+      sValidator("query", Schema.toStandardSchemaV1(ChatListQuery), (result) => {
+        if (!result.success) throw new MediaError("invalid", "Use a valid recording ID.");
+      }),
+      async (context) => {
+        context.header("Cache-Control", "no-store");
+        return context.json(await runMedia(ask.chats(context.req.valid("query").mediaId)));
+      },
+    )
+    .post("/ask/chats", async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        NewChat,
+        "Provide a recording ID, or null for a library chat.",
+      );
+      return context.json(
+        await runMedia(ask.createChat(request.mediaId, request.scope ?? null)),
+        201,
+      );
+    })
+    .get("/ask/chats/:id", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(ask.chat(context.req.param("id"))));
+    })
+    .delete("/ask/chats/:id", async (context) => {
+      await runMedia(ask.deleteChat(context.req.param("id")));
+      return context.body(null, 204);
+    })
+    .put("/ask/chats/:id/model", async (context) => {
+      const choice = await readJson(context.req.json(), ModelChoice, modelChoiceMessage);
+      return context.json(await runMedia(ask.setChatModel(context.req.param("id"), choice)));
+    })
+    .post("/ask/chats/:id/messages", async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        ChatQuestion,
+        "Write a question of up to 8,000 characters.",
+      );
+      return context.json(
+        await runMedia(ask.ask(context.req.param("id"), request.text, request.passage ?? null)),
+        202,
+      );
+    })
+    .put("/ask/chats/:id/scope", async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        ScopeChange,
+        "Choose audio, video or up to 200 recordings, or null for the whole library.",
+      );
+      return context.json(await runMedia(ask.setScope(context.req.param("id"), request.scope)));
+    })
+    .post("/ask/chats/:id/stop", async (context) =>
+      context.json(await runMedia(ask.stop(context.req.param("id")))),
+    )
+    .post("/ask/chats/:id/approval", async (context) => {
+      const decision = await readJson(
+        context.req.json(),
+        ApprovalDecision,
+        "Provide the approval ID and whether the change is approved.",
+      );
+      return context.json(await runMedia(ask.decide(context.req.param("id"), decision)), 202);
+    })
+    .get("/ask/chats/:id/live", (context) => {
+      const current = ask.liveAnswer(context.req.param("id"));
+      context.header("Cache-Control", "no-store");
+      return streamSSE(context, async (stream) => {
+        if (!current) {
+          await stream.writeSSE({ event: "end", data: "" });
+          return;
+        }
+        await new Promise<void>((resolve) => {
+          const send = (event: LiveAnswerEvent) => {
+            const written = stream.writeSSE({
+              event: event.type,
+              data:
+                event.type === "delta"
+                  ? JSON.stringify(event.text)
+                  : event.type === "activity"
+                    ? JSON.stringify(event.activity)
+                    : "",
+            });
+            if (event.type === "end") void written.finally(finish);
+          };
+          const finish = () => {
+            current.listeners.delete(send);
+            resolve();
+          };
+          current.listeners.add(send);
+          stream.onAbort(finish);
+          void stream.writeSSE({
+            event: "snapshot",
+            data: JSON.stringify({ text: current.text, activity: current.activity }),
+          });
+        });
+      });
+    })
     .post("/media", async (context) => {
       let originalName: string;
       try {

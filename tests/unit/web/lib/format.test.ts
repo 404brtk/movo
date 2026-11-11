@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatDevice, formatDuration } from "../../../../src/web/lib/format.ts";
+import {
+  formatBytes,
+  formatDay,
+  formatDevice,
+  formatDuration,
+} from "../../../../src/web/lib/format.ts";
 
 describe("media display formatting", () => {
   it.each([
@@ -27,4 +32,11 @@ describe("media display formatting", () => {
   ] as const)("formats transcription device %o", (device, expected) => {
     expect(formatDevice(device)).toBe(expected);
   });
+});
+
+it("names recent days and dates older ones", () => {
+  const now = new Date(2026, 10, 10, 15, 0).getTime();
+  expect(formatDay(new Date(2026, 10, 10, 0, 5).getTime(), now)).toBe("Today");
+  expect(formatDay(new Date(2026, 10, 9, 23, 59).getTime(), now)).toBe("Yesterday");
+  expect(formatDay(new Date(2026, 9, 14, 12, 0).getTime(), now)).toBe("14 Oct");
 });

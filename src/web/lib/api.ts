@@ -2,6 +2,20 @@ import { Result, Schema } from "effect";
 import { hc } from "hono/client";
 import { infiniteQueryOptions, keepPreviousData, queryOptions } from "@tanstack/react-query";
 import type { AppType } from "../../server/http/app.ts";
+import {
+  AiConnection,
+  AiConnectionList,
+  AiModelList,
+  ChatDetail,
+  ChatList,
+  DefaultModel,
+  LocalServerList,
+  ModelChoice,
+  type ApprovalDecision,
+  type ChatScope,
+  type ConnectRequest,
+  type Passage,
+} from "../../shared/contracts/ask.ts";
 import { LibraryList, type LibraryQuery } from "../../shared/contracts/library.ts";
 import {
   ApiErrorResponse,
@@ -290,3 +304,105 @@ export const restoreTranscript = (id: string, restore: TranscriptRestore) =>
     client.api.media[":id"].transcription.restore.$post({ param: { id } }, jsonBody(restore)),
     TranscriptionJob,
   );
+
+const minute = 60_000;
+export const askKey = ["ask"] as const;
+export const connectionsOptions = queryOptions({
+  queryKey: [...askKey, "connections"],
+  queryFn: ({ signal }) =>
+    readResponse(client.api.ask.connections.$get({}, { init: { signal } }), AiConnectionList),
+  retry: false,
+});
+export const connectionModelsOptions = (id: string, kind: string) =>
+  queryOptions({
+    queryKey: [...askKey, "models", id],
+    queryFn: ({ signal }) =>
+      readResponse(
+        client.api.ask.connections[":id"].models.$get({ param: { id } }, { init: { signal } }),
+        AiModelList,
+      ),
+    staleTime: kind === "server" ? minute / 2 : 60 * minute,
+    retry: false,
+  });
+export const localServersOptions = queryOptions({
+  queryKey: [...askKey, "local"],
+  queryFn: ({ signal }) =>
+    readResponse(client.api.ask.local.$get({}, { init: { signal } }), LocalServerList),
+  staleTime: minute / 2,
+  refetchInterval: minute / 2,
+  retry: false,
+});
+export const defaultModelOptions = queryOptions({
+  queryKey: [...askKey, "default"],
+  queryFn: ({ signal }) =>
+    readResponse(client.api.ask.default.$get({}, { init: { signal } }), DefaultModel),
+  retry: false,
+});
+export const connectService = (request: ConnectRequest) =>
+  readResponse(client.api.ask.connections.$post({}, jsonBody(request)), AiConnection);
+export const disconnectService = (id: string) =>
+  readResponse(client.api.ask.connections[":id"].$delete({ param: { id } }), AiConnection);
+export const setDefaultModel = (choice: ModelChoice) =>
+  readResponse(client.api.ask.default.$put({}, jsonBody(choice)), ModelChoice);
+
+export const chatListOptions = (mediaId: string | null) =>
+  queryOptions({
+    queryKey: [...askKey, "chats", mediaId],
+    queryFn: ({ signal }) =>
+      readResponse(
+        client.api.ask.chats.$get({ query: mediaId ? { mediaId } : {} }, { init: { signal } }),
+        ChatList,
+      ),
+    retry: false,
+  });
+export const chatOptions = (id: string) =>
+  queryOptions({
+    queryKey: [...askKey, "chat", id],
+    queryFn: ({ signal }) =>
+      readResponse(
+        client.api.ask.chats[":id"].$get({ param: { id } }, { init: { signal } }),
+        ChatDetail,
+      ),
+    retry: false,
+  });
+export const createChat = (mediaId: string | null, scope: ChatScope | null = null) =>
+  readResponse(client.api.ask.chats.$post({}, jsonBody({ mediaId, scope })), ChatDetail);
+export const askQuestion = (id: string, text: string, passage: Passage | null) =>
+  readResponse(
+    client.api.ask.chats[":id"].messages.$post(
+      { param: { id } },
+      jsonBody(passage ? { text, passage } : { text }),
+    ),
+    ChatDetail,
+  );
+export const setChatScope = (id: string, scope: ChatScope | null) =>
+  readResponse(
+    client.api.ask.chats[":id"].scope.$put({ param: { id } }, jsonBody({ scope })),
+    ChatDetail,
+  );
+export async function deleteChat(id: string) {
+  let response: Response;
+  try {
+    response = await client.api.ask.chats[":id"].$delete({ param: { id } });
+  } catch (cause) {
+    throw new ApiError(
+      0,
+      "Could not reach the local app. Check that it is running and try again.",
+      cause,
+    );
+  }
+  if (!response.ok) await readResponse(Promise.resolve(response), ChatDetail);
+}
+export const stopAnswer = (id: string) =>
+  readResponse(client.api.ask.chats[":id"].stop.$post({ param: { id } }), ChatDetail);
+export const decideApproval = (id: string, decision: ApprovalDecision) =>
+  readResponse(
+    client.api.ask.chats[":id"].approval.$post({ param: { id } }, jsonBody(decision)),
+    ChatDetail,
+  );
+export const setChatModel = (id: string, choice: ModelChoice) =>
+  readResponse(
+    client.api.ask.chats[":id"].model.$put({ param: { id } }, jsonBody(choice)),
+    ChatDetail,
+  );
+export const liveAnswerUrl = (id: string) => `/api/ask/chats/${encodeURIComponent(id)}/live`;

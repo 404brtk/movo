@@ -71,15 +71,15 @@ export function ModelCard({ model }: { model: ModelStatus }) {
   const retry = phase === "failed" || phase === "interrupted";
   const checking = models.isRefetching && !busy;
   return (
-    <section aria-labelledby={headingId} className="mt-6 rounded-[14px] p-5 shadow-card">
+    <section aria-labelledby={headingId} className="mt-3 rounded-[14px] p-5 shadow-card">
       <div className="flex items-start gap-3.5">
         <span className="mt-px shrink-0">
           <AccentIcon icon={CpuIcon} size={30} />
         </span>
         <div>
-          <h2 id={headingId} className="text-base/[22px] font-semibold tracking-[-0.01em]">
+          <h3 id={headingId} className="text-base/[22px] font-semibold tracking-[-0.01em]">
             {model.name}
-          </h2>
+          </h3>
           <p className="mt-0.5 text-[13px]/5 text-pretty text-muted-foreground">
             {model.description}
           </p>

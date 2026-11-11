@@ -4,7 +4,7 @@ import { DownloadActivity, useActiveDownloads } from "./download-activity.tsx";
 import { toggleVariants } from "./ui/toggle.tsx";
 import { toggleGroupVariants } from "./ui/toggle-group.tsx";
 
-const tabClassName = cn(toggleVariants({ variant: "segmented" }));
+const tabClassName = cn(toggleVariants({ variant: "segmented" }), "max-sm:px-2");
 
 export function AppHeader() {
   const activeDownloads = useActiveDownloads().length;
@@ -32,6 +32,9 @@ export function AppHeader() {
           className={tabClassName}
         >
           Library
+        </Link>
+        <Link to="/ask" search={{}} className={tabClassName}>
+          Ask
         </Link>
         <Link to="/downloads" className={tabClassName}>
           {({ isActive }) => (

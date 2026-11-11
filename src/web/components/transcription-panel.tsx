@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { SearchReplaceIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -35,6 +35,7 @@ function TranscriptView({
   modelName,
   playback,
   revealMs,
+  toolbarAction,
 }: {
   mediaId: string;
   job: TranscriptionJob;
@@ -42,6 +43,7 @@ function TranscriptView({
   modelName: string;
   playback: TranscriptPlayback | undefined;
   revealMs: number | undefined;
+  toolbarAction: ReactNode;
 }) {
   const [findOpen, setFindOpen] = useState(false);
   const find = useFindAndReplace(transcript);
@@ -66,27 +68,35 @@ function TranscriptView({
           {modelName}
           {edited ? " · edited" : ""}
         </span>
-        {editable && hasWords ? (
-          <Button
-            variant="toggle"
-            size="sm"
-            aria-expanded={showFind}
-            onClick={() => setFindOpen(!findOpen)}
-          >
-            <HugeiconsIcon icon={SearchReplaceIcon} data-icon="inline-start" aria-hidden="true" />
-            Find and replace
-          </Button>
-        ) : null}
         {editable ? (
-          <ChangeHistory
-            mediaId={mediaId}
-            revision={revision}
-            resultRevision={resultRevision}
-            modelName={job.device ? `${modelName} · ${formatDevice(job.device)}` : modelName}
-          />
+          <div className="flex items-center gap-1.5">
+            {hasWords ? (
+              <Button
+                variant="toggle"
+                size="sm"
+                aria-expanded={showFind}
+                onClick={() => setFindOpen(!findOpen)}
+              >
+                <HugeiconsIcon
+                  icon={SearchReplaceIcon}
+                  data-icon="inline-start"
+                  aria-hidden="true"
+                />
+                Find and replace
+              </Button>
+            ) : null}
+            <ChangeHistory
+              mediaId={mediaId}
+              revision={revision}
+              resultRevision={resultRevision}
+              modelName={job.device ? `${modelName} · ${formatDevice(job.device)}` : modelName}
+            />
+          </div>
         ) : null}
-        <span className="ml-auto" />
-        {hasWords ? <TranscriptActions mediaId={mediaId} transcript={transcript} /> : null}
+        <div className="ml-auto flex items-center gap-1.5">
+          {toolbarAction}
+          {hasWords ? <TranscriptActions mediaId={mediaId} transcript={transcript} /> : null}
+        </div>
       </div>
       {showFind ? (
         <FindAndReplace
@@ -121,11 +131,13 @@ export function TranscriptionPanel({
   action,
   playback,
   revealMs,
+  toolbarAction,
 }: {
   mediaId: string;
   action: TranscriptionActionMutation;
   playback?: TranscriptPlayback | undefined;
   revealMs?: number | undefined;
+  toolbarAction?: ReactNode;
 }) {
   const query = useQuery(transcriptionOptions(mediaId));
   const models = useQuery(modelsOptions);
@@ -221,6 +233,7 @@ export function TranscriptionPanel({
             modelName={modelName}
             playback={playback}
             revealMs={revealMs}
+            toolbarAction={toolbarAction}
           />
         </>
       ) : null}
