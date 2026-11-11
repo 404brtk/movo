@@ -29,12 +29,17 @@ export const SpeakerId = Schema.Number.check(
   Schema.isInt(),
   Schema.isBetween({ minimum: 1, maximum: maxSpeakers }),
 );
+const singleLine = Schema.makeFilter(
+  (name: string) =>
+    !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(name) || "A speaker name must be a single line of text.",
+);
 export const SpeakerName = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(maxSpeakerNameCharacters),
   Schema.makeFilter(
     (name) => name === name.trim() || "A speaker name cannot start or end with spaces.",
   ),
+  singleLine,
 );
 export const TranscriptSpeaker = Schema.Struct({ id: SpeakerId, name: SpeakerName });
 export type TranscriptSpeaker = typeof TranscriptSpeaker.Type;
@@ -155,6 +160,7 @@ export const SpeakerRename = Schema.Struct({
         name.trim().length <= maxSpeakerNameCharacters ||
         `A speaker name can have at most ${maxSpeakerNameCharacters} characters.`,
     ),
+    singleLine,
   ),
 });
 export type SpeakerRename = typeof SpeakerRename.Type;

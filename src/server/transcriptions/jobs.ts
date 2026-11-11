@@ -378,41 +378,53 @@ export function createTranscriptions(
         }),
       ),
     assignSpeaker: (id: string, request: SpeakerAssignment, source: TranscriptChangeSource) =>
-      change(id, request.revision, source, (transcript) =>
-        request.firstWord + request.wordCount > transcript.words.length
-          ? Effect.fail(new MediaError("invalid", "Choose words inside the transcript."))
-          : request.speaker > transcriptSpeakers(transcript).nextId
-            ? Effect.fail(
-                new MediaError("invalid", "Choose a speaker from the transcript or a new speaker."),
-              )
-            : Effect.succeed({
-                kind: "speaker",
-                restoredRevision: null,
-                patch: assignSpeaker(
-                  transcript.words,
-                  request.firstWord,
-                  request.wordCount,
-                  request.speaker,
-                ),
-              }),
-      ),
+      change(id, request.revision, source, (transcript) => {
+        const speakers = transcriptSpeakers(transcript);
+        if (request.firstWord + request.wordCount > transcript.words.length)
+          return Effect.fail(new MediaError("invalid", "Choose words inside the transcript."));
+        if (!speakers.known(request.speaker) && request.speaker !== speakers.nextId)
+          return Effect.fail(
+            new MediaError(
+              "invalid",
+              `Choose a speaker from the transcript, or ${speakers.nextId} for a new speaker.`,
+            ),
+          );
+        return Effect.succeed({
+          kind: "speaker",
+          restoredRevision: null,
+          patch: assignSpeaker(
+            transcript.words,
+            request.firstWord,
+            request.wordCount,
+            request.speaker,
+          ),
+        });
+      }),
     mergeSpeakers: (id: string, request: SpeakerMerge, source: TranscriptChangeSource) =>
-      change(id, request.revision, source, (transcript) =>
-        request.speaker === request.into
-          ? Effect.fail(new MediaError("invalid", "Choose a different speaker to merge into."))
-          : request.into >= transcriptSpeakers(transcript).nextId
-            ? Effect.fail(new MediaError("invalid", "Choose a speaker from the transcript."))
-            : Effect.succeed({
-                kind: "speaker",
-                restoredRevision: null,
-                patch: mergeSpeaker(transcript.words, request.speaker, request.into),
-              }),
-      ),
+      change(id, request.revision, source, (transcript) => {
+        const speakers = transcriptSpeakers(transcript);
+        if (!speakers.ids.includes(request.speaker))
+          return Effect.fail(
+            new MediaError("invalid", "Choose a speaker who speaks in the transcript."),
+          );
+        if (request.speaker === request.into)
+          return Effect.fail(
+            new MediaError("invalid", "Choose a different speaker to merge into."),
+          );
+        if (!speakers.known(request.into))
+          return Effect.fail(
+            new MediaError("invalid", "Choose a speaker from the transcript to merge into."),
+          );
+        return Effect.succeed({
+          kind: "speaker",
+          restoredRevision: null,
+          patch: mergeSpeaker(transcript.words, request.speaker, request.into),
+        });
+      }),
     renameSpeaker: (id: string, request: SpeakerRename) =>
       Effect.gen(function* () {
         const { transcript } = yield* editable(id);
-        const speakers = transcriptSpeakers(transcript);
-        if (!speakers.ids.includes(request.speaker) && speakers.nameOf(request.speaker) === null)
+        if (!transcriptSpeakers(transcript).known(request.speaker))
           return yield* Effect.fail(
             new MediaError("invalid", "Choose a speaker from the transcript."),
           );

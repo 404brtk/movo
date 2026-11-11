@@ -698,10 +698,21 @@ it("assigns, merges and names speakers, keeping names apart from the history it 
       for (const request of [
         { revision: 3, speaker: 1, into: 1 },
         { revision: 3, speaker: 1, into: 4 },
+        { revision: 3, speaker: 1, into: 3 },
+        { revision: 3, speaker: 3, into: 1 },
       ])
         expect((yield* Effect.flip(jobs.mergeSpeakers(media.id, request, "app"))).reason).toBe(
           "invalid",
         );
+      expect(
+        (yield* Effect.flip(
+          jobs.assignSpeaker(
+            media.id,
+            { revision: 3, firstWord: 0, wordCount: 1, speaker: 4 },
+            "app",
+          ),
+        )).message,
+      ).toBe("Choose a speaker from the transcript, or 3 for a new speaker.");
       expect(yield* jobs.history(media.id, { limit: 10, offset: 0 })).toMatchObject({
         total: 2,
         changes: [

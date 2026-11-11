@@ -232,7 +232,13 @@ describe("speakers", () => {
     );
   });
 
-  it("gives inserted words the speaker of the preceding word", () => {
+  it("gives words added at the start of a passage the passage's speaker", () => {
+    expect(
+      speakersOf(checkedRoundTrip(words, editWords(words, 2, 3, "Well Hi there, welcome."))),
+    ).toEqual([1, 1, 2, 2, 2, 2, 1]);
+  });
+
+  it("gives words added without a passage the speaker of the preceding word", () => {
     const inserted = applyPatch(words, editWords(words, 5, 0, "Bye."));
     expect(inserted[5]).toMatchObject({ text: "Bye.", speaker: 2 });
   });

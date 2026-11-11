@@ -513,6 +513,8 @@ it("assigns, merges and names speakers over HTTP and labels the exports", async 
               (await post("speakers/rename", { speaker: 1, name: "x".repeat(81) })).status,
             ).toBe(400);
             expect((await post("speakers/rename", { speaker: 0, name: "Zero" })).status).toBe(400);
+            for (const name of ["Ann\n\nBob", "Ann\r\nBob", "Ann Bob", "Ann\tBob"])
+              expect((await post("speakers/rename", { speaker: 1, name })).status).toBe(400);
 
             const assigned = await post("speakers/assign", {
               revision: 1,

@@ -34,6 +34,7 @@ function retimedReplacement(
   firstWord: number,
   removedCount: number,
   texts: readonly string[],
+  passageSpeaker?: number,
 ): WordReplacement {
   const removed = words.slice(firstWord, firstWord + removedCount);
   if (texts.length === removed.length)
@@ -54,7 +55,9 @@ function retimedReplacement(
   );
   const characters = texts.reduce((total, text) => total + text.length, 0);
   const at = (offset: number) => Math.round(startMs + ((endMs - startMs) * offset) / characters);
-  const speaker = spokenBy(removed[0]?.speaker ?? words[firstWord - 1]?.speaker ?? next?.speaker);
+  const speaker = spokenBy(
+    removed[0]?.speaker ?? passageSpeaker ?? words[firstWord - 1]?.speaker ?? next?.speaker,
+  );
   let offset = 0;
   return {
     firstWord,
@@ -87,7 +90,9 @@ export function editWords(
   const removedCount = current.length - prefix - suffix;
   const inserted = texts.slice(prefix, texts.length - suffix);
   if (removedCount === 0 && inserted.length === 0) return [];
-  return [retimedReplacement(words, firstWord + prefix, removedCount, inserted)];
+  return [
+    retimedReplacement(words, firstWord + prefix, removedCount, inserted, current[0]?.speaker),
+  ];
 }
 
 function keepEdgePunctuation(texts: readonly string[], matched: readonly TranscriptWord[]) {

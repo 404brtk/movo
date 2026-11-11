@@ -10,6 +10,7 @@ export function transcriptSpeakers({ words, speakers = [] }: Transcript) {
     labeled: ids.length > 1 || ids.some((id) => names.has(id)),
     label: (id: number) => names.get(id) ?? `Speaker ${id}`,
     nameOf: (id: number) => names.get(id) ?? null,
+    known: (id: number) => ids.includes(id) || names.has(id),
     nextId: Math.max(0, ...ids, ...names.keys()) + 1,
   };
 }
