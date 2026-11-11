@@ -444,6 +444,75 @@ test("sends a queued question once and returns it to the field when sending fail
   expect(sends).toBe(1);
 });
 
+test("holds a queued question until the proposed change is decided", async ({ page, request }) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  expect(uploaded.status()).toBe(201);
+  const media: { id: string } = await uploaded.json();
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
+  const chatId = randomUUID();
+  const summary = summaryOf(chatId, media.id, "Who presents?");
+  const question = userMessage("Who presents?");
+  const change = (extra: Partial<ToolPart>) =>
+    tool(
+      "replace_in_transcript",
+      { mediaId: media.id, revision: 3, find: "Anna", replacement: "Hanna" },
+      extra,
+    );
+  let detail: ChatDetail = {
+    chat: summary,
+    messages: [question, answerMessage("answering", [])],
+    hiddenBeforeSeq: 0,
+    moments: [],
+  };
+  const events: string[] = [];
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [summary] }));
+  await page.route(`**/api/ask/chats/${chatId}`, (route) => route.fulfill({ json: detail }));
+  await page.route(`**/api/ask/chats/${chatId}/live`, (route) =>
+    route.fulfill({ headers: { "content-type": "text/event-stream" }, body: liveBody("Anna") }),
+  );
+  await page.route(`**/api/ask/chats/${chatId}/approval`, (route) => {
+    events.push("decided");
+    detail = {
+      ...detail,
+      messages: [question, answerMessage("done", [change({ resultCount: 1 })])],
+    };
+    return route.fulfill({ status: 202, json: detail });
+  });
+  await page.route(`**/api/ask/chats/${chatId}/messages`, (route) => {
+    events.push(`sent ${route.request().postDataJSON().text}`);
+    return route.fulfill({ status: 202, json: detail });
+  });
+
+  await page.goto(`/media/${media.id}`);
+  await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
+  await page.keyboard.press("/");
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const composer = panel.getByRole("textbox", { name: "Ask about this recording…" });
+  await composer.fill("And then?");
+  await composer.press("Enter");
+  await expect(panel.getByText("“And then?” is sent when this answer ends.")).toBeVisible();
+  detail = {
+    ...detail,
+    messages: [
+      question,
+      answerMessage("waiting_approval", [
+        change({ state: "waiting_approval", approvalId: "approval-1" }),
+      ]),
+    ],
+  };
+  await expect(panel.getByText("Change the transcript?")).toBeVisible();
+  await expect(panel.getByText("“And then?” is sent when this answer ends.")).toBeVisible();
+  expect(events).toEqual([]);
+  await panel.getByRole("button", { name: "Change", exact: true }).click();
+  await expect.poll(() => events).toEqual(["decided", "sent And then?"]);
+});
+
 const passageStart = (index: number) => index * 4000;
 
 function silentWav(seconds: number) {

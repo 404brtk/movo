@@ -434,7 +434,7 @@ export function AskComposer({
   const fieldBlocked = block !== null || waitingApproval;
   const hasMessages = (detail?.messages.length ?? 0) > 0;
   useEffect(() => {
-    if (answering || !queued || send.isPending) return;
+    if (answering || waitingApproval || !queued || send.isPending) return;
     send.mutate(queued, {
       onSuccess: () => setQueued(null),
       onError: () => {
@@ -442,7 +442,7 @@ export function AskComposer({
         setDraft((current) => (current ? `${queued.text}\n${current}` : queued.text));
       },
     });
-  }, [answering, queued, send]);
+  }, [answering, waitingApproval, queued, send]);
   const submit = () => {
     const text = draft.trim();
     if (!text || fieldBlocked || !model || send.isPending) return;
