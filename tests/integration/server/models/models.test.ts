@@ -82,6 +82,8 @@ it("keeps the optional speaker model separate and treats it as absent until veri
         /integrity/u,
       );
       await writeFile(speakerPath, speakerWeights);
+      const repairedAt = new Date(Date.now() + 60000);
+      await utimes(speakerPath, repairedAt, repairedAt);
       expect(await Effect.runPromise(models.installed(speakerModel.id))).toBe(speakerPath);
       await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
         /Download Parakeet Ultra/u,
