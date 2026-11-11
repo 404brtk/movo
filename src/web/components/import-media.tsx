@@ -82,7 +82,7 @@ export function ImportMedia() {
         if (next) setShowTools(tools.data?.ffprobe.state !== "ready");
       }}
     >
-      <DialogTrigger render={<Button />} disabled={tools.isPending}>
+      <DialogTrigger render={<Button />} disabled={tools.isPending} data-import-trigger="">
         <HugeiconsIcon icon={Upload04Icon} data-icon="inline-start" aria-hidden="true" />
         Import files
       </DialogTrigger>

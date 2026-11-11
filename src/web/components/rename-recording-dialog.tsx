@@ -1,7 +1,6 @@
 import { type RefObject, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { MediaItem } from "../../shared/contracts/media.ts";
-import { mediaItemOptions, mediaListKey, renameMedia } from "../lib/api.ts";
+import { useRenameRecording } from "../lib/recording-mutations.ts";
 import { Spinner } from "./spinner.tsx";
 import { Button } from "./ui/button.tsx";
 import {
@@ -23,22 +22,19 @@ export function RenameRecordingDialog({
   item: MediaItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  returnFocus: RefObject<HTMLButtonElement | null>;
+  returnFocus: RefObject<HTMLElement | null>;
 }) {
-  const queryClient = useQueryClient();
   const [draft, setDraft] = useState<string | null>(null);
   const title = draft ?? item.title;
   const input = useRef<HTMLInputElement>(null);
-  const rename = useMutation({
-    mutationFn: () => renameMedia(item.id, title.trim()),
-    onMutate: () => queryClient.cancelQueries({ queryKey: mediaListKey }),
-    onSuccess: async (updated) => {
-      queryClient.setQueryData(mediaItemOptions(item.id).queryKey, updated);
-      setDraft(null);
-      onOpenChange(false);
-      await queryClient.invalidateQueries({ queryKey: mediaListKey });
-    },
-  });
+  const rename = useRenameRecording(item);
+  const save = () =>
+    rename.mutate(title.trim(), {
+      onSuccess: () => {
+        setDraft(null);
+        onOpenChange(false);
+      },
+    });
   return (
     <Dialog
       open={open}
@@ -59,7 +55,7 @@ export function RenameRecordingDialog({
           aria-label="Rename recording"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!rename.isPending) rename.mutate();
+            if (!rename.isPending) save();
           }}
         >
           <div className="px-5 pt-3.5">

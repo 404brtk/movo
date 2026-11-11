@@ -33,7 +33,7 @@ export function ConfirmDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  returnFocus?: RefObject<HTMLButtonElement | null> | false | undefined;
+  returnFocus?: RefObject<HTMLElement | null> | false | undefined;
   icon: IconSvgElement;
   title: string;
   description: string;
@@ -90,7 +90,7 @@ export function ReplaceEditsDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  returnFocus?: RefObject<HTMLButtonElement | null> | undefined;
+  returnFocus?: RefObject<HTMLElement | null> | undefined;
   transcribe: TranscriptionActionMutation;
 }) {
   return (

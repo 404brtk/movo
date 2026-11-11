@@ -1,10 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import type { LibraryItem } from "../../shared/contracts/library.ts";
 import { formatDuration } from "../lib/format.ts";
-import { describeMedia } from "../lib/library-view.ts";
 import { HighlightedText } from "./highlighted-text.tsx";
-import { MediaRow } from "./media-row.tsx";
-import { TranscriptionStatus } from "./transcription-status.tsx";
+import { LibraryRow } from "./library-row.tsx";
 
 function SearchResult({ item }: { item: LibraryItem }) {
   const passages = item.match?.passages ?? [];
@@ -12,11 +10,11 @@ function SearchResult({ item }: { item: LibraryItem }) {
   const untranscribed = item.transcription === "none" || item.transcription === "stopped";
   return (
     <li>
-      <MediaRow
+      <LibraryRow
         item={item}
         title={<HighlightedText text={item.title} ranges={item.match?.title ?? []} />}
-        details={describeMedia(item, { detailed: false })}
-        status={<TranscriptionStatus transcription={item.transcription} />}
+        detailed={false}
+        offerTranscribe={false}
         className="-mx-2.5 h-14"
       />
       {untranscribed ? (
