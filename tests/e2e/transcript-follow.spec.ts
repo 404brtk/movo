@@ -140,6 +140,37 @@ test("keeps an open, empty find form in place and offers the way back after clos
   await expect(passages.nth(14)).toBeInViewport();
 });
 
+test("keeps the find form pinned below the video while it reveals a match further down", async ({
+  page,
+  request,
+}) => {
+  const { player, passages } = await openTranscribedVideo(page, request);
+  await expect(passages).toHaveCount(passageCount);
+  await page.getByRole("button", { name: "Find and replace", exact: true }).click();
+  const form = page.getByRole("form", { name: "Find and replace" });
+
+  await page.getByLabel("Find", { exact: true }).fill("20");
+  await expect(form.getByText("1 of 1")).toBeVisible();
+  const match = passages.nth(passageCount - 1).locator("mark");
+  await expect(match).toBeInViewport();
+  await expect(form).toBeInViewport();
+  await expect(async () => {
+    const playerBounds = await player.boundingBox();
+    const formBounds = await form.boundingBox();
+    const matchBounds = await match.boundingBox();
+    if (!playerBounds || !formBounds || !matchBounds) throw new Error("Expected boxes.");
+    expect(formBounds.y).toBeGreaterThanOrEqual(playerBounds.y + playerBounds.height);
+    expect(matchBounds.y).toBeGreaterThanOrEqual(formBounds.y + formBounds.height);
+  }).toPass();
+
+  await page.getByLabel("Find", { exact: true }).fill("Step");
+  await expect(form.getByText(`1 of ${passageCount}`)).toBeVisible();
+  await form.getByRole("button", { name: "Previous match" }).click();
+  await expect(form.getByText(`${passageCount} of ${passageCount}`)).toBeVisible();
+  await form.getByRole("button", { name: "Next match" }).click();
+  await expect(form.getByText(`1 of ${passageCount}`)).toBeVisible();
+});
+
 test("offers the way back after editing elsewhere and keeps following after editing the spoken passage", async ({
   page,
   request,

@@ -655,7 +655,7 @@ function silentWav(seconds: number) {
   return Buffer.concat([header, Buffer.alloc(samples, 0x80)]);
 }
 
-test("moves the open recording to each chosen moment, again on a repeated choice", async ({
+test("moves the open recording to each chosen moment, again on a repeated choice and while finding", async ({
   page,
   request,
 }) => {
@@ -746,6 +746,15 @@ test("moves the open recording to each chosen moment, again on a repeated choice
   await expect(passage(earlier)).toBeInViewport();
   await expect.poll(playerSeconds).toBeCloseTo(earlier / 1000, 0);
   expect(await player.evaluate((element) => element.dataset.probe)).toBe("kept");
+
+  await page.getByRole("button", { name: "Find and replace", exact: true }).click();
+  const form = page.getByRole("form", { name: "Find and replace" });
+  await page.getByLabel("Find", { exact: true }).fill("worth");
+  await panel.getByRole("link", { name: "3:20" }).click();
+  await expect(page).toHaveURL(new RegExp(`startMs=${cited}`, "u"));
+  await expect(passage(cited)).toBeInViewport();
+  await expect(form).toBeInViewport();
+  await expect(page.getByLabel("Find", { exact: true })).toHaveValue("worth");
 });
 
 test("opens an earlier chat about the recording from the panel's history", async ({
