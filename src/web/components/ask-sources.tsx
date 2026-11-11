@@ -1,4 +1,4 @@
-import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -10,7 +10,7 @@ import { transcriptPassages } from "../../shared/transcript-passages.ts";
 import { transcriptionOptions } from "../lib/api.ts";
 import { formatDay, formatDuration } from "../lib/format.ts";
 import { HighlightedText } from "./highlighted-text.tsx";
-import { MediaThumbnail } from "./media-thumbnail.tsx";
+import { MediaRow } from "./media-row.tsx";
 
 function searchedWords(parts: readonly ChatPart[]) {
   const queries = parts.flatMap((part) => {
@@ -38,38 +38,34 @@ function SourceGroup({
     text: passages.findLast((passage) => passage.startMs <= startMs)?.text ?? "",
   }));
   return (
-    <li className="grid gap-1.5">
-      <div className="flex items-center gap-3">
-        <MediaThumbnail item={item} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] font-medium">{item.title}</p>
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {formatDuration(item.durationSeconds)} · {formatDay(item.importedAt)}
-          </p>
-        </div>
-        <Link
-          to="/media/$mediaId"
-          params={{ mediaId: item.id }}
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[12.5px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-        >
-          Open
-          <span className="sr-only"> {item.title}</span>
-          <HugeiconsIcon icon={ArrowUpRight01Icon} size={13} aria-hidden="true" />
-        </Link>
-      </div>
+    <li className="grid gap-1">
+      <MediaRow
+        item={item}
+        title={item.title}
+        details={`${formatDuration(item.durationSeconds)} · ${formatDay(item.importedAt)}`}
+        status={
+          <HugeiconsIcon
+            icon={ArrowRight01Icon}
+            size={16}
+            aria-hidden="true"
+            className="text-muted-foreground"
+          />
+        }
+        className="h-15 hover:bg-subtle"
+      />
       {quoted.length > 0 ? (
-        <ul className="ml-[56px] grid gap-0.5">
+        <ul className="ml-[58px] grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
           {quoted.map((moment) => (
             <li
               key={moment.startMs}
-              className="flex gap-4 rounded-lg px-2.5 py-2 text-[13.5px]/[21px] hover:bg-subtle"
+              className="relative col-span-2 grid grid-cols-subgrid rounded-lg px-2.5 py-2 text-[13.5px]/[21px] hover:bg-subtle has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring/50"
             >
               <Link
                 to="/media/$mediaId"
                 params={{ mediaId: item.id }}
                 search={{ startMs: moment.startMs }}
                 resetScroll={false}
-                className="shrink-0 font-medium text-primary-strong tabular-nums hover:underline"
+                className="font-medium text-primary-strong tabular-nums outline-none after:absolute after:inset-0 after:rounded-lg"
               >
                 {formatDuration(moment.startMs / 1000)}
               </Link>
@@ -101,7 +97,7 @@ export function AskSources({
   if (groups.length === 0) return null;
   const terms = searchedWords(parts);
   return (
-    <ul aria-label="Sources" className="mt-1 grid gap-4">
+    <ul aria-label="Sources" className="-mx-2.5 mt-1 grid gap-4">
       {groups.map(({ item, moments: cited }) => (
         <SourceGroup key={item.id} item={item} moments={cited} terms={terms} />
       ))}
