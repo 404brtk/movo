@@ -7,6 +7,11 @@ export type ImportOutcome = "toolsMissing" | "cancelled" | "rejected" | "importe
 
 const fileRejectionStatuses = new Set([400, 413, 415]);
 
+const whenAborted = (signal: AbortSignal) =>
+  new Promise<"cancelled">((resolve) =>
+    signal.addEventListener("abort", () => resolve("cancelled"), { once: true }),
+  );
+
 export function useMediaImport() {
   const queryClient = useQueryClient();
   const [entries, setEntries] = useState<readonly ImportEntry[]>([]);
@@ -23,7 +28,11 @@ export function useMediaImport() {
     }): Promise<ImportOutcome> => {
       const abort = new AbortController();
       controller.current = abort;
-      const tools = await queryClient.fetchQuery({ ...mediaToolsOptions, staleTime: 0 });
+      const tools = await Promise.race([
+        queryClient.fetchQuery({ ...mediaToolsOptions, staleTime: 0 }),
+        whenAborted(abort.signal),
+      ]);
+      if (tools === "cancelled") return "cancelled";
       const requiredTools = transcribe ? [tools.ffprobe, tools.ffmpeg] : [tools.ffprobe];
       if (requiredTools.some((tool) => tool.state !== "ready")) return "toolsMissing";
       let rejected = false;
