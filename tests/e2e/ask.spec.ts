@@ -513,6 +513,57 @@ test("holds a queued question until the proposed change is decided", async ({ pa
   await expect.poll(() => events).toEqual(["decided", "sent And then?"]);
 });
 
+test("returns a queued question to the field when the panel switches to a new chat", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  expect(uploaded.status()).toBe(201);
+  const media: { id: string } = await uploaded.json();
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
+  const chatId = randomUUID();
+  const summary = summaryOf(chatId, media.id, "Who presents?");
+  const detail: ChatDetail = {
+    chat: summary,
+    messages: [userMessage("Who presents?"), answerMessage("answering", [])],
+    hiddenBeforeSeq: 0,
+    moments: [],
+  };
+  const requests: string[] = [];
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [summary] }));
+  await page.route("**/api/ask/chats", (route) => {
+    requests.push("created a chat");
+    return route.abort();
+  });
+  await page.route(`**/api/ask/chats/${chatId}`, (route) => route.fulfill({ json: detail }));
+  await page.route(`**/api/ask/chats/${chatId}/live`, (route) =>
+    route.fulfill({ headers: { "content-type": "text/event-stream" }, body: liveBody("Anna") }),
+  );
+  await page.route(`**/api/ask/chats/${chatId}/messages`, (route) => {
+    requests.push("sent");
+    return route.abort();
+  });
+
+  await page.goto(`/media/${media.id}`);
+  await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
+  await page.keyboard.press("/");
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const composer = panel.getByRole("textbox", { name: "Ask about this recording…" });
+  await composer.fill("And then?");
+  await composer.press("Enter");
+  await expect(panel.getByText("“And then?” is sent when this answer ends.")).toBeVisible();
+  await panel.getByRole("button", { name: "New chat" }).click();
+  await expect(composer).toHaveValue("And then?");
+  await expect(panel.getByText("“And then?” is sent when this answer ends.")).toHaveCount(0);
+  expect(requests).toEqual([]);
+});
+
 const passageStart = (index: number) => index * 4000;
 
 function silentWav(seconds: number) {

@@ -398,6 +398,9 @@ export interface ComposerBlock {
   action?: { label: string; onClick: () => void } | undefined;
 }
 
+const withQuestion = (text: string) => (current: string) =>
+  current ? `${text}\n${current}` : text;
+
 export function AskComposer({
   state,
   placeholder,
@@ -421,10 +424,19 @@ export function AskComposer({
   const ownField = useRef<HTMLTextAreaElement>(null);
   const field = composerRef ?? ownField;
   const [draft, setDraft] = useState("");
-  const [queued, setQueued] = useState<{ text: string; passage: Passage | null } | null>(null);
+  const [queued, setQueued] = useState<{
+    text: string;
+    passage: Passage | null;
+    chatId: string | null;
+  } | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const connections = useQuery(connectionsOptions);
   const { detail, answering, waitingApproval, send, stop, chooseModel, model } = state;
+  const chatId = detail?.chat.id ?? null;
+  if (queued && queued.chatId !== chatId) {
+    setQueued(null);
+    setDraft(withQuestion(queued.text));
+  }
   const last = detail?.messages.at(-1);
   const question = detail?.messages.findLast((message) => message.role === "user");
   const failure = last?.state === "failed" && last.errorKind ? last : null;
@@ -439,7 +451,7 @@ export function AskComposer({
       onSuccess: () => setQueued(null),
       onError: () => {
         setQueued(null);
-        setDraft((current) => (current ? `${queued.text}\n${current}` : queued.text));
+        setDraft(withQuestion(queued.text));
       },
     });
   }, [answering, waitingApproval, queued, send]);
@@ -447,7 +459,7 @@ export function AskComposer({
     const text = draft.trim();
     if (!text || fieldBlocked || !model || send.isPending) return;
     if (answering) {
-      setQueued({ text, passage });
+      setQueued({ text, passage, chatId });
       setDraft("");
       onClearPassage();
       return;
