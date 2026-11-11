@@ -7,6 +7,7 @@ export function SegmentedChoice<Value extends string>({
   onValueChange,
   size = "default",
   disabled,
+  className,
 }: {
   label: string;
   options: readonly (readonly [value: Value, label: string])[];
@@ -14,12 +15,14 @@ export function SegmentedChoice<Value extends string>({
   onValueChange: (value: Value) => void;
   size?: "default" | "sm";
   disabled?: boolean;
+  className?: string;
 }) {
   return (
     <ToggleGroup
       aria-label={label}
       variant="segmented"
       size={size}
+      className={className}
       value={[value]}
       disabled={disabled ?? false}
       onValueChange={([selected]) => {

@@ -64,7 +64,7 @@ function TranscriptView({
           !showFind && "border-b pb-[18px]",
         )}
       >
-        <span className="mr-1.5 text-xs text-muted-foreground">
+        <span className="mr-1.5 text-xs text-muted-foreground max-sm:mb-1 max-sm:basis-full">
           {modelName}
           {edited ? " · edited" : ""}
         </span>

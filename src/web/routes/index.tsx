@@ -32,7 +32,13 @@ function Library() {
     <main className="mx-auto flex max-w-[800px] flex-wrap items-end gap-x-4 px-5 pt-9 pb-16">
       <h1 className="text-[28px]/[34px] font-semibold tracking-[-0.025em] text-balance">Library</h1>
       {firstRun ? <LibraryWelcome /> : null}
-      <div className={firstRun ? "mt-[22px] flex w-full justify-center" : "ml-auto max-sm:mt-3"}>
+      <div
+        className={
+          firstRun
+            ? "mt-[22px] flex w-full justify-center"
+            : "max-sm:mt-3 max-sm:basis-full sm:ml-auto"
+        }
+      >
         <LibraryActions />
       </div>
       {firstRun ? (

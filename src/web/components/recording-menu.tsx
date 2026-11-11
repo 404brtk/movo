@@ -137,7 +137,9 @@ export function RecordingMenu({
           <DropdownMenuItem aria-keyshortcuts="F2" onClick={openDialog("rename")}>
             <MenuIcon icon={Edit02Icon} />
             Rename recording
-            <DropdownMenuShortcut aria-hidden="true">F2</DropdownMenuShortcut>
+            <DropdownMenuShortcut aria-hidden="true" className="pointer-coarse:hidden">
+              F2
+            </DropdownMenuShortcut>
           </DropdownMenuItem>
           {fileAvailable ? (
             <DropdownMenuItem

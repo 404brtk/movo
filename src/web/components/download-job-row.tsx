@@ -85,7 +85,7 @@ export function DownloadJobRow({ job }: { job: DownloadJob }) {
         <MediaThumbnail item={{ id: job.id, kind: getDownloadPreset(job.preset).kind }} />
       </span>
       <div className="min-w-0 flex-1">
-        <p id={titleId} className="truncate text-sm/5 font-medium">
+        <p id={titleId} className="text-sm/5 font-medium max-sm:line-clamp-2 sm:truncate">
           {title}
         </p>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground tabular-nums">

@@ -57,7 +57,7 @@ function SearchResult({ item }: { item: LibraryItem }) {
 export function LibrarySearchResults({ items }: { items: readonly LibraryItem[] }) {
   return (
     <section aria-label="Media library">
-      <ul className="mt-5 grid gap-1.5">
+      <ul className="mt-5 grid grid-cols-1 gap-1.5">
         {items.map((item) => (
           <SearchResult key={item.id} item={item} />
         ))}

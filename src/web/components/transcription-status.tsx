@@ -11,5 +11,9 @@ const appearances: Record<LibraryTranscription, readonly [tone: StatusTone, labe
 
 export function TranscriptionStatus({ transcription }: { transcription: LibraryTranscription }) {
   const [tone, label] = appearances[transcription];
-  return <StatusIndicator tone={tone}>{label}</StatusIndicator>;
+  return (
+    <StatusIndicator tone={tone}>
+      <span className="max-sm:sr-only">{label}</span>
+    </StatusIndicator>
+  );
 }

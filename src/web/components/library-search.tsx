@@ -43,7 +43,7 @@ export function LibrarySearch({ search }: { search: LibraryQuery }) {
         value={draft}
         onChange={(event) => setDraft(event.currentTarget.value)}
         placeholder="Search titles and transcripts"
-        className="pl-2.5 text-sm md:text-sm [&::-webkit-search-cancel-button]:appearance-none"
+        className="pl-2.5 text-base md:text-sm [&::-webkit-search-cancel-button]:appearance-none"
       />
       {draft ? (
         <InputGroupAddon align="inline-end" className="pr-1.5 has-[>button]:mr-0">
