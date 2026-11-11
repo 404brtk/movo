@@ -289,7 +289,7 @@ function scopeSentence(scope: ChatScope | null) {
 }
 
 const citeMoments =
-  "Cite each moment you use by writing the passage's startMs in square brackets right after the sentence it supports, like [754000]. Only cite startMs values that tools returned or the user's passage gave. Movo turns them into links.";
+  "Cite each moment you use by writing the passage's startMs in square brackets right after the sentence it supports, like [754000]. Only cite startMs values that tools returned or the user's passage gave. Movo turns them into links, so don't write startMs, mediaId or revision values anywhere else in the answer.";
 
 function instructionsFor(mediaId: string | null, scope: ChatScope | null) {
   const shared = [
