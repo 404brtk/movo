@@ -1,7 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import { Schema } from "effect";
 import { TranscribeModel } from "transcribe-cpp";
-import { Transcript, TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
+import { TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
+import { readEngineTranscript } from "./engine-result.ts";
 import { readPreparedAudio } from "./prepared-audio.ts";
 
 const ownerDisconnected = () => process.exit(1);
@@ -30,18 +31,7 @@ try {
     const pcm = await readPreparedAudio(audioPath);
     console.log("MOVO_PHASE:transcribing");
     const result = await model.transcribe(pcm, { timestamps: "word" });
-    if (result.aborted || result.truncated)
-      throw new Error("The engine did not transcribe the whole recording.");
-    if (result.timestampKind !== "word")
-      throw new Error("The engine did not return word timestamps.");
-    const transcript = Schema.decodeUnknownSync(Transcript)({
-      language: result.language.trim() || null,
-      words: result.words
-        .filter((word) => word.text.trim())
-        .map((word) => ({ startMs: word.t0Ms, endMs: word.t1Ms, text: word.text.trim() })),
-    });
-    if (result.text.trim() && transcript.words.length === 0)
-      throw new Error("The engine returned text without timestamped words.");
+    const transcript = readEngineTranscript(result);
     await writeFile(resultPath, JSON.stringify(transcript), { flag: "wx" });
   } finally {
     model.dispose();
