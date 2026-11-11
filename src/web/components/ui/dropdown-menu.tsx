@@ -4,6 +4,9 @@ import { cn } from "cn";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowRight01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 
+const menuPopupClassName =
+  "z-50 max-h-(--available-height) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-xl bg-popover p-1 text-popover-foreground shadow-menu duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95";
+
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
 }
@@ -36,10 +39,7 @@ function DropdownMenuContent({
       >
         <MenuPrimitive.Popup
           data-slot="dropdown-menu-content"
-          className={cn(
-            "z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-xl bg-popover p-1 text-popover-foreground shadow-menu duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95",
-            className,
-          )}
+          className={cn(menuPopupClassName, "w-(--anchor-width)", className)}
           {...props}
         />
       </MenuPrimitive.Positioner>
@@ -108,7 +108,7 @@ function DropdownMenuSubTrigger({
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex min-h-[30px] cursor-default items-center gap-2 rounded-md px-2 py-1 text-[13px] outline-hidden select-none focus:bg-linear-to-b focus:from-primary-from focus:to-primary-to focus:text-primary-foreground focus:shadow-[inset_0_0_1px_1px_oklch(1_0_0/0.25)] not-data-[variant=destructive]:focus:**:text-primary-foreground data-inset:pl-7.5 data-popup-open:bg-accent data-popup-open:text-accent-foreground data-open:bg-accent data-open:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+        "flex min-h-[30px] cursor-default items-center gap-2 rounded-md px-2 py-1 text-[13px] outline-hidden select-none focus:bg-linear-to-b focus:from-primary-from focus:to-primary-to focus:text-primary-foreground focus:shadow-[inset_0_0_1px_1px_oklch(1_0_0/0.25)] not-data-[variant=destructive]:focus:**:text-primary-foreground data-inset:pl-7.5 data-popup-open:not-focus:bg-accent [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
         className,
       )}
       {...props}
@@ -232,6 +232,7 @@ function DropdownMenuShortcut({ className, ...props }: React.ComponentProps<"spa
 }
 
 export {
+  menuPopupClassName,
   DropdownMenu,
   DropdownMenuPortal,
   DropdownMenuTrigger,
