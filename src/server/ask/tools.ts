@@ -13,7 +13,13 @@ export const chatReadTools = [
   "read_transcript",
   "list_transcript_changes",
 ] as const;
-export const chatEditTools = ["edit_transcript", "replace_in_transcript"] as const;
+export const chatEditTools = [
+  "edit_transcript",
+  "replace_in_transcript",
+  "assign_speaker",
+  "merge_speakers",
+  "rename_speaker",
+] as const;
 type ChatToolName = (typeof chatReadTools)[number] | (typeof chatEditTools)[number];
 type Handlers = ReturnType<typeof toolHandlers>;
 export interface ToolScope {
@@ -114,6 +120,21 @@ const runners = (
     decodeInput(movoTools.tools.edit_transcript.parametersSchema, input).pipe(
       Effect.tap((request) => withinScope(scope, request.mediaId, find)),
       Effect.flatMap(handlers.edit_transcript),
+    ),
+  assign_speaker: (input, scope) =>
+    decodeInput(movoTools.tools.assign_speaker.parametersSchema, input).pipe(
+      Effect.tap((request) => withinScope(scope, request.mediaId, find)),
+      Effect.flatMap(handlers.assign_speaker),
+    ),
+  merge_speakers: (input, scope) =>
+    decodeInput(movoTools.tools.merge_speakers.parametersSchema, input).pipe(
+      Effect.tap((request) => withinScope(scope, request.mediaId, find)),
+      Effect.flatMap(handlers.merge_speakers),
+    ),
+  rename_speaker: (input, scope) =>
+    decodeInput(movoTools.tools.rename_speaker.parametersSchema, input).pipe(
+      Effect.tap((request) => withinScope(scope, request.mediaId, find)),
+      Effect.flatMap(handlers.rename_speaker),
     ),
   replace_in_transcript: (input, scope) =>
     decodeInput(movoTools.tools.replace_in_transcript.parametersSchema, input).pipe(

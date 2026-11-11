@@ -23,6 +23,7 @@ import {
   type Passage,
 } from "../../shared/contracts/ask.ts";
 import type { LibraryItem } from "../../shared/contracts/library.ts";
+import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
 import {
   chatOptions,
   connectionsOptions,
@@ -89,18 +90,29 @@ function ReceiptLine({ text }: { text: string }) {
   );
 }
 
-function ChangePreview({ part }: { part: ToolPart }) {
-  const change = proposedChange(part);
+function ChangePreview({
+  part,
+  job,
+}: {
+  part: ToolPart;
+  job: TranscriptionJob | null | undefined;
+}) {
+  const change = proposedChange(part, job);
   return (
-    <p className="text-[12.5px]/[19px] wrap-anywhere">
-      {change.before === null ? null : (
-        <>
-          <del className="text-muted-foreground">{change.before}</del>
-          {" → "}
-        </>
+    <>
+      {change.context === null ? null : (
+        <p className="text-[12.5px]/[19px] wrap-anywhere text-muted-foreground">{change.context}</p>
       )}
-      <ins className="no-underline">{change.after || "(removed)"}</ins>
-    </p>
+      <p className="text-[12.5px]/[19px] wrap-anywhere">
+        {change.before === null ? null : (
+          <>
+            <del className="text-muted-foreground">{change.before}</del>
+            {" → "}
+          </>
+        )}
+        <ins className="no-underline">{change.after || "(removed)"}</ins>
+      </p>
+    </>
   );
 }
 
@@ -118,7 +130,7 @@ function EditCard({
   const waiting = part.state === "waiting_approval";
   const transcription = useQuery({
     ...transcriptionOptions(mediaId ?? ""),
-    enabled: mediaId !== null && part.state === "done",
+    enabled: mediaId !== null && (waiting || part.state === "done"),
   });
   useEffect(() => {
     if (waiting) decideButton.current?.focus();
@@ -126,7 +138,11 @@ function EditCard({
   const decide = useMutation({
     mutationFn: (approved: boolean) =>
       decideApproval(chatId, { approvalId: part.approvalId ?? "", approved }),
-    onSuccess: (detail) => queryClient.setQueryData(chatOptions(chatId).queryKey, detail),
+    onSuccess: (detail, approved) => {
+      queryClient.setQueryData(chatOptions(chatId).queryKey, detail);
+      if (approved && mediaId)
+        void queryClient.invalidateQueries({ queryKey: transcriptionOptions(mediaId).queryKey });
+    },
   });
   const undo = useMutation({
     mutationFn: () =>
@@ -192,7 +208,7 @@ function EditCard({
       <div className="ask-fold" data-folded={waiting ? undefined : ""}>
         <div>
           <div className="pt-1.5">
-            <ChangePreview part={part} />
+            <ChangePreview part={part} job={transcription.data} />
             {waiting ? (
               <div className="mt-3 flex gap-2">
                 <Button

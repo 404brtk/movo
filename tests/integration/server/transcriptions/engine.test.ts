@@ -35,7 +35,10 @@ it.for(["tone.wav", "sample.webm"])(
     const tools = createMediaTools({ dataDirectory: directory });
     const engine = createTranscriptionEngine(
       tools,
-      { resolve: () => Effect.succeed("verified-model.gguf") },
+      {
+        resolve: () => Effect.succeed("verified-model.gguf"),
+        installed: () => Effect.succeed(null),
+      },
       (file, args, options) =>
         file === process.execPath
           ? Effect.promise(async () => {
@@ -114,7 +117,10 @@ it.for([
   const tools = createMediaTools({ dataDirectory: directory });
   const engine = createTranscriptionEngine(
     tools,
-    { resolve: () => Effect.succeed("verified-model.gguf") },
+    {
+      resolve: () => Effect.succeed("verified-model.gguf"),
+      installed: () => Effect.succeed(null),
+    },
     (file, args, options) =>
       Effect.promise(async () => {
         if (file === process.execPath) {
@@ -138,4 +144,55 @@ it.for([
     message: "The transcription engine returned an invalid result.",
     cause: { message: expect.stringMatching(cause) },
   });
+});
+
+it("hands the verified speaker model to the worker and accepts its speaker phase and result", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "movo-transcription-speakers-"));
+  onTestFinished(() =>
+    rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }),
+  );
+  const expected = {
+    language: "en",
+    words: [
+      { startMs: 0, endMs: 500, text: "Hello.", speaker: 1 },
+      { startMs: 600, endMs: 1000, text: "Hi.", speaker: 2 },
+    ],
+  };
+  const phases: string[] = [];
+  const workerArguments: string[][] = [];
+  const engine = createTranscriptionEngine(
+    createMediaTools({ dataDirectory: directory }),
+    {
+      resolve: () => Effect.succeed("verified-model.gguf"),
+      installed: () => Effect.succeed("verified-speakers.gguf"),
+    },
+    (file, args, options) =>
+      Effect.promise(async () => {
+        if (file === process.execPath) {
+          workerArguments.push(args.slice(1));
+          options.onLine?.(deviceReport);
+          options.onLine?.("MOVO_PHASE:speakers");
+          await writeFile(args[3] ?? "", JSON.stringify(expected), { flag: "wx" });
+        }
+        return "";
+      }),
+  );
+  const result = await Effect.runPromise(
+    engine.transcribe(
+      "recording.wav",
+      directory,
+      (phase) => phases.push(phase),
+      () => undefined,
+    ),
+  );
+  expect(result).toEqual(expected);
+  expect(phases).toEqual(["preparing", "speakers"]);
+  expect(workerArguments).toEqual([
+    [
+      "verified-model.gguf",
+      join(directory, "audio.f32"),
+      join(directory, "result.json"),
+      "verified-speakers.gguf",
+    ],
+  ]);
 });

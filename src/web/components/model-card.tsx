@@ -45,10 +45,21 @@ function ModelState({ model, busy }: { model: ModelStatus; busy: boolean }) {
   return <span className="font-medium">{missingLabels[model.installation.phase]}</span>;
 }
 
+const roleNotes = {
+  transcription: {
+    busy: "You can keep using Movo. Transcription unlocks when the download is verified.",
+    missing: "Download it once to transcribe on this computer.",
+  },
+  speakers: {
+    busy: "You can keep using Movo. New transcripts label speakers once the download is verified.",
+    missing: "Optional. Download it to label who speaks in new transcripts.",
+  },
+} satisfies Record<ModelStatus["role"], { busy: string; missing: string }>;
+
 function modelNote(model: ModelStatus, busy: boolean) {
-  if (busy) return "You can keep using Movo. Transcription unlocks when the download is verified.";
+  if (busy) return roleNotes[model.role].busy;
   if (model.state === "ready") return "Verified weights in your Hugging Face cache.";
-  if (model.state === "missing") return "Download it once to transcribe on this computer.";
+  if (model.state === "missing") return roleNotes[model.role].missing;
   return null;
 }
 
@@ -88,7 +99,9 @@ export function ModelCard({ model }: { model: ModelStatus }) {
       <div className="mt-3 flex flex-wrap gap-1.5">
         <span className={factClassName}>{formatBytes(model.bytes)}</span>
         <span className={factClassName}>{model.license}</span>
-        <span className={factClassName}>{model.languages.length} languages</span>
+        <span className={factClassName}>
+          {model.languages.length} {model.languages.length === 1 ? "language" : "languages"}
+        </span>
         <a
           href={model.sourceUrl}
           target="_blank"

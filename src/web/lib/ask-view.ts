@@ -6,6 +6,9 @@ import {
   type ChatPart,
   type FailureKind,
 } from "../../shared/contracts/ask.ts";
+import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
+import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
+import { formatDuration } from "./format.ts";
 
 export function connectionLabel(connection: AiConnection) {
   if (connection.kind !== "server") return providerNames[connection.kind];
@@ -64,6 +67,15 @@ const toolLabels: Record<string, { now: string; done: string }> = {
   list_transcript_changes: { now: "Reading the change history", done: "Read the change history" },
   edit_transcript: { now: "Preparing a change", done: "Prepared a change" },
   replace_in_transcript: { now: "Preparing a change", done: "Prepared a change" },
+  assign_speaker: { now: "Preparing a change", done: "Prepared a change" },
+  merge_speakers: { now: "Preparing a change", done: "Prepared a change" },
+  rename_speaker: { now: "Preparing a change", done: "Prepared a change" },
+};
+
+const speakerReceipts: Record<string, string> = {
+  assign_speaker: "Changed the speaker",
+  merge_speakers: "Merged speakers",
+  rename_speaker: "Named a speaker",
 };
 
 export function toolLabel(
@@ -109,7 +121,7 @@ export function editReceipt(part: ToolPart) {
     if (count === 0) return "Nothing matched, so nothing changed";
     return `Replaced ${count} ${count === 1 ? "place" : "places"}`;
   }
-  return "Changed a passage";
+  return speakerReceipts[part.toolName] ?? "Changed a passage";
 }
 
 export const failureActions = {
@@ -122,21 +134,66 @@ export const failureActions = {
 } as const satisfies Record<FailureKind, string>;
 
 export const isEditTool = (part: ToolPart) =>
-  part.toolName === "edit_transcript" || part.toolName === "replace_in_transcript";
+  part.toolName === "edit_transcript" ||
+  part.toolName === "replace_in_transcript" ||
+  part.toolName in speakerReceipts;
 
-export function proposedChange(part: ToolPart) {
+const numberField = (input: unknown, key: string) => {
+  const value = field(input, key);
+  return typeof value === "number" ? value : null;
+};
+
+export const editRevision = (part: ToolPart) => numberField(part.input, "revision");
+
+const maxContextWords = 12;
+
+function assignedWords(part: ToolPart, job: TranscriptionJob | null | undefined) {
+  const firstWord = numberField(part.input, "firstWord") ?? 0;
+  const wordCount = numberField(part.input, "wordCount") ?? 0;
+  const words =
+    job?.revision === editRevision(part)
+      ? (job.transcript?.words.slice(firstWord, firstWord + wordCount) ?? [])
+      : [];
+  const [first] = words;
+  if (!first)
+    return { context: `Words ${firstWord + 1}–${firstWord + wordCount}`, speaker: undefined };
+  const quoted = words
+    .slice(0, maxContextWords)
+    .map((word) => word.text)
+    .join(" ");
+  const more = words.length > maxContextWords ? "…" : "";
+  return {
+    context: `${formatDuration(first.startMs / 1000)} “${quoted}${more}”`,
+    speaker: first.speaker,
+  };
+}
+
+export function proposedChange(part: ToolPart, job?: TranscriptionJob | null) {
+  const speakers = job?.transcript ? transcriptSpeakers(job.transcript) : null;
+  const label = (id: number | null | undefined) =>
+    id === null || id === undefined ? null : (speakers?.label(id) ?? `Speaker ${id}`);
+  const speakerAt = (key: string) => label(numberField(part.input, key)) ?? "";
   if (part.toolName === "replace_in_transcript")
     return {
+      context: null,
       before: textField(part.input, "find"),
       after: textField(part.input, "replacement"),
     };
-  return { before: null, after: textField(part.input, "text") };
+  if (part.toolName === "assign_speaker") {
+    const { context, speaker } = assignedWords(part, job);
+    return { context, before: label(speaker), after: speakerAt("speaker") };
+  }
+  if (part.toolName === "merge_speakers")
+    return { context: null, before: speakerAt("speaker"), after: speakerAt("into") };
+  if (part.toolName === "rename_speaker")
+    return {
+      context: null,
+      before: speakerAt("speaker"),
+      after:
+        textField(part.input, "name").trim() || `Speaker ${numberField(part.input, "speaker")}`,
+    };
+  return { context: null, before: null, after: textField(part.input, "text") };
 }
-
-export const editRevision = (part: ToolPart) => {
-  const revision = field(part.input, "revision");
-  return typeof revision === "number" ? revision : null;
-};
 
 export function modelChanges(messages: readonly ChatMessage[]) {
   const changes = new Map<number, string>();

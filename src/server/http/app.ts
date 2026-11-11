@@ -20,8 +20,12 @@ import { ImportMediaQuery, RenameMediaRequest } from "../../shared/contracts/med
 import {
   defaultHistoryPage,
   maxHistoryPage,
+  maxSpeakerNameCharacters,
   maxWordCharacters,
   PassageEdit,
+  SpeakerAssignment,
+  SpeakerMerge,
+  SpeakerRename,
   TranscriptExportFormat,
   TranscriptHistoryQuery,
   TranscriptReplace,
@@ -337,6 +341,36 @@ export function createApp(
       );
       return context.json(
         await runMedia(transcriptions.restore(context.req.param("id"), request, "app")),
+      );
+    })
+    .post("/media/:id/transcription/speakers/assign", transcriptChangeLimit, async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        SpeakerAssignment,
+        "Provide the transcript revision, a word range and the speaker to assign.",
+      );
+      return context.json(
+        await runMedia(transcriptions.assignSpeaker(context.req.param("id"), request, "app")),
+      );
+    })
+    .post("/media/:id/transcription/speakers/merge", transcriptChangeLimit, async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        SpeakerMerge,
+        "Provide the transcript revision, the speaker to merge and a different speaker to merge into.",
+      );
+      return context.json(
+        await runMedia(transcriptions.mergeSpeakers(context.req.param("id"), request, "app")),
+      );
+    })
+    .post("/media/:id/transcription/speakers/rename", transcriptChangeLimit, async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        SpeakerRename,
+        `Provide the speaker and a name of at most ${maxSpeakerNameCharacters} characters.`,
+      );
+      return context.json(
+        await runMedia(transcriptions.renameSpeaker(context.req.param("id"), request)),
       );
     })
     .post("/media/:id/transcription", async (context) =>

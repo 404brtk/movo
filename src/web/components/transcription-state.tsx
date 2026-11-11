@@ -27,12 +27,14 @@ const steps = [
   { phase: "preparing", label: "Preparing audio" },
   { phase: "loading", label: "Loading Parakeet Ultra" },
   { phase: "transcribing", label: "Transcribing…" },
+  { phase: "speakers", label: "Identifying speakers…" },
 ] as const satisfies readonly { phase: TranscriptionPhase; label: string }[];
 const phaseOrder: TranscriptionPhase[] = [
   "queued",
   "preparing",
   "loading",
   "transcribing",
+  "speakers",
   "finished",
 ];
 
@@ -50,7 +52,7 @@ export function NoTranscriptCard({
   onStart: () => void;
 }) {
   const models = useQuery(modelsOptions);
-  const model = models.data?.[0];
+  const model = models.data?.find((entry) => entry.role === "transcription");
   return (
     <section
       aria-labelledby="transcription-state"
@@ -114,6 +116,11 @@ export function TranscribingCard({
   cancelling: boolean;
   onCancel: () => void;
 }) {
+  const models = useQuery(modelsOptions);
+  const identifiesSpeakers =
+    job.phase === "speakers" ||
+    models.data?.some((model) => model.role === "speakers" && model.state === "ready") === true;
+  const shownSteps = steps.filter((step) => step.phase !== "speakers" || identifiesSpeakers);
   const position = phaseOrder.indexOf(job.phase);
   const queued = job.phase === "queued";
   const currentStep = steps[position - 1]?.label;
@@ -146,7 +153,7 @@ export function TranscribingCard({
       </div>
       <output className="sr-only">{queued ? "Waiting to transcribe" : currentStep}</output>
       <ol aria-label="Progress" className="mt-5 grid gap-3">
-        {steps.map((step, index) => {
+        {shownSteps.map((step, index) => {
           const state =
             position > index + 1 ? "done" : position === index + 1 ? "current" : "pending";
           return (
