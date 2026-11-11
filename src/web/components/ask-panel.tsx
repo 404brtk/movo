@@ -25,6 +25,7 @@ import {
   type TranscriptionActionMutation,
 } from "../lib/transcription-actions.ts";
 import { cn } from "../lib/utils.ts";
+import { AccentIcon } from "./accent-icon.tsx";
 import { AskComposer, AskConversation, type ComposerBlock } from "./ask-chat.tsx";
 import { AskConnect } from "./ask-connect.tsx";
 import { MomentContext } from "./ask-markdown.tsx";
@@ -212,9 +213,7 @@ function SelectionToolbar({
 function EmptyChat({ disabled, onAsk }: { disabled: boolean; onAsk: (question: string) => void }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col justify-end gap-3 overflow-y-auto px-4 pb-3">
-      <span className="grid size-9 place-items-center rounded-[10px] bg-tint text-primary-strong">
-        <HugeiconsIcon icon={AiChat02Icon} size={18} aria-hidden="true" />
-      </span>
+      <AccentIcon icon={AiChat02Icon} size={30} />
       <div>
         <h3 className="text-[15px]/[22px] font-semibold tracking-[-0.01em]">
           Ask about this recording
