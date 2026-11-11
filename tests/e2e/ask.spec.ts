@@ -406,6 +406,44 @@ test("names the latest failure once, beside its fix, and keeps earlier failures 
   await expect(page).toHaveURL(/\/models$/u);
 });
 
+test("sends a queued question once and returns it to the field when sending fails", async ({
+  page,
+}) => {
+  const chatId = randomUUID();
+  const question = userMessage("Who presents?");
+  let detail: ChatDetail = {
+    chat: summaryOf(chatId, null, "Who presents?"),
+    messages: [question, answerMessage("answering", [])],
+    hiddenBeforeSeq: 0,
+    moments: [],
+  };
+  let sends = 0;
+  await connectedModel(page);
+  await page.route("**/api/media", (route) =>
+    route.fulfill({ json: { items: [], transcribing: false } satisfies LibraryList }),
+  );
+  await page.route("**/api/ask/chats", (route) => route.fulfill({ json: [detail.chat] }));
+  await page.route(`**/api/ask/chats/${chatId}`, (route) => route.fulfill({ json: detail }));
+  await page.route(`**/api/ask/chats/${chatId}/live`, (route) =>
+    route.fulfill({ headers: { "content-type": "text/event-stream" }, body: liveBody("Anna") }),
+  );
+  await page.route(`**/api/ask/chats/${chatId}/messages`, (route) => {
+    sends += 1;
+    return route.fulfill({ status: 503, json: { error: "Movo isn't reachable." } });
+  });
+
+  await page.goto(`/ask?chat=${chatId}`);
+  const composer = page.getByRole("textbox", { name: "Ask across your library…" });
+  await composer.fill("And then?");
+  await composer.press("Enter");
+  await expect(page.getByText("“And then?” is sent when this answer ends.")).toBeVisible();
+  detail = { ...detail, messages: [question, answerMessage("done", [])] };
+  await expect(page.getByText("Movo isn't reachable.")).toBeVisible();
+  await expect(composer).toHaveValue("And then?");
+  await expect(page.getByText("“And then?” is sent when this answer ends.")).toHaveCount(0);
+  expect(sends).toBe(1);
+});
+
 const passageStart = (index: number) => index * 4000;
 
 function silentWav(seconds: number) {
