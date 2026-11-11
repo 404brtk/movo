@@ -169,7 +169,8 @@ export function answerMoments<Row extends MessageRow>(
       const [owner, ...others] = turn.get(startMs) ?? earlier.get(startMs) ?? [];
       if (owner && others.length === 0) index.set(startMs, owner);
     }
-    for (const [startMs, owners] of turn) earlier.set(startMs, owners);
+    for (const [startMs, owners] of turn)
+      earlier.set(startMs, new Set([...(earlier.get(startMs) ?? []), ...owners]));
     turn.clear();
     const cited = citedMoments(answerText(row), index);
     return {

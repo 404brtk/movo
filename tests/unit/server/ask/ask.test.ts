@@ -43,13 +43,15 @@ const answer = (reads: { id: string; mediaId: string; starts: number[] }[], text
   ],
 });
 
-it("links each answer to the recording its own turn read, so later reads don't move it", () => {
+it("links each answer to the recording its own turn read and leaves times read in several turns unlinked", () => {
   const answers = answerMoments(
     [
       question("Where?"),
       answer([{ id: "a", mediaId: first, starts: [0, 4000] }], "Here [0]."),
       question("And there?"),
       answer([{ id: "b", mediaId: second, starts: [0] }], "There [0], earlier [4000]."),
+      question("Which start?"),
+      answer([], "The start [0] or [4000]."),
     ],
     null,
   );
@@ -61,8 +63,10 @@ it("links each answer to the recording its own turn read, so later reads don't m
       { startMs: 0, mediaId: second },
       { startMs: 4000, mediaId: first },
     ],
+    [],
+    [{ startMs: 4000, mediaId: first }],
   ]);
-  expect(answers.flatMap((entry) => entry.recordings)).toEqual([first, second, first]);
+  expect(answers.flatMap((entry) => entry.recordings)).toEqual([first, second, first, first]);
 });
 
 it("leaves a moment unlinked when one turn read it in two recordings", () => {
