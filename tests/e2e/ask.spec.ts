@@ -175,7 +175,7 @@ test("connects an API key on the Models page after a rejected key and picks the 
   await page.getByLabel("Server address").fill("api.example.com");
   await expect(page.getByText(/^Only this computer or your home network/u)).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  expect(await noHorizontalScroll(page)).toBe(true);
+  await expect.poll(() => noHorizontalScroll(page)).toBe(true);
 });
 
 test("asks about a recording in the side panel, streams the answer and applies an approved change", async ({
@@ -259,6 +259,7 @@ test("asks about a recording in the side panel, streams the answer and applies a
   await page.keyboard.press("Control+Alt+Slash");
   const findModel = page.getByRole("textbox", { name: "Find a model" });
   await expect(findModel).toBeFocused();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "Model B" })).toBeVisible();
   await findModel.press("ArrowDown");
   await findModel.press("Enter");
   await expect(findModel).toHaveCount(0);
@@ -301,7 +302,7 @@ test("asks about a recording in the side panel, streams the answer and applies a
   await page.getByRole("button", { name: /^Ask/u }).click();
   await expect(panel).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  expect(await noHorizontalScroll(page)).toBe(true);
+  await expect.poll(() => noHorizontalScroll(page)).toBe(true);
 });
 
 test("wraps the transcript toolbar in groups and keeps Ask with its actions at the right edge", async ({
@@ -338,7 +339,7 @@ test("wraps the transcript toolbar in groups and keeps Ask with its actions at t
       (heading?.x ?? 0) + (heading?.width ?? 0),
     );
   }).toPass();
-  expect(await noHorizontalScroll(page)).toBe(true);
+  await expect.poll(() => noHorizontalScroll(page)).toBe(true);
 });
 
 test("moves the recording only as far as the open panel needs", async ({ page, request }) => {
@@ -748,7 +749,7 @@ test("asks across the library within a chosen scope and shows the sources groupe
     page.getByRole("link", { name: /Who presents the numbers\?.*1 recording · Today/u }),
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  expect(await noHorizontalScroll(page)).toBe(true);
+  await expect.poll(() => noHorizontalScroll(page)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.getByRole("link", { name: /Who presents the numbers\?/u }).click();
   const arrow = await page
