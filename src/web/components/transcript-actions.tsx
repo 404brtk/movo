@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Copy01Icon, FileExportIcon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { cn } from "cn";
 import { transcriptExportFormats, type Transcript } from "../../shared/contracts/transcriptions.ts";
 import { transcriptText } from "../../shared/transcript-export.ts";
 import { transcriptionExportUrl } from "../lib/api.ts";
@@ -13,6 +14,11 @@ import {
 } from "./ui/dropdown-menu.tsx";
 
 const formatNames = { txt: "Plain text", srt: "SubRip subtitles", vtt: "WebVTT subtitles" };
+const copiedFeedbackMs = 2000;
+const swapIconClass =
+  "col-start-1 row-start-1 transition-[opacity,scale,filter] duration-200 ease-(--ease-snappy)";
+const hiddenIconClass =
+  "scale-50 opacity-0 blur-[2px] motion-reduce:scale-100 motion-reduce:blur-none";
 
 export function TranscriptActions({
   mediaId,
@@ -26,6 +32,12 @@ export function TranscriptActions({
     transcript: Transcript;
   } | null>(null);
   const copyState = copy?.transcript === transcript ? copy.state : "idle";
+
+  useEffect(() => {
+    if (copy?.state !== "copied") return undefined;
+    const timer = setTimeout(() => setCopy(null), copiedFeedbackMs);
+    return () => clearTimeout(timer);
+  }, [copy]);
 
   async function copyText() {
     const copied = transcript;
@@ -52,13 +64,21 @@ export function TranscriptActions({
         size="icon-sm"
         aria-label="Copy transcript"
         disabled={copyState === "copying"}
+        aria-busy={copyState === "copying" || undefined}
         onClick={() => void copyText()}
       >
-        <HugeiconsIcon
-          icon={copyState === "copied" ? Tick02Icon : Copy01Icon}
-          aria-hidden="true"
-          className={copyState === "copied" ? "text-success" : undefined}
-        />
+        <span className="grid">
+          <HugeiconsIcon
+            icon={Copy01Icon}
+            aria-hidden="true"
+            className={cn(swapIconClass, copyState === "copied" && hiddenIconClass)}
+          />
+          <HugeiconsIcon
+            icon={Tick02Icon}
+            aria-hidden="true"
+            className={cn(swapIconClass, "text-success", copyState !== "copied" && hiddenIconClass)}
+          />
+        </span>
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger
