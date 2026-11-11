@@ -150,7 +150,7 @@ function LibraryStart() {
               placeholder="Ask across your library…"
               block={block}
               passage={null}
-              onClearPassage={() => undefined}
+              onPassageChange={() => undefined}
               leading={<ScopePicker scope={scope} onChange={setScope} />}
             />
           </div>
@@ -309,7 +309,7 @@ function LibraryChat({ chatId }: { chatId: string }) {
             placeholder="Ask across your library…"
             block={null}
             passage={null}
-            onClearPassage={() => undefined}
+            onPassageChange={() => undefined}
             leading={
               <ScopePicker
                 scope={detail?.chat.scope ?? null}

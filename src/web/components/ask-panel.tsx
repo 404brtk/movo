@@ -402,7 +402,7 @@ export function AskPanel({
                 placeholder="Ask about this recording…"
                 block={block}
                 passage={passage}
-                onClearPassage={() => setPassage(null)}
+                onPassageChange={setPassage}
                 composerRef={composer}
                 footer={
                   <p className="mt-2 text-center text-[11.5px] text-muted-foreground">

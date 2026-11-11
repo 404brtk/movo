@@ -524,7 +524,7 @@ test("holds a queued question until the proposed change is decided", async ({ pa
   await expect.poll(() => events).toEqual(["decided", "sent And then?"]);
 });
 
-test("returns a queued question to the field when the panel switches to a new chat", async ({
+test("returns a queued question with its passage to the field when the panel switches to a new chat", async ({
   page,
   request,
 }) => {
@@ -562,14 +562,26 @@ test("returns a queued question to the field when the panel switches to a new ch
 
   await page.goto(`/media/${media.id}`);
   await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
-  await page.keyboard.press("/");
+  await page
+    .getByRole("list", { name: "Timestamped passages" })
+    .getByText("presents", { exact: false })
+    .first()
+    .click({ clickCount: 3 });
+  await page
+    .getByRole("toolbar", { name: "Selected text" })
+    .getByRole("button", { name: "Ask about this" })
+    .click();
   const panel = page.getByRole("complementary", { name: "Ask about this recording" });
   const composer = panel.getByRole("textbox", { name: "Ask about this recording…" });
+  const removePassage = panel.getByRole("button", { name: "Remove the passage" });
+  await expect(removePassage).toBeVisible();
   await composer.fill("And then?");
   await composer.press("Enter");
   await expect(panel.getByText("“And then?” is sent when this answer ends.")).toBeVisible();
+  await expect(removePassage).toHaveCount(0);
   await panel.getByRole("button", { name: "New chat" }).click();
   await expect(composer).toHaveValue("And then?");
+  await expect(removePassage).toBeVisible();
   await expect(panel.getByText("“And then?” is sent when this answer ends.")).toHaveCount(0);
   expect(requests).toEqual([]);
 });

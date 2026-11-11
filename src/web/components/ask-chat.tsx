@@ -403,7 +403,7 @@ export function AskComposer({
   placeholder,
   block,
   passage,
-  onClearPassage,
+  onPassageChange,
   composerRef,
   leading,
   footer,
@@ -412,7 +412,7 @@ export function AskComposer({
   placeholder: string;
   block: ComposerBlock | null;
   passage: Passage | null;
-  onClearPassage: () => void;
+  onPassageChange: (passage: Passage | null) => void;
   composerRef?: RefObject<HTMLTextAreaElement | null> | undefined;
   leading?: ReactNode;
   footer?: ReactNode;
@@ -430,10 +430,6 @@ export function AskComposer({
   const connections = useQuery(connectionsOptions);
   const { detail, answering, waitingApproval, send, stop, chooseModel, model } = state;
   const chatId = detail?.chat.id ?? null;
-  if (queued && queued.chatId !== chatId) {
-    setQueued(null);
-    setDraft(withQuestion(queued.text));
-  }
   const last = detail?.messages.at(-1);
   const question = detail?.messages.findLast((message) => message.role === "user");
   const failure = last?.state === "failed" && last.errorKind ? last : null;
@@ -443,22 +439,23 @@ export function AskComposer({
   const fieldBlocked = block !== null || waitingApproval;
   const hasMessages = (detail?.messages.length ?? 0) > 0;
   useEffect(() => {
-    if (answering || waitingApproval || !queued || send.isPending) return;
-    send.mutate(queued, {
-      onSuccess: () => setQueued(null),
-      onError: () => {
-        setQueued(null);
-        setDraft(withQuestion(queued.text));
-      },
-    });
-  }, [answering, waitingApproval, queued, send]);
+    if (!queued) return;
+    const returnToField = () => {
+      setQueued(null);
+      setDraft(withQuestion(queued.text));
+      if (queued.passage) onPassageChange(queued.passage);
+    };
+    if (queued.chatId !== chatId) returnToField();
+    else if (!answering && !waitingApproval && !send.isPending)
+      send.mutate(queued, { onSuccess: () => setQueued(null), onError: returnToField });
+  }, [answering, waitingApproval, queued, send, chatId, onPassageChange]);
   const submit = () => {
     const text = draft.trim();
     if (!text || fieldBlocked || !model || send.isPending) return;
     if (answering) {
       setQueued({ text, passage, chatId });
       setDraft("");
-      onClearPassage();
+      onPassageChange(null);
       return;
     }
     send.mutate(
@@ -466,7 +463,7 @@ export function AskComposer({
       {
         onSuccess: () => {
           setDraft("");
-          onClearPassage();
+          onPassageChange(null);
         },
       },
     );
@@ -544,7 +541,7 @@ export function AskComposer({
       >
         {passage ? (
           <div className="flex px-2 pt-2">
-            <PassageChip passage={passage} onClear={onClearPassage} />
+            <PassageChip passage={passage} onClear={() => onPassageChange(null)} />
           </div>
         ) : null}
         <textarea
