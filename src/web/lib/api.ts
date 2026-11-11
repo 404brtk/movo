@@ -157,22 +157,23 @@ export function installYtdlp() {
   return readResponse(client.api.ytdlp.install.$post(), YtdlpStatus);
 }
 
-export async function importMedia(file: File) {
+export async function importMedia(
+  file: File,
+  { transcribe, signal }: { transcribe: boolean; signal: AbortSignal },
+) {
   if (file.size === 0)
     throw new ApiError(400, "This file is empty. Choose an audio or video file.");
   if (file.size > maxImportBytes) throw new ApiError(413, "Files must be 10 GiB or smaller.");
-  const tools = await readResponse(client.api["media-tools"].$get(), MediaToolsStatus);
-  if (tools.ffprobe.state !== "ready")
-    throw new ApiError(
-      503,
-      tools.ffprobe.state === "broken"
-        ? tools.ffprobe.message
-        : "Download media tools before importing a file.",
-    );
   return readResponse(
     client.api.media.$post(
-      {},
-      { init: { body: file, headers: { "x-file-name": encodeURIComponent(file.name) } } },
+      { query: transcribe ? { transcribe: "true" } : {} },
+      {
+        init: {
+          body: file,
+          signal,
+          headers: { "x-file-name": encodeURIComponent(file.name) },
+        },
+      },
     ),
     MediaItem,
   );

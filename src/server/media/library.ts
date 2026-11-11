@@ -28,6 +28,7 @@ import type { AppDatabase } from "../db/database.ts";
 import { downloadJobs } from "../downloads/downloads.schema.ts";
 import { transcriptionJobs } from "../transcriptions/transcriptions.schema.ts";
 import { clearHistory } from "../transcriptions/history.ts";
+import { queueTranscription } from "../transcriptions/queue.ts";
 import { MediaError } from "./error.ts";
 import { mediaItems } from "./media.schema.ts";
 import { probeMedia } from "./probe.ts";
@@ -229,6 +230,7 @@ export function createMediaLibrary(
     sourceUrl: string | null,
     byteSize: number,
     id: string,
+    transcribe = false,
   ) =>
     Effect.gen(function* () {
       const ffprobePath = yield* resolveProbe();
@@ -263,6 +265,7 @@ export function createMediaLibrary(
             database.transaction((transaction) => {
               transaction.insert(mediaItems).values(item).run();
               addSearchEntry(transaction, item);
+              if (transcribe) queueTranscription(transaction, item.id);
             });
             committed = true;
           },
@@ -323,6 +326,7 @@ export function createMediaLibrary(
     body: ReadableStream<Uint8Array> | Readable | null,
     originalName: string,
     declaredSize?: number,
+    transcribe = false,
   ) =>
     Effect.gen(function* () {
       if (
@@ -384,6 +388,7 @@ export function createMediaLibrary(
           null,
           byteSize,
           id,
+          transcribe,
         );
       }).pipe(
         Effect.ensuring(
