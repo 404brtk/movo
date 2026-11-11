@@ -418,6 +418,101 @@ test("blocks questions about a transcript without words", async ({ page, request
   ).toBeDisabled();
 });
 
+test("offers Try again only while the recording has words to ask about", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.wav` },
+  });
+  const media: { id: string } = await uploaded.json();
+  let job = completedJob(media.id, "Anna presents the numbers.");
+  const chatId = randomUUID();
+  const summary = summaryOf(chatId, media.id, "Who presents?");
+  const detail: ChatDetail = {
+    chat: summary,
+    messages: [userMessage("Who presents?"), failedAnswer(2, "Anthropic is busy.", "busy")],
+    hiddenBeforeSeq: 0,
+  };
+  let sends = 0;
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [summary] }));
+  await page.route(`**/api/ask/chats/${chatId}`, (route) => route.fulfill({ json: detail }));
+  await page.route(`**/api/ask/chats/${chatId}/messages`, (route) => {
+    sends += 1;
+    return route.fulfill({ status: 202, json: detail });
+  });
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: job }),
+  );
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const tryAgain = panel.getByRole("button", { name: "Try again", exact: true });
+  await page.goto(`/media/${media.id}`);
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await expect(tryAgain).toBeEnabled();
+
+  job = { ...job, transcript: { language: "en", words: [] } };
+  await page.reload();
+  await expect(panel.getByRole("alert")).toContainText("Anthropic is busy.");
+  await expect(tryAgain).toBeDisabled();
+  expect(sends).toBe(0);
+});
+
+test("returns a queued question to the field when the transcript loses its words during the answer", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.wav` },
+  });
+  const media: { id: string } = await uploaded.json();
+  let job = completedJob(media.id, "Anna presents the numbers.");
+  const chatId = randomUUID();
+  const summary = summaryOf(chatId, media.id, "Who presents?");
+  const detail: ChatDetail = {
+    chat: summary,
+    messages: [userMessage("Who presents?"), answerMessage("answering", [])],
+    hiddenBeforeSeq: 0,
+  };
+  let holdLive: (route: Route) => void;
+  const liveRequested = new Promise<Route>((resolve) => {
+    holdLive = resolve;
+  });
+  let sends = 0;
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [summary] }));
+  await page.route(`**/api/ask/chats/${chatId}`, (route) => route.fulfill({ json: detail }));
+  await page.route(`**/api/ask/chats/${chatId}/live`, (route) => holdLive(route));
+  await page.route(`**/api/ask/chats/${chatId}/messages`, (route) => {
+    sends += 1;
+    return route.fulfill({ status: 202, json: detail });
+  });
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: job }),
+  );
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const composer = panel.getByRole("textbox", { name: "Ask about this recording…" });
+  const queuedNotice = panel.getByText("“And then?” is sent when this answer ends.");
+  await page.goto(`/media/${media.id}`);
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await composer.fill("And then?");
+  await composer.press("Enter");
+  await expect(queuedNotice).toBeVisible();
+
+  const live = await liveRequested;
+  job = { ...job, transcript: { language: "en", words: [] } };
+  await live.fulfill({
+    headers: { "content-type": "text/event-stream" },
+    body: "event: end\ndata: \n\n",
+  });
+  await expect(queuedNotice).toHaveCount(0);
+  await expect(composer).toHaveValue("And then?");
+  await expect(composer).toBeDisabled();
+  expect(sends).toBe(0);
+});
+
 test("names the latest failure once, beside its fix, and keeps earlier failures in the chat", async ({
   page,
 }) => {
