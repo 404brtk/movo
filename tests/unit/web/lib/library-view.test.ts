@@ -38,8 +38,8 @@ describe("library import dates", () => {
   });
 
   it.each([
-    [at(2026, 10, 12, 0), "This week"],
-    [at(2026, 10, 11, 23), "Earlier in October"],
+    [at(2026, 10, 8, 0), "Last 7 days"],
+    [at(2026, 10, 7, 23), "Earlier in October"],
     [at(2026, 9, 29), "September"],
     [at(2025, 12, 1), "December 2025"],
   ] as const)("names the period of %s", (timestamp, expected) => {
@@ -53,7 +53,7 @@ describe("library import dates", () => {
     expect(
       groupByImportPeriod(items, now).map((group) => [group.label, group.items.length]),
     ).toEqual([
-      ["This week", 2],
+      ["Last 7 days", 2],
       ["Earlier in October", 1],
       ["September", 1],
     ]);

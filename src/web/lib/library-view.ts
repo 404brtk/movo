@@ -10,9 +10,9 @@ const startOfDay = (timestamp: number) => new Date(timestamp).setHours(0, 0, 0, 
 const sameYear = (first: number, second: number) =>
   new Date(first).getFullYear() === new Date(second).getFullYear();
 
-function startOfWeek(now: number) {
+function startOfLastSevenDays(now: number) {
   const day = new Date(startOfDay(now));
-  day.setDate(day.getDate() - ((day.getDay() + 6) % 7));
+  day.setDate(day.getDate() - 6);
   return day.getTime();
 }
 
@@ -34,7 +34,7 @@ export function formatDayAndTime(timestamp: number, separator = ", ", now = Date
 }
 
 export function importPeriod(timestamp: number, now = Date.now()) {
-  if (timestamp >= startOfWeek(now)) return "This week";
+  if (timestamp >= startOfLastSevenDays(now)) return "Last 7 days";
   if (!sameYear(timestamp, now)) return monthAndYear.format(timestamp);
   return new Date(timestamp).getMonth() === new Date(now).getMonth()
     ? `Earlier in ${monthName.format(timestamp)}`

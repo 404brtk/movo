@@ -28,6 +28,7 @@ export interface TranscriptPlayback {
   onSeek: (milliseconds: number) => void;
   mediaKind: MediaItem["kind"];
   following: boolean;
+  jumps: number;
   onFollowingChange: (following: boolean) => void;
 }
 
@@ -204,6 +205,7 @@ export function TranscriptReader({
     passage: currentPassage?.firstWord,
     openingPassage: openingPassage?.firstWord,
     following: playback?.following ?? false,
+    jumps: playback?.jumps ?? 0,
     suspended,
     onFollowingChange: playback?.onFollowingChange,
   });
