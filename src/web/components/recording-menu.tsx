@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight01Icon,
-  Cancel01Icon,
   Delete02Icon,
   Download04Icon,
   Edit02Icon,
+  FileRemoveIcon,
   MoreHorizontalIcon,
   RefreshIcon,
 } from "@hugeicons/core-free-icons";
@@ -177,7 +177,7 @@ export function RecordingMenu({
           <DropdownMenuSeparator />
           {canReplaceTranscript ? (
             <DropdownMenuItem onClick={openDialog("remove-file")}>
-              <MenuIcon icon={Cancel01Icon} />
+              <MenuIcon icon={FileRemoveIcon} />
               Remove saved copy…
             </DropdownMenuItem>
           ) : null}
@@ -203,7 +203,7 @@ export function RecordingMenu({
         open={dialog === "remove-file"}
         onOpenChange={closeDialog}
         returnFocus={removeFile.data?.cleanupError ? false : trigger}
-        icon={Cancel01Icon}
+        icon={FileRemoveIcon}
         title={`Remove the saved copy of “${item.title}”?`}
         description="This permanently deletes Movo’s saved copy to free up space. The transcript and its exports stay available, but playback and transcribing again will not. Your original imported file stays where it is."
         keep="Keep saved copy"
