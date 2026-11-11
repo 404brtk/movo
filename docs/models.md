@@ -2,9 +2,9 @@
 
 Model weights are optional. The library, imports and YouTube/X downloads work without them. This feature manages model availability; transcription jobs and transcript presentation are separate product work.
 
-## Supported model
+## Supported models
 
-The initial curated entry is **Parakeet Ultra Q8_0** (`parakeet-ultra-q8`).
+The transcription model is **Parakeet Ultra Q8_0** (`parakeet-ultra-q8`).
 
 - Upstream model: [Moondream Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra), post-trained from NVIDIA Parakeet v3.
 - Converted weights: [Handy GGUF repository](https://huggingface.co/handy-computer/parakeet-ultra-gguf/tree/39eeb55181f0d354fd934f06e92fd8d5037fed8e).
@@ -13,7 +13,16 @@ The initial curated entry is **Parakeet Ultra Q8_0** (`parakeet-ultra-q8`).
 - SHA-256: `007a59761e9258779f189df396b50d12b83bb5b79e66df4b955c230d2f2a0a59`.
 - License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); retain attribution to the upstream model and conversion publishers.
 
-The catalog is shipped with Movo. Only this pinned artifact is recognized; arbitrary cached LLMs, other formats and other revisions are not imported automatically.
+The optional speaker model is **Sortformer Speakers** (`sortformer-4spk-q8`). When it is installed, new transcripts label who speaks when, for up to four speakers; without it, transcription works as before.
+
+- Upstream model: [NVIDIA Streaming Sortformer Diarizer 4spk v2.1](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1), trained mainly on English speech, so speakers in other languages may be separated less reliably.
+- Converted weights: [Handy GGUF repository](https://huggingface.co/handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf/tree/60ebab3ef7cae9869be0abcde13360347e96ba03).
+- Revision: `60ebab3ef7cae9869be0abcde13360347e96ba03`.
+- File: `diar_streaming_sortformer_4spk-v2.1-Q8_0.gguf`, exactly `139310336` bytes.
+- SHA-256: `a5dacdc650790266c7a362e54e6bf51952015487edaa606c4e11632bc32442a9`.
+- License: [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/).
+
+The catalog is shipped with Movo. Each model has a role, `transcription` or `speakers`, and is downloaded with its own **Download model** action. Only these pinned artifacts are recognized; arbitrary cached LLMs, other formats and other revisions are not imported automatically. GGUF verification also checks each file's declared architecture (`parakeet` or `sortformer`).
 
 ## Shared Hugging Face cache
 

@@ -64,6 +64,15 @@ const toolLabels: Record<string, { now: string; done: string }> = {
   list_transcript_changes: { now: "Reading the change history", done: "Read the change history" },
   edit_transcript: { now: "Preparing a change", done: "Prepared a change" },
   replace_in_transcript: { now: "Preparing a change", done: "Prepared a change" },
+  assign_speaker: { now: "Preparing a change", done: "Prepared a change" },
+  merge_speakers: { now: "Preparing a change", done: "Prepared a change" },
+  rename_speaker: { now: "Preparing a change", done: "Prepared a change" },
+};
+
+const speakerReceipts: Record<string, string> = {
+  assign_speaker: "Changed the speaker",
+  merge_speakers: "Merged speakers",
+  rename_speaker: "Named a speaker",
 };
 
 export function toolLabel(
@@ -109,7 +118,7 @@ export function editReceipt(part: ToolPart) {
     if (count === 0) return "Nothing matched, so nothing changed";
     return `Replaced ${count} ${count === 1 ? "place" : "places"}`;
   }
-  return "Changed a passage";
+  return speakerReceipts[part.toolName] ?? "Changed a passage";
 }
 
 export const failureActions = {
@@ -122,13 +131,29 @@ export const failureActions = {
 } as const satisfies Record<FailureKind, string>;
 
 export const isEditTool = (part: ToolPart) =>
-  part.toolName === "edit_transcript" || part.toolName === "replace_in_transcript";
+  part.toolName === "edit_transcript" ||
+  part.toolName === "replace_in_transcript" ||
+  part.toolName in speakerReceipts;
+
+const speakerField = (input: unknown, key: string) => `Speaker ${String(field(input, key))}`;
 
 export function proposedChange(part: ToolPart) {
   if (part.toolName === "replace_in_transcript")
     return {
       before: textField(part.input, "find"),
       after: textField(part.input, "replacement"),
+    };
+  if (part.toolName === "assign_speaker")
+    return { before: null, after: speakerField(part.input, "speaker") };
+  if (part.toolName === "merge_speakers")
+    return {
+      before: speakerField(part.input, "speaker"),
+      after: speakerField(part.input, "into"),
+    };
+  if (part.toolName === "rename_speaker")
+    return {
+      before: speakerField(part.input, "speaker"),
+      after: textField(part.input, "name").trim(),
     };
   return { before: null, after: textField(part.input, "text") };
 }

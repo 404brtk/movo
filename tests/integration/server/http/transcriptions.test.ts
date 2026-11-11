@@ -455,3 +455,115 @@ it("imports with transcription only after its prerequisites pass and queues both
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 });
+
+it("assigns, merges and names speakers over HTTP and labels the exports", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "movo-transcript-speakers-http-"));
+  try {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const database = yield* openDatabase(join(directory, "app.sqlite"));
+          const config = { dataDirectory: directory };
+          const tools = createMediaTools(config);
+          const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+          const audio = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
+          const media = yield* library.import(
+            new Response(audio).body,
+            "recording.wav",
+            audio.length,
+          );
+          const transcriptions = createTranscriptions(database, config, tools, {
+            check: () => Effect.void,
+            transcribe: () =>
+              Effect.succeed({
+                language: null,
+                words: [
+                  ...timedWords(0, 900, "How are you?").map((word) => ({ ...word, speaker: 1 })),
+                  ...timedWords(1000, 1900, "Fine, thanks.").map((word) => ({
+                    ...word,
+                    speaker: 2,
+                  })),
+                ],
+              }),
+          });
+          const app = createApp(database, config, undefined, { tools, transcriptions });
+          const base = `http://127.0.0.1:4310/api/media/${media.id}/transcription`;
+          const post = (action: string, body: unknown) =>
+            app.request(`${base}/${action}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+          const text = async () => await (await app.request(`${base}/export/txt`)).text();
+          yield* transcriptions.enqueue(media.id);
+          const worker = yield* transcriptions.start();
+          yield* Effect.promise(async () => {
+            await expect
+              .poll(async () => (await Effect.runPromise(transcriptions.get(media.id)))?.status)
+              .toBe("completed");
+            expect(await text()).toBe("Speaker 1: How are you?\n\nSpeaker 2: Fine, thanks.");
+
+            const renamed = await post("speakers/rename", { speaker: 1, name: "Ann" });
+            expect(renamed.status).toBe(200);
+            expect(Schema.decodeUnknownSync(TranscriptionJob)(await renamed.json()).revision).toBe(
+              1,
+            );
+            expect(await text()).toBe("Ann: How are you?\n\nSpeaker 2: Fine, thanks.");
+            expect(
+              (await post("speakers/rename", { speaker: 1, name: "x".repeat(81) })).status,
+            ).toBe(400);
+            expect((await post("speakers/rename", { speaker: 0, name: "Zero" })).status).toBe(400);
+
+            const assigned = await post("speakers/assign", {
+              revision: 1,
+              firstWord: 3,
+              wordCount: 1,
+              speaker: 3,
+            });
+            expect(assigned.status).toBe(200);
+            expect(await text()).toBe(
+              "Ann: How are you?\n\nSpeaker 3: Fine,\n\nSpeaker 2: thanks.",
+            );
+            expect(
+              (
+                await post("speakers/assign", {
+                  revision: 1,
+                  firstWord: 0,
+                  wordCount: 1,
+                  speaker: 2,
+                })
+              ).status,
+            ).toBe(409);
+            expect(
+              (
+                await post("speakers/assign", {
+                  revision: 2,
+                  firstWord: 0,
+                  wordCount: 0,
+                  speaker: 2,
+                })
+              ).status,
+            ).toBe(400);
+
+            const merged = await post("speakers/merge", { revision: 2, speaker: 3, into: 2 });
+            expect(merged.status).toBe(200);
+            expect(await text()).toBe("Ann: How are you?\n\nSpeaker 2: Fine, thanks.");
+            expect(
+              (await post("speakers/merge", { revision: 3, speaker: 2, into: 2 })).status,
+            ).toBe(400);
+            expect(await (await app.request(`${base}/changes`)).json()).toMatchObject({
+              total: 2,
+              changes: [
+                { revision: 3, kind: "speaker" },
+                { revision: 2, kind: "speaker" },
+              ],
+            });
+          });
+          yield* Fiber.interrupt(worker);
+        }),
+      ),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});

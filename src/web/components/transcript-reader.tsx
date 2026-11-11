@@ -8,11 +8,13 @@ import {
   transcriptPassages,
   type TranscriptPassage,
 } from "../../shared/transcript-passages.ts";
+import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { formatDuration } from "../lib/format.ts";
 import { marksByPassage, type PassageMark, type TranscriptMatches } from "../lib/passage-marks.ts";
 import { pinnedHeight, useTranscriptFollow } from "../lib/transcript-follow.ts";
 import { cn } from "../lib/utils.ts";
 import { PassageEditor } from "./passage-editor.tsx";
+import { PassageSpeakerMenu, SpeakerHeading, type SpeakerEditing } from "./speaker-controls.tsx";
 import { Button } from "./ui/button.tsx";
 
 const revealElement = (element: HTMLElement | null) => element?.scrollIntoView({ block: "center" });
@@ -22,6 +24,8 @@ const revealIfHidden = (element: HTMLElement | null) => {
     element?.scrollIntoView({ block: "center" });
 };
 const focusElement = (element: HTMLElement | null) => element?.focus();
+const revealOnHover =
+  "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/passage:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:data-popup-open:opacity-100";
 
 export interface TranscriptPlayback {
   positionMs: number;
@@ -84,6 +88,9 @@ const Passage = memo(function Passage({
   editing,
   edited,
   onEdited,
+  speakerHeading,
+  speakerEditing,
+  speakerSpacing,
 }: {
   passage: TranscriptPassage;
   currentWord: number;
@@ -95,6 +102,9 @@ const Passage = memo(function Passage({
   editing: TranscriptEditing | undefined;
   edited: EditedPassage | undefined;
   onEdited: (edited: EditedPassage) => void;
+  speakerHeading: string | null;
+  speakerEditing: SpeakerEditing | undefined;
+  speakerSpacing: "turn" | "continued" | undefined;
 }) {
   const time = formatDuration(passage.startMs / 1000);
   const current = currentWord >= 0;
@@ -119,8 +129,13 @@ const Passage = memo(function Passage({
         editing && "-mx-3.5 rounded-xl px-3.5 transition-colors duration-150",
         editing && !editorOpen && "hover:bg-subtle has-focus-visible:bg-subtle",
         editorOpen && "my-1 rounded-[14px] bg-background pb-3.5 shadow-editor",
+        speakerSpacing === "turn" && "mt-4",
+        speakerSpacing === "continued" && !editorOpen && "py-2",
       )}
     >
+      {speakerHeading !== null && passage.speaker !== undefined ? (
+        <SpeakerHeading speaker={passage.speaker} editing={speakerEditing} label={speakerHeading} />
+      ) : null}
       {onSeek && !editorOpen ? (
         <button
           type="button"
@@ -148,19 +163,35 @@ const Passage = memo(function Passage({
           className={cn(
             "text-[17px]/7 text-pretty wrap-anywhere transition-colors duration-200",
             dimmed && !current && "text-muted-foreground",
-            editing && "pr-8 group-hover/passage:text-foreground",
+            editing && "group-hover/passage:text-foreground",
+            editing && (speakerEditing ? "pr-16" : "pr-8"),
           )}
         >
           {wordMarks ? <MarkedWords words={passage.words} marks={wordMarks} /> : passage.text}
         </p>
       )}
+      {speakerEditing && !edited?.open ? (
+        <PassageSpeakerMenu
+          editing={speakerEditing}
+          passage={passage}
+          className={cn(
+            "absolute right-10",
+            speakerHeading === null ? "top-2" : "top-9",
+            revealOnHover,
+          )}
+        />
+      ) : null}
       {editing && !edited?.open ? (
         <Button
           ref={edited ? focusElement : undefined}
           variant="ghost"
           size="icon-sm"
           aria-label={`Edit passage at ${time}`}
-          className="absolute top-2 right-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/passage:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+          className={cn(
+            "absolute right-2",
+            speakerHeading === null ? "top-2" : "top-9",
+            revealOnHover,
+          )}
           onClick={() => onEdited({ firstWord: passage.firstWord, open: true })}
         >
           <HugeiconsIcon icon={Edit02Icon} aria-hidden="true" />
@@ -192,6 +223,14 @@ export function TranscriptReader({
   const [openingMs, setOpeningMs] = useState(revealMs);
   if (openingMs !== undefined && openingMs !== revealMs) setOpeningMs(undefined);
   const passages = useMemo(() => transcriptPassages(transcript.words), [transcript.words]);
+  const speakers = useMemo(() => transcriptSpeakers(transcript), [transcript]);
+  const speakerEditing = useMemo(
+    () =>
+      editing && speakers.ids.length > 0
+        ? { mediaId: editing.mediaId, revision: editing.revision, speakers }
+        : undefined,
+    [editing, speakers],
+  );
   const marks = useMemo(() => marksByPassage(passages, matches), [passages, matches]);
   const currentWord = playback ? currentWordIndex(transcript.words, playback.positionMs) : -1;
   const revealedWord = revealMs === undefined ? -1 : currentWordIndex(transcript.words, revealMs);
@@ -212,7 +251,7 @@ export function TranscriptReader({
   return (
     <>
       <ol ref={list} aria-label="Timestamped passages" className="mt-2">
-        {passages.map((passage) => (
+        {passages.map((passage, index) => (
           <Passage
             key={passage.firstWord}
             passage={passage}
@@ -225,6 +264,23 @@ export function TranscriptReader({
             editing={editing}
             edited={edited?.firstWord === passage.firstWord ? edited : undefined}
             onEdited={setEdited}
+            speakerHeading={
+              speakers.labeled &&
+              passage.speaker !== undefined &&
+              passages[index - 1]?.speaker !== passage.speaker
+                ? speakers.label(passage.speaker)
+                : null
+            }
+            speakerEditing={speakerEditing}
+            speakerSpacing={
+              !speakers.labeled
+                ? undefined
+                : passages[index - 1]?.speaker === passage.speaker
+                  ? "continued"
+                  : index > 0
+                    ? "turn"
+                    : undefined
+            }
           />
         ))}
       </ol>

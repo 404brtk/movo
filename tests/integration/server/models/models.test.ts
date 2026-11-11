@@ -21,7 +21,11 @@ import { activeModelPhases, ModelStatus } from "../../../../src/shared/contracts
 import { openDatabase } from "../../../../src/server/db/database.ts";
 import { createApp } from "../../../../src/server/http/app.ts";
 import { huggingFaceCacheDirectory, modelCachePath } from "../../../../src/server/models/cache.ts";
-import { transcriptionModel, type ModelDefinition } from "../../../../src/server/models/catalog.ts";
+import {
+  speakerModel,
+  transcriptionModel,
+  type ModelDefinition,
+} from "../../../../src/server/models/catalog.ts";
 import { createModels, type Models } from "../../../../src/server/models/models.ts";
 import { validateModel } from "../../../../src/server/models/validation.ts";
 
@@ -46,6 +50,49 @@ it("resolves only verified cached weights without starting a download", async ()
     await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
       /shutting down/u,
     );
+  });
+});
+
+it("keeps the optional speaker model separate and treats it as absent until verified", async () => {
+  await withModels(async ({ cacheDirectory, definition, requests }) => {
+    const speakerWeights = ggufWeights("sortformer");
+    const speakers: ModelDefinition = {
+      ...speakerModel,
+      url: definition.url,
+      bytes: speakerWeights.length,
+      sha256: digest(speakerWeights),
+    };
+    const models = createModels({ cacheDirectory, definitions: [definition, speakers] });
+    try {
+      expect(
+        (await Effect.runPromise(models.list())).map(({ id, role, state }) => ({
+          id,
+          role,
+          state,
+        })),
+      ).toEqual([
+        { id: transcriptionModel.id, role: "transcription", state: "missing" },
+        { id: speakerModel.id, role: "speakers", state: "missing" },
+      ]);
+      expect(await Effect.runPromise(models.installed(speakerModel.id))).toBeNull();
+      const speakerPath = modelCachePath(cacheDirectory, speakers);
+      await mkdir(dirname(speakerPath), { recursive: true });
+      await writeFile(speakerPath, Buffer.alloc(speakerWeights.length, 1));
+      await expect(Effect.runPromise(models.installed(speakerModel.id))).rejects.toThrow(
+        /integrity/u,
+      );
+      await writeFile(speakerPath, speakerWeights);
+      expect(await Effect.runPromise(models.installed(speakerModel.id))).toBe(speakerPath);
+      await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
+        /Download Parakeet Ultra/u,
+      );
+      await expect(Effect.runPromise(models.installed("unknown"))).rejects.toThrow(
+        /Model not found/u,
+      );
+      expect(requests()).toBe(0);
+    } finally {
+      await Effect.runPromise(models.close());
+    }
   });
 });
 
@@ -112,7 +159,7 @@ async function withModels(
     sha256: digest(weights),
   };
   const create = (entry = definition) => {
-    const manager = createModels({ cacheDirectory, definition: entry });
+    const manager = createModels({ cacheDirectory, definitions: [entry] });
     instances.push(manager);
     return manager;
   };
@@ -260,7 +307,7 @@ describe("shared transcription model cache", () => {
         import { Effect } from "effect";
         import { createModels } from ${JSON.stringify(new URL("../../../../src/server/models/models.ts", import.meta.url).href)};
         const definition = JSON.parse(process.argv[1]);
-        const models = createModels({ definition, cacheDirectory: process.argv[2] });
+        const models = createModels({ definitions: [definition], cacheDirectory: process.argv[2] });
         try {
           await Effect.runPromise(models.install(definition.id));
           let entry;
@@ -346,7 +393,9 @@ describe("shared transcription model cache", () => {
         respond((_request, response) => response.end(content));
         const models = create({ ...definition, bytes: content.length, sha256: digest(content) });
         await Effect.runPromise(models.install(definition.id));
-        expect((await finished(models)).installation.error).toContain("supported Parakeet GGUF");
+        expect((await finished(models)).installation.error).toContain(
+          "supported Parakeet Ultra GGUF",
+        );
         expect(await readdir(dirname(path))).toEqual([]);
       });
     },

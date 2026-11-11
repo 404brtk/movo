@@ -3,8 +3,11 @@ import type { AiConnection, ChatMessage, ChatPart } from "../../../../src/shared
 import {
   connectionLabel,
   editReceipt,
+  editRevision,
+  isEditTool,
   mediaLink,
   modelChanges,
+  proposedChange,
   revealHiddenCharacters,
   stepReceipt,
   toolLabel,
@@ -137,5 +140,24 @@ describe("answer receipts", () => {
       "Nothing matched, so nothing changed",
     );
     expect(editReceipt(tool("edit_transcript", {}, { state: "denied" }))).toBe("Not changed");
+  });
+
+  it("treats speaker tools as approved changes and previews who they affect", () => {
+    const assign = tool("assign_speaker", { revision: 4, speaker: 3 });
+    const merge = tool("merge_speakers", { revision: 4, speaker: 2, into: 1 });
+    const rename = tool("rename_speaker", { speaker: 2, name: " Ann " });
+    expect([assign, merge, rename].every(isEditTool)).toBe(true);
+    expect([assign, merge, rename].map(editReceipt)).toEqual([
+      "Changed the speaker",
+      "Merged speakers",
+      "Named a speaker",
+    ]);
+    expect([assign, merge, rename].map(proposedChange)).toEqual([
+      { before: null, after: "Speaker 3" },
+      { before: "Speaker 2", after: "Speaker 1" },
+      { before: "Speaker 2", after: "Ann" },
+    ]);
+    expect([assign, merge, rename].map(editRevision)).toEqual([4, 4, null]);
+    expect(stepReceipt([assign, merge, rename], false)).toBeNull();
   });
 });

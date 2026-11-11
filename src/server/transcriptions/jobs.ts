@@ -7,6 +7,9 @@ import {
   Transcript,
   TranscriptionJob,
   type PassageEdit,
+  type SpeakerAssignment,
+  type SpeakerMerge,
+  type SpeakerRename,
   type TranscriptChangeSource,
   type TranscriptionDevice,
   type TranscriptionPhase,
@@ -15,11 +18,14 @@ import {
 } from "../../shared/contracts/transcriptions.ts";
 import {
   applyPatch,
+  assignSpeaker,
   diffWords,
   editWords,
   invertPatch,
+  mergeSpeaker,
   replaceWords,
 } from "../../shared/transcript-edits.ts";
+import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { createMediaLibrary } from "../media/library.ts";
@@ -243,6 +249,22 @@ export function createTranscriptions(
       yield* library.get(id);
       return yield* read(id);
     });
+  const editable = (id: string) =>
+    Effect.gen(function* () {
+      const job = yield* get(id);
+      if (!job?.transcript)
+        return yield* Effect.fail(
+          new MediaError("invalid", "Complete the transcription before editing it."),
+        );
+      if (["queued", "running"].includes(job.status))
+        return yield* Effect.fail(
+          new MediaError(
+            "conflict",
+            "Cancel the new transcription before editing. Its result would replace your changes.",
+          ),
+        );
+      return { ...job, transcript: job.transcript };
+    });
   const change = (
     id: string,
     revision: number,
@@ -258,18 +280,7 @@ export function createTranscriptions(
     >,
   ) =>
     Effect.gen(function* () {
-      const job = yield* get(id);
-      if (!job?.transcript)
-        return yield* Effect.fail(
-          new MediaError("invalid", "Complete the transcription before editing it."),
-        );
-      if (["queued", "running"].includes(job.status))
-        return yield* Effect.fail(
-          new MediaError(
-            "conflict",
-            "Cancel the new transcription before editing. Its result would replace your changes.",
-          ),
-        );
+      const job = yield* editable(id);
       if (job.revision !== revision)
         return yield* Effect.fail(
           new MediaError(
@@ -366,6 +377,64 @@ export function createTranscriptions(
           };
         }),
       ),
+    assignSpeaker: (id: string, request: SpeakerAssignment, source: TranscriptChangeSource) =>
+      change(id, request.revision, source, (transcript) =>
+        request.firstWord + request.wordCount > transcript.words.length
+          ? Effect.fail(new MediaError("invalid", "Choose words inside the transcript."))
+          : request.speaker > transcriptSpeakers(transcript).nextId
+            ? Effect.fail(
+                new MediaError("invalid", "Choose a speaker from the transcript or a new speaker."),
+              )
+            : Effect.succeed({
+                kind: "speaker",
+                restoredRevision: null,
+                patch: assignSpeaker(
+                  transcript.words,
+                  request.firstWord,
+                  request.wordCount,
+                  request.speaker,
+                ),
+              }),
+      ),
+    mergeSpeakers: (id: string, request: SpeakerMerge, source: TranscriptChangeSource) =>
+      change(id, request.revision, source, (transcript) =>
+        request.speaker === request.into
+          ? Effect.fail(new MediaError("invalid", "Choose a different speaker to merge into."))
+          : request.into >= transcriptSpeakers(transcript).nextId
+            ? Effect.fail(new MediaError("invalid", "Choose a speaker from the transcript."))
+            : Effect.succeed({
+                kind: "speaker",
+                restoredRevision: null,
+                patch: mergeSpeaker(transcript.words, request.speaker, request.into),
+              }),
+      ),
+    renameSpeaker: (id: string, request: SpeakerRename) =>
+      Effect.gen(function* () {
+        const { transcript } = yield* editable(id);
+        const speakers = transcriptSpeakers(transcript);
+        if (!speakers.ids.includes(request.speaker) && speakers.nameOf(request.speaker) === null)
+          return yield* Effect.fail(
+            new MediaError("invalid", "Choose a speaker from the transcript."),
+          );
+        const name = request.name.trim();
+        const named = [
+          ...(transcript.speakers ?? []).filter((speaker) => speaker.id !== request.speaker),
+          ...(name ? [{ id: request.speaker, name }] : []),
+        ].toSorted((first, second) => first.id - second.id);
+        yield* storage(() => {
+          const renamed = Schema.decodeUnknownSync(Transcript)({
+            language: transcript.language,
+            words: transcript.words,
+            ...(named.length > 0 ? { speakers: named } : {}),
+          });
+          database
+            .update(transcriptionJobs)
+            .set({ transcript: renamed, updatedAt: Date.now() })
+            .where(eq(transcriptionJobs.mediaId, id))
+            .run();
+        });
+        return yield* read(id);
+      }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
     removeMediaFile: (id: string) =>
       library.removeFile(id).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
     enqueue: (id: string) =>

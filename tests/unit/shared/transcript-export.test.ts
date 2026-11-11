@@ -78,3 +78,41 @@ describe("transcript export", () => {
     expect(exportTranscript(empty, "vtt")).toBe("WEBVTT\n\n");
   });
 });
+
+describe("speaker labels", () => {
+  const conversation: Transcript = {
+    language: "en",
+    words: [
+      { startMs: 0, endMs: 500, text: "Hello.", speaker: 1 },
+      { startMs: 600, endMs: 1000, text: "Again.", speaker: 1 },
+      { startMs: 1200, endMs: 1500, text: "<Hi>.", speaker: 2 },
+    ],
+    speakers: [{ id: 2, name: "Ann & Co" }],
+  };
+
+  it("names each turn once in plain text and separates turns with a blank line", () => {
+    expect(transcriptText(conversation)).toBe("Speaker 1: Hello.\nAgain.\n\nAnn & Co: <Hi>.");
+  });
+
+  it("names a turn in its first SRT cue and every WebVTT cue as an escaped voice", () => {
+    expect(exportTranscript(conversation, "srt")).toBe(
+      "1\n00:00:00,000 --> 00:00:00,500\nSpeaker 1: Hello.\n\n" +
+        "2\n00:00:00,600 --> 00:00:01,000\nAgain.\n\n" +
+        "3\n00:00:01,200 --> 00:00:01,500\nAnn &amp; Co: &lt;Hi&gt;.\n\n",
+    );
+    expect(exportTranscript(conversation, "vtt")).toBe(
+      "WEBVTT\n\n1\n00:00:00.000 --> 00:00:00.500\n<v Speaker 1>Hello.\n\n" +
+        "2\n00:00:00.600 --> 00:00:01.000\n<v Speaker 1>Again.\n\n" +
+        "3\n00:00:01.200 --> 00:00:01.500\n<v Ann &amp; Co>&lt;Hi&gt;.\n\n",
+    );
+  });
+
+  it("leaves a single unnamed speaker unlabeled but labels a named one", () => {
+    const alone: Transcript = {
+      language: null,
+      words: [{ startMs: 0, endMs: 500, text: "Solo.", speaker: 1 }],
+    };
+    expect(transcriptText(alone)).toBe("Solo.");
+    expect(transcriptText({ ...alone, speakers: [{ id: 1, name: "Ann" }] })).toBe("Ann: Solo.");
+  });
+});

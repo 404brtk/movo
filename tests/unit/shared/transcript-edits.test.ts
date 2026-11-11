@@ -8,10 +8,12 @@ import {
 } from "../../../src/shared/contracts/transcriptions.ts";
 import {
   applyPatch,
+  assignSpeaker,
   diffWords,
   editWords,
   findWords,
   invertPatch,
+  mergeSpeaker,
   replaceWords,
 } from "../../../src/shared/transcript-edits.ts";
 import { timedWords } from "../../helpers/timed-words.ts";
@@ -204,5 +206,61 @@ describe("net differences", () => {
     expect(diffWords(edited, words)).toEqual([
       { firstWord: 6, removed: [edited[6]], inserted: [words[6]] },
     ]);
+  });
+});
+
+const spoken = (speaker: number, words: TranscriptWord[]) =>
+  words.map((word) => ({ ...word, speaker }));
+const speakersOf = (value: readonly TranscriptWord[]) => value.map((word) => word.speaker);
+
+describe("speakers", () => {
+  const words = [
+    ...spoken(1, timedWords(0, 1000, "Good morning.")),
+    ...spoken(2, timedWords(1000, 2000, "Hi there, welcome.")),
+    ...spoken(1, timedWords(2000, 3000, "Thanks.")),
+  ];
+
+  it("keeps the speaker of edited words and gives new words the speaker of their passage", () => {
+    expect(
+      speakersOf(checkedRoundTrip(words, editWords(words, 2, 3, "Hello and welcome."))),
+    ).toEqual([1, 1, 2, 2, 2, 1]);
+    expect(
+      speakersOf(checkedRoundTrip(words, editWords(words, 2, 3, "Hi there friend, welcome."))),
+    ).toEqual([1, 1, 2, 2, 2, 2, 1]);
+    expect(speakersOf(checkedRoundTrip(words, replaceWords(words, "thanks", "Thank you")))).toEqual(
+      [1, 1, 2, 2, 2, 1, 1],
+    );
+  });
+
+  it("gives inserted words the speaker of the preceding word", () => {
+    const inserted = applyPatch(words, editWords(words, 5, 0, "Bye."));
+    expect(inserted[5]).toMatchObject({ text: "Bye.", speaker: 2 });
+  });
+
+  it("assigns a range only where its speaker differs and can be undone", () => {
+    const patch = assignSpeaker(words, 1, 3, 2);
+    expect(patch).toEqual([
+      { firstWord: 1, removed: [words[1]], inserted: [{ ...words[1], speaker: 2 }] },
+    ]);
+    expect(speakersOf(checkedRoundTrip(words, patch))).toEqual([1, 2, 2, 2, 2, 1]);
+    expect(assignSpeaker(words, 2, 3, 2)).toEqual([]);
+    expect(speakersOf(checkedRoundTrip(words, assignSpeaker(words, 4, 99, 3)))).toEqual([
+      1, 1, 2, 2, 3, 3,
+    ]);
+  });
+
+  it("merges every word of a speaker into another in separate runs", () => {
+    const patch = mergeSpeaker(words, 1, 2);
+    expect(patch.map(({ firstWord, removed }) => [firstWord, removed.length])).toEqual([
+      [0, 2],
+      [5, 1],
+    ]);
+    expect(speakersOf(checkedRoundTrip(words, patch))).toEqual([2, 2, 2, 2, 2, 2]);
+  });
+
+  it("treats a changed speaker as a difference that a restore reverts", () => {
+    const changed = applyPatch(words, assignSpeaker(words, 0, 2, 2));
+    expect(diffWords(words, changed)).toEqual(assignSpeaker(words, 0, 2, 2));
+    expect(applyPatch(changed, diffWords(changed, words))).toEqual(words);
   });
 });

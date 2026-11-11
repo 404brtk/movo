@@ -2,10 +2,12 @@ import { Effect, Layer } from "effect";
 import { McpProtocol, McpServer } from "effect/ai";
 import { HttpRouter, HttpServer } from "effect/http";
 import type {
+  Transcript,
   TranscriptChangeSource,
   TranscriptionJob,
 } from "../../shared/contracts/transcriptions.ts";
 import { transcriptPassages } from "../../shared/transcript-passages.ts";
+import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { requestDownload, type Downloads } from "../downloads/jobs.ts";
 import { MediaError } from "../media/error.ts";
 import type { createMediaLibrary } from "../media/library.ts";
@@ -20,12 +22,18 @@ export interface McpServices {
   port: number;
 }
 
+const speakerList = (transcript: Transcript) => {
+  const speakers = transcriptSpeakers(transcript);
+  return speakers.ids.map((id) => ({ id, name: speakers.label(id) }));
+};
+
 const summarize = (job: TranscriptionJob | null) =>
   job && {
     ...job,
     transcript: job.transcript && {
       language: job.transcript.language,
       passageCount: transcriptPassages(job.transcript.words).length,
+      speakers: speakerList(job.transcript),
     },
   };
 
@@ -63,6 +71,7 @@ export const toolHandlers = (
             ? Effect.succeed({
                 language: job.transcript.language,
                 revision: job.revision,
+                speakers: speakerList(job.transcript),
                 ...transcriptPage(job.transcript.words, fromMs, maxPassages),
               })
             : Effect.fail(
@@ -98,6 +107,12 @@ export const toolHandlers = (
       reported(transcriptions.edit(mediaId, request, source).pipe(Effect.map(summarize))),
     replace_in_transcript: ({ mediaId, ...request }) =>
       reported(transcriptions.replace(mediaId, request, source).pipe(Effect.map(summarize))),
+    assign_speaker: ({ mediaId, ...request }) =>
+      reported(transcriptions.assignSpeaker(mediaId, request, source).pipe(Effect.map(summarize))),
+    merge_speakers: ({ mediaId, ...request }) =>
+      reported(transcriptions.mergeSpeakers(mediaId, request, source).pipe(Effect.map(summarize))),
+    rename_speaker: ({ mediaId, ...request }) =>
+      reported(transcriptions.renameSpeaker(mediaId, request).pipe(Effect.map(summarize))),
     list_transcript_changes: ({ mediaId, limit = defaultListLimit, offset = 0 }) =>
       reported(transcriptions.history(mediaId, { limit, offset })),
     restore_transcript: ({ mediaId, ...request }) =>

@@ -15,6 +15,7 @@ export const transcriptionPhases = [
   "preparing",
   "loading",
   "transcribing",
+  "speakers",
   "finished",
 ] as const;
 export type TranscriptionPhase = (typeof transcriptionPhases)[number];
@@ -22,10 +23,26 @@ const Count = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(
 const Milliseconds = Count;
 export const maxWordCharacters = 1024;
 export const maxTranscriptWords = 1000000;
+export const maxSpeakers = 32;
+export const maxSpeakerNameCharacters = 80;
+export const SpeakerId = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isBetween({ minimum: 1, maximum: maxSpeakers }),
+);
+export const SpeakerName = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(maxSpeakerNameCharacters),
+  Schema.makeFilter(
+    (name) => name === name.trim() || "A speaker name cannot start or end with spaces.",
+  ),
+);
+export const TranscriptSpeaker = Schema.Struct({ id: SpeakerId, name: SpeakerName });
+export type TranscriptSpeaker = typeof TranscriptSpeaker.Type;
 export const TranscriptWord = Schema.Struct({
   startMs: Milliseconds,
   endMs: Milliseconds,
   text: Schema.String.check(Schema.isMaxLength(maxWordCharacters), Schema.isPattern(/^\S+$/u)),
+  speaker: Schema.optionalKey(SpeakerId),
 }).check(
   Schema.makeFilter((word) => word.endMs >= word.startMs || "A word ends before it starts."),
 );
@@ -41,12 +58,18 @@ export type TranscriptPatch = typeof TranscriptPatch.Type;
 export const Transcript = Schema.Struct({
   language: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))),
   words: Schema.Array(TranscriptWord).check(Schema.isMaxLength(maxTranscriptWords)),
+  speakers: Schema.optionalKey(Schema.Array(TranscriptSpeaker)),
 }).check(
   Schema.makeFilter(
     (transcript) =>
       transcript.words.every(
         (word, index) => index === 0 || word.startMs >= (transcript.words[index - 1]?.startMs ?? 0),
       ) || "Words are not in time order.",
+  ),
+  Schema.makeFilter(
+    ({ speakers = [] }) =>
+      new Set(speakers.map((speaker) => speaker.id)).size === speakers.length ||
+      "Each speaker can have only one name.",
   ),
 );
 export type Transcript = typeof Transcript.Type;
@@ -111,7 +134,31 @@ export const TranscriptReplace = Schema.Struct({
 export type TranscriptReplace = typeof TranscriptReplace.Type;
 export const TranscriptRestore = Schema.Struct({ revision: Revision, target: Revision });
 export type TranscriptRestore = typeof TranscriptRestore.Type;
-export const transcriptChangeKinds = ["edit", "replace", "restore"] as const;
+export const SpeakerAssignment = Schema.Struct({
+  revision: Revision,
+  firstWord: Count,
+  wordCount: Count.check(Schema.isGreaterThan(0)),
+  speaker: SpeakerId,
+});
+export type SpeakerAssignment = typeof SpeakerAssignment.Type;
+export const SpeakerMerge = Schema.Struct({
+  revision: Revision,
+  speaker: SpeakerId,
+  into: SpeakerId,
+});
+export type SpeakerMerge = typeof SpeakerMerge.Type;
+export const SpeakerRename = Schema.Struct({
+  speaker: SpeakerId,
+  name: Schema.String.check(
+    Schema.makeFilter(
+      (name) =>
+        name.trim().length <= maxSpeakerNameCharacters ||
+        `A speaker name can have at most ${maxSpeakerNameCharacters} characters.`,
+    ),
+  ),
+});
+export type SpeakerRename = typeof SpeakerRename.Type;
+export const transcriptChangeKinds = ["edit", "replace", "speaker", "restore"] as const;
 export const transcriptChangeSources = ["app", "mcp", "chat"] as const;
 export type TranscriptChangeSource = (typeof transcriptChangeSources)[number];
 const ChangeVersion = {
@@ -120,7 +167,7 @@ const ChangeVersion = {
   createdAt: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
 };
 export const TranscriptEdit = Schema.Struct({
-  kind: Schema.Literals(["edit", "replace"]),
+  kind: Schema.Literals(["edit", "replace", "speaker"]),
   replacementCount: Count,
   startMs: Schema.NullOr(Milliseconds),
   before: Schema.String,

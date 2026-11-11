@@ -3,6 +3,7 @@ import type { ModelStatus } from "../../src/shared/contracts/models.ts";
 
 const initial: ModelStatus = {
   id: "parakeet-ultra-q8",
+  role: "transcription",
   name: "Parakeet Ultra",
   description: "Local transcription for European languages.",
   bytes: 740363168,
@@ -23,9 +24,17 @@ test("opens the real model catalog without starting installation", async ({ page
   await page.goto("/");
   await page.getByRole("link", { name: "Models", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Parakeet Ultra", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Download model", exact: true })).toBeEnabled();
-  await expect(page.getByText("Not installed", { exact: true })).toBeVisible();
+  const transcription = page.getByRole("region", { name: "Parakeet Ultra", exact: true });
+  const speakers = page.getByRole("region", { name: "Sortformer Speakers", exact: true });
+  for (const card of [transcription, speakers]) {
+    await expect(card.getByRole("button", { name: "Download model", exact: true })).toBeEnabled();
+    await expect(card.getByText("Not installed", { exact: true })).toBeVisible();
+  }
+  await expect(transcription).toContainText("Download it once to transcribe on this computer.");
+  await expect(speakers).toContainText(
+    "Optional. Download it to label who speaks in new transcripts.",
+  );
+  await expect(speakers).toContainText("1 language");
   expect(writes).toEqual([]);
 });
 

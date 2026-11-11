@@ -194,3 +194,28 @@ describe("current word", () => {
       );
   });
 });
+
+describe("speaker passages", () => {
+  it("starts a new passage whenever the speaker changes and reports its speaker", () => {
+    const spoken = words("Are you ready yes I am").map((word, index) => ({
+      ...word,
+      speaker: index < 3 ? 1 : 2,
+    }));
+    expect(
+      transcriptPassages(spoken).map(({ text, speaker, firstWord }) => ({
+        text,
+        speaker,
+        firstWord,
+      })),
+    ).toEqual([
+      { text: "Are you ready", speaker: 1, firstWord: 0 },
+      { text: "yes I am", speaker: 2, firstWord: 3 },
+    ]);
+  });
+
+  it("has no speaker for transcripts without identified speakers", () => {
+    expect(transcriptPassages(words("Just one passage")).map((passage) => passage.speaker)).toEqual(
+      [undefined],
+    );
+  });
+});

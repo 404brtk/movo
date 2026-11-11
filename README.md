@@ -109,7 +109,7 @@ The API provides `POST /api/downloads/preview` with a JSON `{ "url": "https://ww
 
 ## Install a transcription model
 
-Open **Models** from the header. The initial catalog contains **Parakeet Ultra Q8_0**, a 740 MB GGUF conversion published by Handy from Moondream's model. The page shows its size, license, source and supported languages. Choose **Download model** explicitly; opening the app or the catalog never downloads weights.
+Open **Models** from the header. The initial catalog contains **Parakeet Ultra Q8_0**, a 740 MB GGUF conversion published by Handy from Moondream's model. The page shows its size, license, source and supported languages. Choose **Download model** explicitly; opening the app or the catalog never downloads weights. The optional **Sortformer Speakers** model (139 MB) labels who speaks when in new transcripts, for up to four speakers; speakers can then be named, merged and moved between passages.
 
 Movo reuses the pinned weights from your shared Hugging Face cache, including files downloaded by Handy, without another copy or an installation manifest. It verifies size, SHA-256 and GGUF metadata on discovery and remembers the result in memory while the file is unchanged. The cache defaults to `~/.cache/huggingface/hub`; `HF_HUB_CACHE`, `HF_HOME` and `XDG_CACHE_HOME` can override it.
 

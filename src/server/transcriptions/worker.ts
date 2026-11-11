@@ -4,16 +4,12 @@ import { TranscribeModel } from "transcribe-cpp";
 import { TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
 import { readEngineTranscript } from "./engine-result.ts";
 import { readPreparedAudio } from "./prepared-audio.ts";
+import { assignSpeakers } from "./speakers.ts";
 
 const ownerDisconnected = () => process.exit(1);
 process.once("disconnect", ownerDisconnected);
 
-try {
-  if (!process.connected) throw new Error("The transcription worker must be started by Movo.");
-  const [, , modelPath, audioPath, resultPath] = process.argv;
-  if (!modelPath || !audioPath || !resultPath)
-    throw new Error("Missing transcription worker arguments.");
-  console.log("MOVO_PHASE:loading");
+async function transcribe(modelPath: string, audioPath: string) {
   const model = await TranscribeModel.load(modelPath, { backend: "auto" });
   try {
     const device = Schema.decodeUnknownSync(TranscriptionDevice)({
@@ -31,11 +27,47 @@ try {
     const pcm = await readPreparedAudio(audioPath);
     console.log("MOVO_PHASE:transcribing");
     const result = await model.transcribe(pcm, { timestamps: "word" });
-    const transcript = readEngineTranscript(result);
-    await writeFile(resultPath, JSON.stringify(transcript), { flag: "wx" });
+    return { pcm, transcript: readEngineTranscript(result) };
   } finally {
     model.dispose();
   }
+}
+
+async function speakerTurns(modelPath: string, pcm: Buffer) {
+  console.log("MOVO_PHASE:speakers");
+  const model = await TranscribeModel.load(modelPath, { backend: "auto" });
+  try {
+    if (
+      model.arch !== "sortformer" ||
+      !model.roles.includes("diarize") ||
+      model.diarizeInfo.sampleRate !== 16000
+    )
+      throw new Error("The speaker model does not support speaker turns for 16 kHz audio.");
+    const session = model.createDiarizeSession();
+    try {
+      return await session.run(pcm, {
+        family: { kind: "sortformer_diarize", preset: "very_high_latency" },
+      });
+    } finally {
+      session.dispose();
+    }
+  } finally {
+    model.dispose();
+  }
+}
+
+try {
+  if (!process.connected) throw new Error("The transcription worker must be started by Movo.");
+  const [, , modelPath, audioPath, resultPath, speakerModelPath] = process.argv;
+  if (!modelPath || !audioPath || !resultPath)
+    throw new Error("Missing transcription worker arguments.");
+  console.log("MOVO_PHASE:loading");
+  const { pcm, transcript } = await transcribe(modelPath, audioPath);
+  const result =
+    speakerModelPath && transcript.words.length > 0
+      ? assignSpeakers(transcript, await speakerTurns(speakerModelPath, pcm))
+      : transcript;
+  await writeFile(resultPath, JSON.stringify(result), { flag: "wx" });
 } catch (cause) {
   console.error(
     `ERROR: ${cause instanceof Error ? cause.message : "Could not transcribe this recording."}`,

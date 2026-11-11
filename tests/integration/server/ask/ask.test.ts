@@ -305,6 +305,9 @@ it(
           "list_transcript_changes",
           "edit_transcript",
           "replace_in_transcript",
+          "assign_speaker",
+          "merge_speakers",
+          "rename_speaker",
         ]),
       );
       expect(JSON.stringify(calls[0]?.prompt.at(-1))).toContain("ephemeral");
@@ -696,7 +699,7 @@ describe("requests sent to providers", () => {
         });
         const sent = await sentTo(provider("openai"), "/responses");
         const tools = Array.isArray(sent.tools) ? sent.tools : [];
-        expect(tools).toHaveLength(6);
+        expect(tools).toHaveLength(9);
         expect(tools.every((entry) => Predicate.isObject(entry) && entry.strict === false)).toBe(
           true,
         );

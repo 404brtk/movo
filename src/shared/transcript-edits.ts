@@ -9,12 +9,18 @@ const edgePunctuation = /^(\p{P}*)(.*?)(\p{P}*)$/su;
 export const wordTokens = (text: string) => text.split(/\s+/u).filter(Boolean);
 
 const sameWord = (first: TranscriptWord, second: TranscriptWord) =>
-  first.startMs === second.startMs && first.endMs === second.endMs && first.text === second.text;
+  first.startMs === second.startMs &&
+  first.endMs === second.endMs &&
+  first.text === second.text &&
+  first.speaker === second.speaker;
 
 const wordOrder = (first: TranscriptWord, second: TranscriptWord) =>
   first.startMs - second.startMs ||
   first.endMs - second.endMs ||
-  (first.text < second.text ? -1 : first.text > second.text ? 1 : 0);
+  (first.text < second.text ? -1 : first.text > second.text ? 1 : 0) ||
+  (first.speaker ?? 0) - (second.speaker ?? 0);
+
+const spokenBy = (speaker: number | undefined) => (speaker === undefined ? {} : { speaker });
 
 function edges(text: string) {
   const [, leading = "", core = "", trailing = ""] = edgePunctuation.exec(text) ?? [];
@@ -48,6 +54,7 @@ function retimedReplacement(
   );
   const characters = texts.reduce((total, text) => total + text.length, 0);
   const at = (offset: number) => Math.round(startMs + ((endMs - startMs) * offset) / characters);
+  const speaker = spokenBy(removed[0]?.speaker ?? words[firstWord - 1]?.speaker ?? next?.speaker);
   let offset = 0;
   return {
     firstWord,
@@ -55,7 +62,7 @@ function retimedReplacement(
     inserted: texts.map((text) => {
       const wordStartMs = Math.min(at(offset), latestStartMs);
       offset += text.length;
-      return { startMs: wordStartMs, endMs: at(offset), text };
+      return { startMs: wordStartMs, endMs: at(offset), text, ...speaker };
     }),
   };
 }
@@ -123,6 +130,45 @@ export function replaceWords(
       : [retimedReplacement(words, firstWord, wordCount, texts)];
   });
 }
+
+function respeak(
+  words: readonly TranscriptWord[],
+  firstWord: number,
+  end: number,
+  changes: (word: TranscriptWord) => boolean,
+  speaker: number,
+): TranscriptPatch {
+  const patch: { firstWord: number; removed: TranscriptWord[]; inserted: TranscriptWord[] }[] = [];
+  for (let index = firstWord; index < end; index++) {
+    const word = words[index];
+    if (!word || !changes(word)) continue;
+    let run = patch.at(-1);
+    if (!run || run.firstWord + run.removed.length !== index) {
+      run = { firstWord: index, removed: [], inserted: [] };
+      patch.push(run);
+    }
+    run.removed.push(word);
+    run.inserted.push({ ...word, speaker });
+  }
+  return patch;
+}
+
+export const assignSpeaker = (
+  words: readonly TranscriptWord[],
+  firstWord: number,
+  wordCount: number,
+  speaker: number,
+) =>
+  respeak(
+    words,
+    firstWord,
+    Math.min(firstWord + wordCount, words.length),
+    (word) => word.speaker !== speaker,
+    speaker,
+  );
+
+export const mergeSpeaker = (words: readonly TranscriptWord[], speaker: number, into: number) =>
+  respeak(words, 0, words.length, (word) => word.speaker === speaker, into);
 
 export function applyPatch(words: readonly TranscriptWord[], patch: TranscriptPatch) {
   const result: TranscriptWord[] = [];
