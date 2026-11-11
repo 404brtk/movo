@@ -112,6 +112,7 @@ test("copies plain text and downloads UTF-8 transcripts with keyboard-accessible
   await page.keyboard.press("Enter");
   await expect(panel.getByRole("status")).toHaveText("Transcript copied.");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(plainText);
+  await expect(panel.getByRole("status")).toBeEmpty();
   await page.keyboard.press("Tab");
   const exportMenu = panel.getByRole("button", { name: "Export transcript", exact: true });
   await expect(exportMenu).toBeFocused();
