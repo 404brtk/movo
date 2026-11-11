@@ -40,6 +40,7 @@ export function LibraryManagement({
 }) {
   const [state, setState] = useState({ scope, ids: noSelection, anchor: null as string | null });
   const [cleanupError, setCleanupError] = useState<string | null>(null);
+  if (state.scope !== scope) setState({ scope, ids: noSelection, anchor: null });
   const current = state.scope === scope ? state : { scope, ids: noSelection, anchor: null };
   const order = items.map((item) => item.id);
   const selectedItems = items.filter((item) => current.ids.has(item.id));

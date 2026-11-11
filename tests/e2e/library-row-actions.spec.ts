@@ -289,3 +289,26 @@ test("selects a range, transcribes the eligible recordings and reports a partial
   await expect(bar.getByRole("status")).toHaveText("1 selected");
   await expect(page.getByRole("checkbox", { name: `Select ${delta?.title}` })).toBeChecked();
 });
+
+test("clears the selection when the search changes instead of restoring it later", async ({
+  page,
+}) => {
+  const morning = listed("Morning notes", "none");
+  await serveLibrary(page, [morning, listed("Evening notes", "none")]);
+  await page.goto("/");
+
+  await row(page, morning.title).hover();
+  await page.getByRole("checkbox", { name: `Select ${morning.title}` }).click();
+  const bar = page.getByRole("group", { name: "Selected recordings" });
+  await expect(bar.getByRole("status")).toHaveText("1 selected");
+
+  const search = page.getByRole("searchbox", { name: "Search" });
+  await search.fill("notes");
+  await expect(page).toHaveURL(/q=notes/u);
+  await expect(bar).toHaveCount(0);
+  await search.fill("");
+  await expect(page).not.toHaveURL(/q=/u);
+  await expect(row(page, morning.title)).toBeVisible();
+  await expect(bar).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: `Select ${morning.title}` })).not.toBeChecked();
+});
