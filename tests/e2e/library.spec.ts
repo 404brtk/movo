@@ -163,7 +163,7 @@ test("keeps the dialog open while importing and cancels without saving the file"
   await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible();
 });
 
-test("asks to transcribe with the import and stops before uploading when it cannot start", async ({
+test("asks to transcribe with the import and stops after the first file when it cannot start", async ({
   page,
 }) => {
   const uploads: string[] = [];
