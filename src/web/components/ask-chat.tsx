@@ -14,7 +14,6 @@ import {
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import type { MomentIndex } from "../../shared/citations.ts";
 import {
   maxQuestionCharacters,
   type ChatMessage,
@@ -233,7 +232,6 @@ function Answer({
   chatId,
   mediaId,
   recordings,
-  moments,
 }: {
   message: ChatMessage;
   live: { text: string; activity: LiveActivity } | null;
@@ -241,9 +239,9 @@ function Answer({
   chatId: string;
   mediaId: string | null;
   recordings: ReadonlyMap<string, LibraryItem> | null;
-  moments: MomentIndex;
 }) {
   const answering = message.state === "answering";
+  const moments = new Map(message.moments.map((moment) => [moment.startMs, moment.mediaId]));
   const titles = recordings
     ? new Map([...recordings].map(([id, item]) => [id, item.title]))
     : undefined;
@@ -318,7 +316,6 @@ export function AskConversation({
   const { detail } = state;
   if (!detail) return null;
   const changes = modelChanges(detail.messages);
-  const moments = new Map(detail.moments.map((moment) => [moment.startMs, moment.mediaId]));
   const firstSeq = detail.messages[0]?.seq ?? 0;
   const lastSeq = detail.messages.at(-1)?.seq;
   const chatIsLocal =
@@ -371,7 +368,6 @@ export function AskConversation({
                     chatId={detail.chat.id}
                     mediaId={mediaId}
                     recordings={recordings}
-                    moments={moments}
                   />
                 )}
               </Fragment>

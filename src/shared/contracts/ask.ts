@@ -146,6 +146,8 @@ export const ChatPart = Schema.Union([
 export type ChatPart = typeof ChatPart.Type;
 export const failureKinds = ["busy", "key", "server", "tools", "model", "other"] as const;
 export type FailureKind = (typeof failureKinds)[number];
+export const ChatMoment = Schema.Struct({ startMs: Count, mediaId: MediaId });
+export type ChatMoment = typeof ChatMoment.Type;
 export const ChatMessage = Schema.Struct({
   seq: Count,
   role: Schema.Literals(["user", "assistant"]),
@@ -155,6 +157,7 @@ export const ChatMessage = Schema.Struct({
   errorKind: Schema.NullOr(Schema.Literals(failureKinds)),
   passage: Schema.NullOr(Passage),
   parts: Schema.Array(ChatPart),
+  moments: Schema.Array(ChatMoment),
   createdAt: Timestamp,
 });
 export type ChatMessage = typeof ChatMessage.Type;
@@ -172,13 +175,10 @@ export const ChatSummary = Schema.Struct({
 });
 export type ChatSummary = typeof ChatSummary.Type;
 export const ChatList = Schema.Array(ChatSummary);
-export const ChatMoment = Schema.Struct({ startMs: Count, mediaId: MediaId });
-export type ChatMoment = typeof ChatMoment.Type;
 export const ChatDetail = Schema.Struct({
   chat: ChatSummary,
   messages: Schema.Array(ChatMessage),
   hiddenBeforeSeq: Count,
-  moments: Schema.Array(ChatMoment),
 });
 export type ChatDetail = typeof ChatDetail.Type;
 export const ChatListQuery = Schema.Struct({ mediaId: Schema.optional(MediaId) });

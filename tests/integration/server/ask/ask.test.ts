@@ -273,7 +273,7 @@ it(
       if (index === 0) return stream(call("read_transcript", { mediaId: otherMediaId }));
       if (index === 1)
         return stream(call("search_library", { q: "budget", kind: null, limit: null }));
-      return stream(text("Anna presents the numbers at [0:00](/media/x?startMs=600)."));
+      return stream(text("Anna presents the numbers at [0] [0:00](/media/x?startMs=600)."));
     },
     async ({ request, mediaId, otherMediaId, calls }) => {
       const chatId = await connectAndCreateChat(request, mediaId);
@@ -293,7 +293,7 @@ it(
       expect(
         detail.messages[1]?.parts.map((part) => (part.type === "tool" ? part.state : part.type)),
       ).toEqual(["failed", "done", "text"]);
-      expect(detail.moments).toEqual([{ startMs: 0, mediaId }]);
+      expect(detail.messages[1]?.moments).toEqual([{ startMs: 0, mediaId }]);
       expect(responded(1)).toContain("only use the recording it belongs to");
       expect(responded(2)).toContain("meeting");
       expect(responded(2)).not.toContain(otherMediaId);
@@ -484,7 +484,7 @@ it(
       expect(JSON.stringify(calls[0]?.prompt.at(-1))).toContain(
         'About the passage at 0:00 (startMs 600): \\"Anna presents the numbers.\\"',
       );
-      expect(detail.moments).toEqual([{ startMs: 600, mediaId }]);
+      expect(detail.messages[1]?.moments).toEqual([{ startMs: 600, mediaId }]);
       const listed = await (await request(`/chats?mediaId=${mediaId}`)).json();
       expect(listed).toMatchObject([{ id: chatId, recordingCount: 1 }]);
     },

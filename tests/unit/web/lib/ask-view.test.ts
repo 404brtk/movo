@@ -41,6 +41,7 @@ const message = (seq: number, modelName: string | null): ChatMessage => ({
   errorKind: null,
   passage: null,
   parts: [],
+  moments: [],
   createdAt: 1,
 });
 

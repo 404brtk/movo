@@ -34,7 +34,7 @@ import type { AppDatabase } from "../db/database.ts";
 import { MediaError } from "../media/error.ts";
 import { toolHandlers, type McpServices } from "../mcp/server.ts";
 import { movoTools } from "../mcp/tools.ts";
-import { citedMoments, type MomentIndex } from "../../shared/citations.ts";
+import { citedMoments } from "../../shared/citations.ts";
 import { serverReach } from "../../shared/server-address.ts";
 import { readServerAddress } from "./address.ts";
 import { aiConnections, askSettings, chatMessages, chats } from "./ask.schema.ts";
@@ -117,7 +117,7 @@ function publicConnection(row: typeof aiConnections.$inferSelect): AiConnection 
   };
 }
 
-type MessageRow = Pick<typeof chatMessages.$inferSelect, "messages" | "passage">;
+type MessageRow = Pick<typeof chatMessages.$inferSelect, "role" | "state" | "messages" | "passage">;
 const ReadInput = Schema.Struct({ mediaId: Schema.String });
 const Passages = Schema.Array(Schema.Struct({ startMs: Schema.Number }));
 const ReadOutput = Schema.Struct({ passages: Passages });
@@ -130,11 +130,23 @@ const SearchOutput = Schema.Struct({
   ),
 });
 
-export function momentsIn(rows: readonly MessageRow[], mediaId: string | null) {
-  const moments = new Map<number, string>();
+const addOwner = (owners: Map<number, Set<string>>, startMs: number, mediaId: string) =>
+  owners.set(startMs, new Set(owners.get(startMs)).add(mediaId));
+
+const answerText = (row: MessageRow) =>
+  row.messages
+    .map((message) => (message.role === "assistant" ? textOf(message.content) : ""))
+    .join("");
+
+export function answerMoments<Row extends MessageRow>(
+  rows: readonly Row[],
+  mediaId: string | null,
+) {
+  const earlier = new Map<number, ReadonlySet<string>>();
+  const turn = new Map<number, Set<string>>();
   const reads = new Map<string, string>();
-  for (const row of rows) {
-    if (row.passage && mediaId) moments.set(row.passage.startMs, mediaId);
+  return rows.map((row) => {
+    if (row.passage && mediaId) addOwner(turn, row.passage.startMs, mediaId);
     for (const message of row.messages) {
       if (typeof message.content === "string") continue;
       for (const part of message.content) {
@@ -144,26 +156,37 @@ export function momentsIn(rows: readonly MessageRow[], mediaId: string | null) {
         const value = part.output.value;
         const read = reads.get(part.toolCallId);
         if (part.toolName === "read_transcript" && read && Schema.is(ReadOutput)(value))
-          for (const passage of value.passages) moments.set(passage.startMs, read);
+          for (const passage of value.passages) addOwner(turn, passage.startMs, read);
         if (part.toolName === "search_library" && Schema.is(SearchOutput)(value))
           for (const item of value.items)
-            for (const passage of item.match?.passages ?? []) moments.set(passage.startMs, item.id);
+            for (const passage of item.match?.passages ?? [])
+              addOwner(turn, passage.startMs, item.id);
       }
     }
-  }
-  return moments;
+    if (row.role === "user") return { row, recordings: [], moments: [] };
+    const index = new Map<number, string>();
+    for (const startMs of new Set([...earlier.keys(), ...turn.keys()])) {
+      const [owner, ...others] = turn.get(startMs) ?? earlier.get(startMs) ?? [];
+      if (owner && others.length === 0) index.set(startMs, owner);
+    }
+    for (const [startMs, owners] of turn) earlier.set(startMs, owners);
+    turn.clear();
+    const cited = citedMoments(answerText(row), index);
+    return {
+      row,
+      recordings: cited.map((group) => group.mediaId),
+      moments:
+        row.state === "answering"
+          ? [...index].map(([startMs, owner]) => ({ startMs, mediaId: owner }))
+          : cited.flatMap((group) =>
+              group.moments.map((startMs) => ({ startMs, mediaId: group.mediaId })),
+            ),
+    };
+  });
 }
 
-export const recordingsIn = (rows: readonly MessageRow[], moments: MomentIndex) =>
-  new Set(
-    rows.flatMap((row) =>
-      row.messages.flatMap((message) =>
-        message.role === "assistant"
-          ? citedMoments(textOf(message.content), moments).map((cited) => cited.mediaId)
-          : [],
-      ),
-    ),
-  ).size;
+const citedRecordings = (answers: readonly { recordings: readonly string[] }[]) =>
+  new Set(answers.flatMap((answer) => answer.recordings)).size;
 
 function summary(row: typeof chats.$inferSelect, recordingCount = 0): ChatSummary {
   return {
@@ -482,13 +505,11 @@ export function createAsk(
     storage(() => {
       const chat = chatRow(id);
       if (!chat) throw new MediaError("notFound", "This chat no longer exists.");
-      const rows = messageRows(id);
-      const moments = momentsIn(rows, chat.mediaId);
+      const answers = answerMoments(messageRows(id), chat.mediaId);
       return Schema.decodeUnknownSync(ChatDetail)({
-        chat: summary(chat, recordingsIn(rows, moments)),
+        chat: summary(chat, citedRecordings(answers)),
         hiddenBeforeSeq: chat.contextCutSeq,
-        moments: [...moments].map(([startMs, mediaId]) => ({ startMs, mediaId })),
-        messages: rows.map((row) => ({
+        messages: answers.map(({ row, moments }) => ({
           seq: row.seq,
           role: row.role,
           state: row.state,
@@ -500,6 +521,7 @@ export function createAsk(
             row.role === "user"
               ? [{ type: "text", text: questionText(row.messages) }]
               : displayParts(row.messages),
+          moments,
           createdAt: row.createdAt,
         })),
       });
@@ -763,10 +785,9 @@ export function createAsk(
           .where(mediaId ? eq(chats.mediaId, mediaId) : isNull(chats.mediaId))
           .orderBy(desc(chats.updatedAt))
           .all()
-          .map((chat) => {
-            const rows = messageRows(chat.id);
-            return summary(chat, recordingsIn(rows, momentsIn(rows, chat.mediaId)));
-          }),
+          .map((chat) =>
+            summary(chat, citedRecordings(answerMoments(messageRows(chat.id), chat.mediaId))),
+          ),
       ),
 
     createChat: (mediaId: string | null, scope: ChatScope | null = null) =>

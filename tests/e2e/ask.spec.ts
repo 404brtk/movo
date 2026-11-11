@@ -73,6 +73,7 @@ const userMessage = (text: string): ChatMessage => ({
   errorKind: null,
   passage: null,
   parts: [{ type: "text", text }],
+  moments: [],
   createdAt: Date.now(),
 });
 
@@ -87,7 +88,11 @@ const tool = (toolName: string, input: unknown, extra: Partial<ToolPart> = {}): 
   ...extra,
 });
 
-const answerMessage = (state: ChatMessage["state"], parts: ChatPart[]): ChatMessage => ({
+const answerMessage = (
+  state: ChatMessage["state"],
+  parts: ChatPart[],
+  moments: ChatMessage["moments"] = [],
+): ChatMessage => ({
   seq: 2,
   role: "assistant",
   state,
@@ -96,6 +101,7 @@ const answerMessage = (state: ChatMessage["state"], parts: ChatPart[]): ChatMess
   errorKind: null,
   passage: null,
   parts: state === "answering" ? [] : parts,
+  moments,
   createdAt: Date.now(),
 });
 
@@ -196,25 +202,28 @@ test("asks about a recording in the side panel, streams the answer and applies a
   const summary = summaryOf(chatId, media.id, "Who presents?");
   const question = userMessage("Who presents?");
   const answer = (state: ChatMessage["state"], approval: "pending" | "done") =>
-    answerMessage(state, [
-      tool("read_transcript", { mediaId: media.id }),
-      {
-        type: "text",
-        text: "Anna presents the numbers at [1000].",
-      },
-      tool(
-        "replace_in_transcript",
-        { mediaId: media.id, revision: 3, find: "Anna", replacement: "Hanna" },
-        approval === "pending"
-          ? { state: "waiting_approval", approvalId: "approval-1" }
-          : { resultCount: 1 },
-      ),
-    ]);
+    answerMessage(
+      state,
+      [
+        tool("read_transcript", { mediaId: media.id }),
+        {
+          type: "text",
+          text: "Anna presents the numbers at [1000].",
+        },
+        tool(
+          "replace_in_transcript",
+          { mediaId: media.id, revision: 3, find: "Anna", replacement: "Hanna" },
+          approval === "pending"
+            ? { state: "waiting_approval", approvalId: "approval-1" }
+            : { resultCount: 1 },
+        ),
+      ],
+      [{ startMs: 1000, mediaId: media.id }],
+    );
   let detail: ChatDetail = {
     chat: summary,
     messages: [],
     hiddenBeforeSeq: 0,
-    moments: [{ startMs: 1000, mediaId: media.id }],
   };
   const decisions: unknown[] = [];
   await connectedModel(page);
@@ -394,7 +403,6 @@ test("names the latest failure once, beside its fix, and keeps earlier failures 
       failedAnswer(4, rejected, "key"),
     ],
     hiddenBeforeSeq: 0,
-    moments: [],
   };
   await connectedModel(page);
   await page.route("**/api/media", (route) =>
@@ -420,7 +428,6 @@ test("sends a queued question once and returns it to the field when sending fail
     chat: summaryOf(chatId, null, "Who presents?"),
     messages: [question, answerMessage("answering", [])],
     hiddenBeforeSeq: 0,
-    moments: [],
   };
   let sends = 0;
   await connectedModel(page);
@@ -472,7 +479,6 @@ test("holds a queued question until the proposed change is decided", async ({ pa
     chat: summary,
     messages: [question, answerMessage("answering", [])],
     hiddenBeforeSeq: 0,
-    moments: [],
   };
   const events: string[] = [];
   await connectedModel(page);
@@ -537,7 +543,6 @@ test("returns a queued question to the field when the panel switches to a new ch
     chat: summary,
     messages: [userMessage("Who presents?"), answerMessage("answering", [])],
     hiddenBeforeSeq: 0,
-    moments: [],
   };
   const requests: string[] = [];
   await connectedModel(page);
@@ -624,15 +629,16 @@ test("moves the open recording to each chosen moment, again on a repeated choice
     chat: summaryOf(chatId, media.id, "Where is it?"),
     messages: [
       userMessage("Where is it?"),
-      answerMessage("done", [
-        { type: "text", text: `It is said here [${cited}] and first here [${earlier}].` },
-      ]),
+      answerMessage(
+        "done",
+        [{ type: "text", text: `It is said here [${cited}] and first here [${earlier}].` }],
+        [
+          { startMs: cited, mediaId: media.id },
+          { startMs: earlier, mediaId: media.id },
+        ],
+      ),
     ],
     hiddenBeforeSeq: 0,
-    moments: [
-      { startMs: cited, mediaId: media.id },
-      { startMs: earlier, mediaId: media.id },
-    ],
   };
   await connectedModel(page);
   await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [detail.chat] }));
@@ -698,7 +704,6 @@ test("opens an earlier chat about the recording from the panel's history", async
     chat: summaryOf(randomUUID(), media.id, title),
     messages: [userMessage(title), answerMessage("done", [{ type: "text", text: answer }])],
     hiddenBeforeSeq: 0,
-    moments: [],
   });
   const latest = chat("Who presents?", "Anna presents.");
   const earlier = chat("What is shown?", "The numbers are shown.");
@@ -903,7 +908,6 @@ test("asks across the library within a chosen scope and shows the sources groupe
     chat: { ...summary, scope: { kind: "audio" } },
     messages: [],
     hiddenBeforeSeq: 0,
-    moments: [],
   };
   const created: unknown[] = [];
   await connectedModel(page);
