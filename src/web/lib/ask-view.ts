@@ -112,20 +112,6 @@ export function editReceipt(part: ToolPart) {
   return "Changed a passage";
 }
 
-const linkPattern = /\]\((\/media\/[0-9a-f-]{36}(?:\?startMs=\d+)?)\)/giu;
-
-export function citedMoments(text: string) {
-  const groups = new Map<string, number[]>();
-  for (const match of text.matchAll(linkPattern)) {
-    const link = mediaLink(match[1]);
-    if (!link) continue;
-    const moments = groups.get(link.mediaId) ?? [];
-    if (link.startMs !== undefined && !moments.includes(link.startMs)) moments.push(link.startMs);
-    groups.set(link.mediaId, moments);
-  }
-  return [...groups].map(([mediaId, moments]) => ({ mediaId, moments }));
-}
-
 export const failureActions = {
   busy: "Try again",
   server: "Try again",

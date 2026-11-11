@@ -34,6 +34,7 @@ import type { AppDatabase } from "../db/database.ts";
 import { MediaError } from "../media/error.ts";
 import { toolHandlers, type McpServices } from "../mcp/server.ts";
 import { movoTools } from "../mcp/tools.ts";
+import { citedMoments, type MomentIndex } from "../../shared/citations.ts";
 import { serverReach } from "../../shared/server-address.ts";
 import { readServerAddress } from "./address.ts";
 import { aiConnections, askSettings, chatMessages, chats } from "./ask.schema.ts";
@@ -116,12 +117,51 @@ function publicConnection(row: typeof aiConnections.$inferSelect): AiConnection 
   };
 }
 
-const mediaReference = /\/media\/([0-9a-f-]{36})/gu;
+type MessageRow = Pick<typeof chatMessages.$inferSelect, "messages" | "passage">;
+const ReadInput = Schema.Struct({ mediaId: Schema.String });
+const Passages = Schema.Array(Schema.Struct({ startMs: Schema.Number }));
+const ReadOutput = Schema.Struct({ passages: Passages });
+const SearchOutput = Schema.Struct({
+  items: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      match: Schema.optional(Schema.Struct({ passages: Passages })),
+    }),
+  ),
+});
 
-export const recordingsIn = (rows: readonly { messages: ModelMessage[] }[]) =>
+export function momentsIn(rows: readonly MessageRow[], mediaId: string | null) {
+  const moments = new Map<number, string>();
+  const reads = new Map<string, string>();
+  for (const row of rows) {
+    if (row.passage && mediaId) moments.set(row.passage.startMs, mediaId);
+    for (const message of row.messages) {
+      if (typeof message.content === "string") continue;
+      for (const part of message.content) {
+        if (part.type === "tool-call" && Schema.is(ReadInput)(part.input))
+          reads.set(part.toolCallId, part.input.mediaId);
+        if (part.type !== "tool-result" || part.output.type !== "json") continue;
+        const value = part.output.value;
+        const read = reads.get(part.toolCallId);
+        if (part.toolName === "read_transcript" && read && Schema.is(ReadOutput)(value))
+          for (const passage of value.passages) moments.set(passage.startMs, read);
+        if (part.toolName === "search_library" && Schema.is(SearchOutput)(value))
+          for (const item of value.items)
+            for (const passage of item.match?.passages ?? []) moments.set(passage.startMs, item.id);
+      }
+    }
+  }
+  return moments;
+}
+
+export const recordingsIn = (rows: readonly MessageRow[], moments: MomentIndex) =>
   new Set(
     rows.flatMap((row) =>
-      [...JSON.stringify(row.messages).matchAll(mediaReference)].map((match) => match[1]),
+      row.messages.flatMap((message) =>
+        message.role === "assistant"
+          ? citedMoments(textOf(message.content), moments).map((cited) => cited.mediaId)
+          : [],
+      ),
     ),
   ).size;
 
@@ -248,6 +288,9 @@ function scopeSentence(scope: ChatScope | null) {
     : `The user limited this chat to ${recordings}; tools only return those. You can't change anything.`;
 }
 
+const citeMoments =
+  "Cite each moment you use by writing the passage's startMs in square brackets right after the sentence it supports, like [754000]. Only cite startMs values that tools returned or the user's passage gave. Movo turns them into links.";
+
 function instructionsFor(mediaId: string | null, scope: ChatScope | null) {
   const shared = [
     "You are Ask, the assistant inside Movo, a local app for recordings and their transcripts.",
@@ -260,12 +303,13 @@ function instructionsFor(mediaId: string | null, scope: ChatScope | null) {
     return [
       ...shared,
       scopeSentence(scope),
-      "Cite moments as Markdown links in the form [Recording title 12:34](/media/<mediaId>?startMs=754000), using the passage's startMs. Group what you find by recording.",
+      citeMoments,
+      "Group what you find by recording and name each recording before its moments.",
     ].join("\n");
   return [
     ...shared,
     `This chat is about one recording, mediaId ${mediaId}. Tools only work with that recording.`,
-    `Cite moments as Markdown links in the form [12:34](/media/${mediaId}?startMs=754000), using the passage's startMs.`,
+    citeMoments,
     "To fix the transcript, use edit_transcript or replace_in_transcript. The user approves each change. When a change is not approved, don't try it again.",
   ].join("\n");
 }
@@ -439,9 +483,11 @@ export function createAsk(
       const chat = chatRow(id);
       if (!chat) throw new MediaError("notFound", "This chat no longer exists.");
       const rows = messageRows(id);
+      const moments = momentsIn(rows, chat.mediaId);
       return Schema.decodeUnknownSync(ChatDetail)({
-        chat: summary(chat, recordingsIn(rows)),
+        chat: summary(chat, recordingsIn(rows, moments)),
         hiddenBeforeSeq: chat.contextCutSeq,
+        moments: [...moments].map(([startMs, mediaId]) => ({ startMs, mediaId })),
         messages: rows.map((row) => ({
           seq: row.seq,
           role: row.role,
@@ -717,7 +763,10 @@ export function createAsk(
           .where(mediaId ? eq(chats.mediaId, mediaId) : isNull(chats.mediaId))
           .orderBy(desc(chats.updatedAt))
           .all()
-          .map((chat) => summary(chat, recordingsIn(messageRows(chat.id)))),
+          .map((chat) => {
+            const rows = messageRows(chat.id);
+            return summary(chat, recordingsIn(rows, momentsIn(rows, chat.mediaId)));
+          }),
       ),
 
     createChat: (mediaId: string | null, scope: ChatScope | null = null) =>

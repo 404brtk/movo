@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AiConnection, ChatMessage, ChatPart } from "../../../../src/shared/contracts/ask.ts";
 import {
-  citedMoments,
   connectionLabel,
   editReceipt,
   mediaLink,
@@ -138,16 +137,4 @@ describe("answer receipts", () => {
     );
     expect(editReceipt(tool("edit_transcript", {}, { state: "denied" }))).toBe("Not changed");
   });
-});
-
-it("groups cited moments by recording in the order they appear", () => {
-  const other = "1b6f7c1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f";
-  expect(
-    citedMoments(
-      `First [Sync 11:58](/media/${id}?startMs=718000), then [Demo 4:52](/media/${other}?startMs=292000) and [Sync 12:37](/media/${id}?startMs=757000), again [11:58](/media/${id}?startMs=718000). [x](https://example.com/media/${id})`,
-    ),
-  ).toEqual([
-    { mediaId: id, moments: [718000, 757000] },
-    { mediaId: other, moments: [292000] },
-  ]);
 });

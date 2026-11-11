@@ -199,7 +199,7 @@ test("asks about a recording in the side panel, streams the answer and applies a
       tool("read_transcript", { mediaId: media.id }),
       {
         type: "text",
-        text: `Anna presents the numbers at [0:01](/media/${media.id}?startMs=1000).`,
+        text: "Anna presents the numbers at [1000].",
       },
       tool(
         "replace_in_transcript",
@@ -209,7 +209,12 @@ test("asks about a recording in the side panel, streams the answer and applies a
           : { resultCount: 1 },
       ),
     ]);
-  let detail: ChatDetail = { chat: summary, messages: [], hiddenBeforeSeq: 0 };
+  let detail: ChatDetail = {
+    chat: summary,
+    messages: [],
+    hiddenBeforeSeq: 0,
+    moments: [{ startMs: 1000, mediaId: media.id }],
+  };
   const decisions: unknown[] = [];
   await connectedModel(page);
   await page.route("**/api/ask/chats?*", (route) =>
@@ -383,6 +388,7 @@ test("names the latest failure once, beside its fix, and keeps earlier failures 
       failedAnswer(4, rejected, "key"),
     ],
     hiddenBeforeSeq: 0,
+    moments: [],
   };
   await connectedModel(page);
   await page.route("**/api/media", (route) =>
@@ -415,6 +421,7 @@ test("opens an earlier chat about the recording from the panel's history", async
     chat: summaryOf(randomUUID(), media.id, title),
     messages: [userMessage(title), answerMessage("done", [{ type: "text", text: answer }])],
     hiddenBeforeSeq: 0,
+    moments: [],
   });
   const latest = chat("Who presents?", "Anna presents.");
   const earlier = chat("What is shown?", "The numbers are shown.");
@@ -619,6 +626,7 @@ test("asks across the library within a chosen scope and shows the sources groupe
     chat: { ...summary, scope: { kind: "audio" } },
     messages: [],
     hiddenBeforeSeq: 0,
+    moments: [],
   };
   const created: unknown[] = [];
   await connectedModel(page);

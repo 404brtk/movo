@@ -2,12 +2,12 @@ import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { citedMoments, type MomentIndex } from "../../shared/citations.ts";
 import type { ChatPart } from "../../shared/contracts/ask.ts";
 import type { LibraryItem } from "../../shared/contracts/library.ts";
 import { matchedRanges, searchTerms } from "../../shared/search-text.ts";
 import { transcriptPassages } from "../../shared/transcript-passages.ts";
 import { transcriptionOptions } from "../lib/api.ts";
-import { citedMoments } from "../lib/ask-view.ts";
 import { formatDay, formatDuration } from "../lib/format.ts";
 import { HighlightedText } from "./highlighted-text.tsx";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
@@ -86,21 +86,23 @@ function SourceGroup({
 export function AskSources({
   parts,
   recordings,
+  moments,
 }: {
   parts: readonly ChatPart[];
   recordings: ReadonlyMap<string, LibraryItem>;
+  moments: MomentIndex;
 }) {
   const text = parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
-  const groups = citedMoments(text).flatMap(({ mediaId, moments }) => {
+  const groups = citedMoments(text, moments).flatMap(({ mediaId, moments: cited }) => {
     const item = recordings.get(mediaId);
-    return item ? [{ item, moments }] : [];
+    return item ? [{ item, moments: cited }] : [];
   });
   if (groups.length === 0) return null;
   const terms = searchedWords(parts);
   return (
     <ul aria-label="Sources" className="mt-1 grid gap-4">
-      {groups.map(({ item, moments }) => (
-        <SourceGroup key={item.id} item={item} moments={moments} terms={terms} />
+      {groups.map(({ item, moments: cited }) => (
+        <SourceGroup key={item.id} item={item} moments={cited} terms={terms} />
       ))}
     </ul>
   );

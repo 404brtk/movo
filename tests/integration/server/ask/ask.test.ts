@@ -293,6 +293,7 @@ it(
       expect(
         detail.messages[1]?.parts.map((part) => (part.type === "tool" ? part.state : part.type)),
       ).toEqual(["failed", "done", "text"]);
+      expect(detail.moments).toEqual([{ startMs: 0, mediaId }]);
       expect(responded(1)).toContain("only use the recording it belongs to");
       expect(responded(2)).toContain("meeting");
       expect(responded(2)).not.toContain(otherMediaId);
@@ -444,8 +445,7 @@ it(
 it(
   "sends a selected passage with the question and keeps it apart from the question text",
   withAsk(
-    (_options, _index, { mediaId }) =>
-      stream(text(`Anna does, at [0:00](/media/${mediaId}?startMs=600).`)),
+    () => stream(text("Anna does, at [600].")),
     async ({ request, mediaId, calls }) => {
       const chatId = await connectAndCreateChat(request, mediaId);
       const asked = await request(
@@ -464,6 +464,7 @@ it(
       expect(JSON.stringify(calls[0]?.prompt.at(-1))).toContain(
         'About the passage at 0:00 (startMs 600): \\"Anna presents the numbers.\\"',
       );
+      expect(detail.moments).toEqual([{ startMs: 600, mediaId }]);
       const listed = await (await request(`/chats?mediaId=${mediaId}`)).json();
       expect(listed).toMatchObject([{ id: chatId, recordingCount: 1 }]);
     },

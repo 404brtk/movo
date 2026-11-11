@@ -172,10 +172,13 @@ export const ChatSummary = Schema.Struct({
 });
 export type ChatSummary = typeof ChatSummary.Type;
 export const ChatList = Schema.Array(ChatSummary);
+export const ChatMoment = Schema.Struct({ startMs: Count, mediaId: MediaId });
+export type ChatMoment = typeof ChatMoment.Type;
 export const ChatDetail = Schema.Struct({
   chat: ChatSummary,
   messages: Schema.Array(ChatMessage),
   hiddenBeforeSeq: Count,
+  moments: Schema.Array(ChatMoment),
 });
 export type ChatDetail = typeof ChatDetail.Type;
 export const ChatListQuery = Schema.Struct({ mediaId: Schema.optional(MediaId) });

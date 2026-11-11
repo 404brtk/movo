@@ -2,7 +2,9 @@ import { createContext, use } from "react";
 import { Link } from "@tanstack/react-router";
 import type { ElementContent, Root } from "hast";
 import Markdown, { type Components } from "react-markdown";
+import { normalizeCitations, type MomentIndex } from "../../shared/citations.ts";
 import { mediaLink, revealHiddenCharacters } from "../lib/ask-view.ts";
+import { formatDuration } from "../lib/format.ts";
 
 export const MomentContext = createContext<(() => void) | null>(null);
 
@@ -35,7 +37,7 @@ const components: Components = {
     if (target)
       return (
         <MomentLink mediaId={target.mediaId} startMs={target.startMs}>
-          {children}
+          {target.startMs === undefined ? children : formatDuration(target.startMs / 1000)}
         </MomentLink>
       );
     if (!href || !/^https?:\/\//iu.test(href)) return <span>{children}</span>;
@@ -89,11 +91,19 @@ const fadeArrivingWords = () => (tree: Root) => {
     if (node.type === "element") node.children = splitWords(node.children);
 };
 
-export function AskMarkdown({ text, live = false }: { text: string; live?: boolean }) {
+export function AskMarkdown({
+  text,
+  moments,
+  live = false,
+}: {
+  text: string;
+  moments: MomentIndex;
+  live?: boolean;
+}) {
   return (
     <div className="text-[13.5px]/[21px] text-pretty wrap-anywhere">
       <Markdown skipHtml components={components} rehypePlugins={live ? [fadeArrivingWords] : []}>
-        {revealHiddenCharacters(text)}
+        {normalizeCitations(revealHiddenCharacters(text), moments)}
       </Markdown>
     </div>
   );

@@ -14,6 +14,7 @@ import {
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import type { MomentIndex } from "../../shared/citations.ts";
 import {
   maxQuestionCharacters,
   type ChatMessage,
@@ -231,6 +232,7 @@ function Answer({
   chatId,
   mediaId,
   recordings,
+  moments,
 }: {
   message: ChatMessage;
   live: { text: string; activity: LiveActivity } | null;
@@ -238,6 +240,7 @@ function Answer({
   chatId: string;
   mediaId: string | null;
   recordings: ReadonlyMap<string, LibraryItem> | null;
+  moments: MomentIndex;
 }) {
   const answering = message.state === "answering";
   const titles = recordings
@@ -254,15 +257,15 @@ function Answer({
       {receipt ? <ReceiptLine text={receipt} /> : null}
       {message.parts.map((part, index) =>
         part.type === "text" ? (
-          <AskMarkdown key={index} text={part.text} />
+          <AskMarkdown key={index} text={part.text} moments={moments} />
         ) : isEditTool(part) ? (
           <EditCard key={index} part={part} chatId={chatId} mediaId={mediaId} />
         ) : null,
       )}
-      {live?.text ? <AskMarkdown text={live.text} live /> : null}
+      {live?.text ? <AskMarkdown text={live.text} moments={moments} live /> : null}
       {runningLabel ? <ActivityLine text={runningLabel} /> : null}
       {recordings && !answering ? (
-        <AskSources parts={message.parts} recordings={recordings} />
+        <AskSources parts={message.parts} recordings={recordings} moments={moments} />
       ) : null}
       {message.state === "stopped" ? (
         <p className="ask-fade-in text-[12px] text-muted-foreground">Stopped</p>
@@ -314,6 +317,7 @@ export function AskConversation({
   const { detail } = state;
   if (!detail) return null;
   const changes = modelChanges(detail.messages);
+  const moments = new Map(detail.moments.map((moment) => [moment.startMs, moment.mediaId]));
   const firstSeq = detail.messages[0]?.seq ?? 0;
   const lastSeq = detail.messages.at(-1)?.seq;
   const chatIsLocal =
@@ -366,6 +370,7 @@ export function AskConversation({
                     chatId={detail.chat.id}
                     mediaId={mediaId}
                     recordings={recordings}
+                    moments={moments}
                   />
                 )}
               </Fragment>
