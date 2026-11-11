@@ -725,6 +725,14 @@ test("asks across the library within a chosen scope and shows the sources groupe
   await expect(
     page.getByRole("heading", { name: "Who presents the numbers?", level: 1 }),
   ).toBeVisible();
+  const heading = await page
+    .getByRole("heading", { name: "Who presents the numbers?", level: 1 })
+    .boundingBox();
+  const bubble = await page
+    .getByText("Who presents the numbers?", { exact: true })
+    .last()
+    .boundingBox();
+  expect((bubble?.y ?? 0) - ((heading?.y ?? 0) + (heading?.height ?? 0))).toBeLessThan(48);
   await expect(page.getByText("Searched the library · read 1")).toBeVisible();
   const sources = page.getByRole("list", { name: "Sources" });
   await expect(sources.getByText("Weekly sync", { exact: true }).first()).toBeVisible();

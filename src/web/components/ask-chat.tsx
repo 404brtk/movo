@@ -330,7 +330,7 @@ export function AskConversation({
         onScroll={(event) => setAwayFromLatest(event.currentTarget.scrollTop < -80)}
         className="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto overscroll-contain"
       >
-        <div className="grid gap-4 px-4 py-4">
+        <div className="mb-auto grid gap-4 px-4 py-4">
           {detail.messages.map((message, index) => {
             const previous = detail.messages[index - 1];
             const hiddenStart =
