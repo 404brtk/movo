@@ -63,7 +63,10 @@ function LibraryRow({ item }: { item: LibraryItem }) {
 }
 
 export function LibraryList({ items, sort }: { items: readonly LibraryItem[]; sort: LibrarySort }) {
-  const groups = sort === "title" ? [{ label: null, items }] : groupByImportPeriod(items);
+  const groups =
+    sort === "title" || sort === "relevance"
+      ? [{ label: null, items }]
+      : groupByImportPeriod(items);
   return (
     <section aria-label="Media library" className={groups[0]?.label ? undefined : "mt-5"}>
       {groups.map((group, index) => (

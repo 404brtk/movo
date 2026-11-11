@@ -3,6 +3,7 @@ import type { MediaItem } from "../../shared/contracts/media.ts";
 import type { Transcript } from "../../shared/contracts/transcriptions.ts";
 import { exportTranscript } from "../../shared/transcript-export.ts";
 import { mediaFileUrl } from "../lib/api.ts";
+import { pinHeight } from "../lib/transcript-follow.ts";
 import { AudioPlayerBar } from "./audio-player-bar.tsx";
 import { useMediaPlayback } from "./playback-controls.tsx";
 import { VideoControls } from "./video-controls.tsx";
@@ -61,18 +62,7 @@ function SubtitleTrack({
   );
 }
 
-const pinToTop = (element: HTMLElement | null) => {
-  if (!element) return undefined;
-  const root = document.documentElement;
-  const observer = new ResizeObserver(() => {
-    root.style.scrollPaddingTop = `${element.offsetHeight}px`;
-  });
-  observer.observe(element);
-  return () => {
-    observer.disconnect();
-    root.style.removeProperty("scroll-padding-top");
-  };
-};
+const pinToTop = pinHeight("--pinned-player");
 
 export function MediaPlayer({
   item,

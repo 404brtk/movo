@@ -33,6 +33,9 @@ export const MediaTitle = Schema.String.check(
   Schema.isPattern(/^[^\p{Cc}]+$/u),
 );
 export const RenameMediaRequest = Schema.Struct({ title: MediaTitle });
+export const ImportMediaQuery = Schema.Struct({
+  transcribe: Schema.optional(Schema.Literal("true")),
+});
 export const MediaItem = Schema.Struct({
   id: MediaId,
   title: Schema.String.check(Schema.isMinLength(1)),

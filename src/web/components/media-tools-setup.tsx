@@ -4,7 +4,7 @@ import { ToolSetup } from "./tool-setup.tsx";
 export function MediaToolsSetup({
   onClose,
   className,
-  readyMessage = "You can import a file.",
+  readyMessage = "You can import files.",
 }: {
   onClose: () => void;
   className?: string;

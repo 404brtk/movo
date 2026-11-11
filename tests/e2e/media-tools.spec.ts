@@ -41,7 +41,7 @@ test("offers explicit setup, retries a failed request and keeps progress after r
     }
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Import a file", exact: true }).click();
+  await page.getByRole("button", { name: "Import files", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Media tools are needed", exact: true }),
   ).toBeVisible();
@@ -55,7 +55,7 @@ test("offers explicit setup, retries a failed request and keeps progress after r
   await page.getByRole("button", { name: "Retry download", exact: true }).click();
   await expect(page.getByRole("progressbar", { name: "Downloading media tools" })).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: "Import a file", exact: true }).click();
+  await page.getByRole("button", { name: "Import files", exact: true }).click();
   await expect(page.getByRole("progressbar", { name: "Downloading media tools" })).toBeVisible();
   expect(downloads).toBe(2);
   status = {
@@ -67,9 +67,14 @@ test("offers explicit setup, retries a failed request and keeps progress after r
   await expect(
     page.getByRole("heading", { name: "Media tools are ready", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Close", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Import files" });
+  await page
+    .getByRole("region", { name: "Media tools are ready" })
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+  await expect(dialog.getByRole("button", { name: "Choose files", exact: true })).toBeFocused();
   const chooserPromise = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Import a file", exact: true }).click();
+  await dialog.getByRole("button", { name: "Choose files", exact: true }).click();
   const chooser = await chooserPromise;
   const title = `Tools ready ${randomUUID()}`;
   await chooser.setFiles({
@@ -77,6 +82,7 @@ test("offers explicit setup, retries a failed request and keeps progress after r
     mimeType: "audio/wav",
     buffer: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
   });
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
   await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible({
     timeout: 15000,
   });
@@ -94,17 +100,90 @@ test("checks tools again before uploading when an executable disappears", async 
   });
   await page.route("**/api/media-tools", (route) => route.fulfill({ json: status }));
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Import a file", exact: true })).toBeEnabled();
-  status = initial;
-  await page.getByLabel("Choose media file").setInputFiles({
+  await page.getByRole("button", { name: "Import files", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Import files" });
+  await dialog.getByLabel("Choose media files").setInputFiles({
     name: "not-uploaded.wav",
     mimeType: "audio/wav",
     buffer: Buffer.from("file bytes"),
   });
-  await expect(page.getByRole("alert")).toContainText("Download media tools before importing");
+  await expect(
+    page.getByRole("heading", { name: "Media tools are needed", exact: true }),
+  ).toHaveCount(0);
+  status = initial;
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Media tools are needed", exact: true }),
   ).toBeVisible();
+  await expect(dialog.getByRole("list", { name: "Files to import" })).toContainText(
+    "not-uploaded.wav",
+  );
+  expect(imports).toBe(0);
+});
+
+test("offers the tools setup when transcribing after import needs FFmpeg", async ({ page }) => {
+  const status: MediaToolsStatus = {
+    ...initial,
+    ffprobe: { state: "ready", source: "system", version: "9.0.2" },
+  };
+  let imports = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/media" && request.method() === "POST") imports++;
+  });
+  await page.route("**/api/media-tools", (route) => route.fulfill({ json: status }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Import files", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Import files" });
+  const title = `Without FFmpeg ${randomUUID()}`;
+  await dialog.getByLabel("Choose media files").setInputFiles({
+    name: `${title}.wav`,
+    mimeType: "audio/wav",
+    buffer: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+  });
+  const transcribe = dialog.getByRole("switch", { name: "Transcribe after import" });
+  await transcribe.click();
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Download media tools", exact: true }),
+  ).toBeVisible();
+  expect(imports).toBe(0);
+  await transcribe.click();
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(dialog).toBeHidden({ timeout: 15000 });
+  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible();
+  expect(imports).toBe(1);
+});
+
+test("cancels an import while its tools check is still waiting", async ({ page }) => {
+  const status: MediaToolsStatus = {
+    ...initial,
+    ffprobe: { state: "ready", source: "system", version: "9.0.2" },
+  };
+  let checks = 0;
+  let imports = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/media" && request.method() === "POST") imports++;
+  });
+  await page.route("**/api/media-tools", (route) => {
+    checks++;
+    return checks === 1 ? route.fulfill({ json: status }) : undefined;
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Import files", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Import files" });
+  await dialog.getByLabel("Choose media files").setInputFiles({
+    name: "waiting.wav",
+    mimeType: "audio/wav",
+    buffer: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+  });
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Importing…", exact: true })).toBeDisabled();
+  await expect.poll(() => checks).toBeGreaterThan(1);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Import", exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("list", { name: "Files to import" })).toContainText("waiting.wav");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
   expect(imports).toBe(0);
 });
 
@@ -119,7 +198,7 @@ test("shows actionable configuration errors and supports keyboard access", async
   };
   await page.route("**/api/media-tools", (route) => route.fulfill({ json: status }));
   await page.goto("/");
-  const trigger = page.getByRole("button", { name: "Import a file", exact: true });
+  const trigger = page.getByRole("button", { name: "Import files", exact: true });
   await expect(trigger).toBeEnabled();
   await trigger.focus();
   await page.keyboard.press("Enter");
@@ -132,5 +211,8 @@ test("shows actionable configuration errors and supports keyboard access", async
   await expect(
     page.getByRole("heading", { name: "Media tools are needed", exact: true }),
   ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Choose files", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeHidden();
   await expect(trigger).toBeFocused();
 });

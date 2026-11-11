@@ -436,7 +436,8 @@ export function AskComposer({
   const local =
     connections.data?.find((connection) => connection.id === model?.connectionId)?.kind ===
     "server";
-  const fieldBlocked = block !== null || waitingApproval;
+  const blocked = block !== null;
+  const fieldBlocked = blocked || waitingApproval;
   const hasMessages = (detail?.messages.length ?? 0) > 0;
   useEffect(() => {
     if (!queued) return;
@@ -446,11 +447,11 @@ export function AskComposer({
       if (queued.passage) onPassageChange(queued.passage);
     };
     const sending = send.variables === queued;
-    if (queued.chatId !== chatId) {
+    if (queued.chatId !== chatId || blocked) {
       if (!sending) returnToField();
     } else if (!answering && !waitingApproval && !send.isPending)
       send.mutate(queued, { onSuccess: () => setQueued(null), onError: returnToField });
-  }, [answering, waitingApproval, queued, send, chatId, onPassageChange]);
+  }, [answering, waitingApproval, blocked, queued, send, chatId, onPassageChange]);
   const submit = () => {
     const text = draft.trim();
     if (!text || fieldBlocked || !model || send.isPending) return;
@@ -519,6 +520,7 @@ export function AskComposer({
             variant="ghost"
             size="sm"
             className="-mr-1 text-foreground"
+            disabled={blocked && failureAction.onClick === retry}
             onClick={failureAction.onClick}
           >
             {failureAction.label}

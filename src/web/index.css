@@ -240,6 +240,7 @@
   }
   html {
     @apply font-sans antialiased;
+    scroll-padding-top: calc(var(--pinned-player, 0px) + var(--pinned-find, 0px));
   }
 }
 

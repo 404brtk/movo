@@ -175,7 +175,7 @@ export function RecordingMenu({
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuSeparator />
-          {canReplaceTranscript ? (
+          {canReplaceTranscript && (job.transcript.words.length > 0 || edited) ? (
             <DropdownMenuItem onClick={openDialog("remove-file")}>
               <MenuIcon icon={FileRemoveIcon} />
               Remove saved copy…

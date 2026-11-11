@@ -16,7 +16,7 @@ import {
 } from "../../shared/contracts/ask.ts";
 import { DownloadPreviewRequest, DownloadRequest } from "../../shared/contracts/downloads.ts";
 import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
-import { RenameMediaRequest } from "../../shared/contracts/media.ts";
+import { ImportMediaQuery, RenameMediaRequest } from "../../shared/contracts/media.ts";
 import {
   defaultHistoryPage,
   maxHistoryPage,
@@ -478,23 +478,36 @@ export function createApp(
         });
       });
     })
-    .post("/media", async (context) => {
-      let originalName: string;
-      try {
-        originalName = decodeURIComponent(context.req.header("x-file-name") ?? "");
-      } catch (cause) {
-        throw new MediaError("invalid", "The filename is invalid.", cause);
-      }
-      const length = context.req.header("content-length");
-      const item = await runMedia(
-        library.import(
-          context.req.raw.body,
-          originalName,
-          length === undefined ? undefined : Number(length),
-        ),
-      );
-      return context.json(item, 201);
-    })
+    .post(
+      "/media",
+      sValidator("query", Schema.toStandardSchemaV1(ImportMediaQuery), (result) => {
+        if (!result.success)
+          throw new MediaError("invalid", "Choose whether to transcribe after importing.");
+      }),
+      async (context) => {
+        let originalName: string;
+        try {
+          originalName = decodeURIComponent(context.req.header("x-file-name") ?? "");
+        } catch (cause) {
+          throw new MediaError("invalid", "The filename is invalid.", cause);
+        }
+        const length = context.req.header("content-length");
+        const transcribe = context.req.valid("query").transcribe === "true";
+        const item = await runMedia(
+          Effect.gen(function* () {
+            if (transcribe) yield* transcriptions.check();
+            return yield* library.import(
+              context.req.raw.body,
+              originalName,
+              length === undefined ? undefined : Number(length),
+              transcribe,
+            );
+          }),
+          context.req.raw.signal,
+        );
+        return context.json(item, 201);
+      },
+    )
     .delete("/media/:id/file", async (context) =>
       context.json(await runMedia(transcriptions.removeMediaFile(context.req.param("id")))),
     )
