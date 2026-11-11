@@ -1,14 +1,17 @@
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Fiber, Schema } from "effect";
 import { expect, it } from "vitest";
+import { LibraryList } from "../../../../src/shared/contracts/library.ts";
+import { MediaItem } from "../../../../src/shared/contracts/media.ts";
 import {
   TranscriptionJob,
   type Transcript,
 } from "../../../../src/shared/contracts/transcriptions.ts";
 import { openDatabase } from "../../../../src/server/db/database.ts";
+import { MediaError } from "../../../../src/server/media/error.ts";
 import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { createTranscriptions } from "../../../../src/server/transcriptions/jobs.ts";
@@ -378,6 +381,73 @@ it("edits, replaces and restores a transcript over HTTP and lists its changes", 
             expect((await post("restore", { revision: 1, target: 1 })).status).toBe(409);
           });
           yield* Fiber.interrupt(worker);
+        }),
+      ),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});
+
+it("imports with transcription only after its prerequisites pass and queues both together", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "movo-import-transcription-http-"));
+  try {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const database = yield* openDatabase(join(directory, "app.sqlite"));
+          const config = { dataDirectory: directory };
+          const tools = createMediaTools(config);
+          let ready = false;
+          const transcriptions = createTranscriptions(database, config, tools, {
+            check: () =>
+              ready
+                ? Effect.void
+                : Effect.fail(
+                    new MediaError("unavailable", "Install the transcription model first."),
+                  ),
+            transcribe: () => Effect.never,
+          });
+          const app = createApp(database, config, undefined, { tools, transcriptions });
+          const audio = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
+          const base = "http://127.0.0.1:4310/api/media";
+          const upload = (query: string) =>
+            app.request(`${base}${query}`, {
+              method: "POST",
+              headers: { "x-file-name": "recording.wav" },
+              body: new Uint8Array(audio),
+            });
+          const transcription = async (id: string): Promise<unknown> =>
+            (await app.request(`${base}/${id}/transcription`)).json();
+          const libraryItems = async () =>
+            Schema.decodeUnknownSync(LibraryList)(await (await app.request(base)).json()).items;
+          yield* Effect.promise(async () => {
+            const plain = Schema.decodeUnknownSync(MediaItem)(await (await upload("")).json());
+            expect(await transcription(plain.id)).toBeNull();
+            expect((await upload("?transcribe=yes")).status).toBe(400);
+            const blocked = await upload("?transcribe=true");
+            expect(blocked.status).toBe(503);
+            expect(await blocked.json()).toEqual({
+              error: "Install the transcription model first.",
+            });
+            ready = true;
+            database.$client.exec(
+              "CREATE TRIGGER reject_import_transcription BEFORE INSERT ON transcription_jobs BEGIN SELECT RAISE(ABORT, 'Cannot queue transcription'); END;",
+            );
+            expect((await upload("?transcribe=true")).status).toBe(500);
+            database.$client.exec("DROP TRIGGER reject_import_transcription");
+            expect((await libraryItems()).map(({ id }) => id)).toEqual([plain.id]);
+            expect(await readdir(join(directory, "media"))).toEqual([`${plain.id}.wav`]);
+            const accepted = await upload("?transcribe=true");
+            expect(accepted.status).toBe(201);
+            const item = Schema.decodeUnknownSync(MediaItem)(await accepted.json());
+            expect(
+              Schema.decodeUnknownSync(TranscriptionJob)(await transcription(item.id)),
+            ).toMatchObject({ mediaId: item.id, status: "queued" });
+            expect((await libraryItems()).find(({ id }) => id === item.id)?.transcription).toBe(
+              "active",
+            );
+          });
         }),
       ),
     );
