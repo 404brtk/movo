@@ -285,3 +285,54 @@ test("shows a committed deletion cleanup warning and returns to the library with
   await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toHaveCount(0);
 });
+
+const listedRecording = (id: string, title: string, transcription: "none" | "done") => ({
+  id,
+  title,
+  originalName: `${title}.wav`,
+  kind: "audio",
+  contentType: "audio/wav",
+  byteSize: 1000,
+  durationSeconds: 2,
+  importedAt: Date.now(),
+  sourceUrl: null,
+  fileRemovedAt: null,
+  transcription,
+});
+
+test("starts a transcription from its row button and opens the recording from its status", async ({
+  page,
+}) => {
+  const fresh = randomUUID();
+  const transcribed = randomUUID();
+  const queued: string[] = [];
+  await page.route("**/api/media", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          listedRecording(fresh, "Fresh notes", "none"),
+          listedRecording(transcribed, "Done notes", "done"),
+        ],
+        transcribing: false,
+      },
+    }),
+  );
+  await page.route(`**/api/media/${fresh}/transcription`, (route) => {
+    if (route.request().method() === "POST") queued.push(fresh);
+    return route.fulfill({ status: 404, json: { error: "Not transcribed." } });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  await expect.poll(() => queued).toEqual([fresh]);
+  await expect(page).toHaveURL(/\/$/u);
+  const status = await page
+    .getByRole("region", { name: "Media library" })
+    .getByText("Transcribed", { exact: true })
+    .boundingBox();
+  await page.mouse.click(
+    (status?.x ?? 0) + (status?.width ?? 0) / 2,
+    (status?.y ?? 0) + (status?.height ?? 0) / 2,
+  );
+  await expect(page).toHaveURL(new RegExp(`/media/${transcribed}$`, "u"));
+});

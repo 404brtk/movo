@@ -20,7 +20,7 @@ export function MediaRow({
   return (
     <div
       className={cn(
-        "relative flex items-center gap-3.5 rounded-[10px] px-2.5 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring/50",
+        "group relative flex items-center gap-3.5 rounded-[10px] px-2.5 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring/50",
         className,
       )}
     >
@@ -38,7 +38,9 @@ export function MediaRow({
           {details}
         </div>
       </div>
-      <div className="relative flex shrink-0">{status}</div>
+      <div className="pointer-events-none relative flex shrink-0 [&_a,&_button]:pointer-events-auto">
+        {status}
+      </div>
     </div>
   );
 }

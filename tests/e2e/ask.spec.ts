@@ -749,4 +749,14 @@ test("asks across the library within a chosen scope and shows the sources groupe
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await noHorizontalScroll(page)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.getByRole("link", { name: /Who presents the numbers\?/u }).click();
+  const arrow = await page
+    .getByRole("list", { name: "Sources" })
+    .getByRole("listitem")
+    .first()
+    .locator("svg")
+    .boundingBox();
+  await page.mouse.click((arrow?.x ?? 0) + (arrow?.width ?? 0) / 2, (arrow?.y ?? 0) + 4);
+  await expect(page).toHaveURL(new RegExp(`/media/${mediaId}$`, "u"));
 });

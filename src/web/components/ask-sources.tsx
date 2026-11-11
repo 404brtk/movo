@@ -48,7 +48,7 @@ function SourceGroup({
             icon={ArrowRight01Icon}
             size={16}
             aria-hidden="true"
-            className="text-muted-foreground"
+            className="text-muted-foreground group-hover:text-foreground"
           />
         }
         className="h-15 hover:bg-subtle"
