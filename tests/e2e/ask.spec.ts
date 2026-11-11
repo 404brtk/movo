@@ -188,8 +188,9 @@ test("asks about a recording in the side panel, streams the answer and applies a
   });
   expect(uploaded.status()).toBe(201);
   const media: { id: string } = await uploaded.json();
+  let revision = 3;
   await page.route(`**/api/media/${media.id}/transcription`, (route) =>
-    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+    route.fulfill({ json: { ...completedJob(media.id, "Anna presents the numbers."), revision } }),
   );
   const chatId = randomUUID();
   const summary = summaryOf(chatId, media.id, "Who presents?");
@@ -240,6 +241,7 @@ test("asks about a recording in the side panel, streams the answer and applies a
   });
   await page.route(`**/api/ask/chats/${chatId}/approval`, (route) => {
     decisions.push(route.request().postDataJSON());
+    revision = 4;
     detail = { ...detail, messages: [question, answer("done", "done")] };
     return route.fulfill({ status: 202, json: detail });
   });
@@ -280,6 +282,7 @@ test("asks about a recording in the side panel, streams the answer and applies a
 
   await composer.press("Escape");
   await expect(panel).toHaveCount(0);
+  revision = 5;
   await page.reload();
   await expect(panel).toHaveCount(0);
   await page
@@ -294,6 +297,8 @@ test("asks about a recording in the side panel, streams the answer and applies a
   await expect(panel).toBeVisible();
   await expect(composer).toBeFocused();
   await expect(composer).toHaveValue("");
+  await expect(panel.getByText("Replaced 1 place")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Undo" })).toHaveCount(0);
   await expect(panel.getByText("Anna presents the numbers.", { exact: true })).toBeVisible();
   await panel.getByRole("button", { name: "Remove the passage" }).click();
   await expect(panel.getByRole("button", { name: "Remove the passage" })).toHaveCount(0);

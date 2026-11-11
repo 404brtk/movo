@@ -147,10 +147,11 @@ function EditCard({
         The change couldn't be made.
       </p>
     );
+  const before = editRevision(part);
   const canUndo =
     part.state === "done" &&
-    mediaId !== null &&
-    editRevision(part) !== null &&
+    before !== null &&
+    transcription.data?.revision === before + 1 &&
     (part.resultCount ?? 1) > 0;
   const failure = decide.error ?? undo.error;
   return (
@@ -181,7 +182,7 @@ function EditCard({
             size="xs"
             variant="link"
             className="h-6 px-1 text-[12.5px]"
-            disabled={undo.isPending || !transcription.data}
+            disabled={undo.isPending}
             onClick={() => undo.mutate()}
           >
             <HugeiconsIcon icon={Undo02Icon} data-icon="inline-start" aria-hidden="true" />
