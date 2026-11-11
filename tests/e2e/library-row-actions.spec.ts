@@ -43,7 +43,7 @@ const completedJob = (mediaId: string, text: string): TranscriptionJob => ({
   updatedAt: Date.now(),
 });
 
-async function serveLibrary(page: Page, items: LibraryItem[]) {
+async function serveLibrary(page: Page, items: LibraryItem[], cleanupError?: string) {
   const library = { items };
   await page.route(libraryList, (route) => {
     if (route.request().method() !== "GET") return route.continue();
@@ -60,7 +60,7 @@ async function serveLibrary(page: Page, items: LibraryItem[]) {
         json: { error: "Cancel the transcription before deleting this recording." },
       });
     library.items = library.items.filter((entry) => entry.id !== id);
-    return route.fulfill({ json: item });
+    return route.fulfill({ json: { ...item, cleanupError } });
   });
   await page.route("**/api/media/*/transcription", (route) =>
     route.fulfill({ status: 404, json: { error: "Not transcribed." } }),
@@ -311,4 +311,25 @@ test("clears the selection when the search changes instead of restoring it later
   await expect(row(page, morning.title)).toBeVisible();
   await expect(bar).toHaveCount(0);
   await expect(page.getByRole("checkbox", { name: `Select ${morning.title}` })).not.toBeChecked();
+});
+
+test("shows the cleanup warning after deleting the last recording", async ({ page }) => {
+  const cleanupError =
+    "The recording was removed from the library, but its saved copy could not be cleaned up. Close apps using it or check folder permissions, then restart Movo to retry cleanup.";
+  const last = listed("Only notes", "none");
+  await serveLibrary(page, [last], cleanupError);
+  await page.goto("/");
+
+  await row(page, last.title).focus();
+  await page.keyboard.press("Delete");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete permanently" }).click();
+  const notice = page.getByRole("alertdialog");
+  await expect(
+    notice.getByRole("heading", { name: "Recording deleted", exact: true }),
+  ).toBeVisible();
+  await expect(notice).toContainText(cleanupError);
+  await notice.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(notice).toHaveCount(0);
+  await expect(row(page, last.title)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Import files", exact: true })).toBeVisible();
 });

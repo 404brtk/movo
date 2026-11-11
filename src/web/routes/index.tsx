@@ -33,21 +33,23 @@ function Library() {
   const firstRun = items?.length === 0 && !filtered;
   return (
     <main className="mx-auto flex max-w-[800px] flex-wrap items-end gap-x-4 px-5 pt-9 pb-16">
-      <h1 className="text-[28px]/[34px] font-semibold tracking-[-0.025em] text-balance">Library</h1>
-      {firstRun ? <LibraryWelcome /> : null}
-      <div
-        className={
-          firstRun
-            ? "mt-[22px] flex w-full justify-center"
-            : "max-sm:mt-3 max-sm:basis-full sm:ml-auto"
-        }
-      >
-        <LibraryActions />
-      </div>
-      {firstRun ? (
-        <LibraryFacts />
-      ) : (
-        <LibraryManagement items={items ?? []} scope={JSON.stringify(search)}>
+      <LibraryManagement items={items ?? []} scope={JSON.stringify(search)}>
+        <h1 className="text-[28px]/[34px] font-semibold tracking-[-0.025em] text-balance">
+          Library
+        </h1>
+        {firstRun ? <LibraryWelcome /> : null}
+        <div
+          className={
+            firstRun
+              ? "mt-[22px] flex w-full justify-center"
+              : "max-sm:mt-3 max-sm:basis-full sm:ml-auto"
+          }
+        >
+          <LibraryActions />
+        </div>
+        {firstRun ? (
+          <LibraryFacts />
+        ) : (
           <div className="w-full">
             <LibraryControls search={search} items={items} searching={searching} />
             {library.isPending ? <ListSkeleton /> : null}
@@ -70,8 +72,8 @@ function Library() {
               </div>
             ) : null}
           </div>
-        </LibraryManagement>
-      )}
+        )}
+      </LibraryManagement>
     </main>
   );
 }

@@ -92,6 +92,10 @@ export function focusRecordingRow(target: HTMLElement | null) {
     const row = target?.isConnected
       ? target
       : document.querySelector<HTMLElement>("[data-row-link]");
-    (row ?? document.querySelector<HTMLElement>("input[type=search]"))?.focus();
+    (
+      row ??
+      document.querySelector<HTMLElement>("input[type=search]") ??
+      document.querySelector<HTMLElement>("[data-import-trigger]")
+    )?.focus();
   });
 }
