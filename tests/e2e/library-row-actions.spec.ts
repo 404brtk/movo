@@ -126,6 +126,11 @@ test("renames a recording in place from its row, recovers from a rejected title 
   await field.fill("   ");
   await field.press("Enter");
   await expect(row(page, blurred)).toBeFocused();
+  await page.keyboard.press("F2");
+  await field.fill("");
+  await field.press("Enter");
+  await expect(field).toHaveCount(0);
+  await expect(row(page, blurred)).toBeFocused();
 });
 
 test("opens the row menu with a right click, moves between rows with arrows and deletes with focus on the next row", async ({

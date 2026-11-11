@@ -78,7 +78,6 @@ function TitleField({
           ref={input}
           name="title"
           aria-label="Title"
-          required
           maxLength={512}
           value={draft}
           readOnly={rename.isPending}
