@@ -12,6 +12,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Schema } from "effect";
 import { ChatId, type ChatScope } from "../../shared/contracts/ask.ts";
 import type { LibraryItem, LibraryList } from "../../shared/contracts/library.ts";
+import { AccentIcon } from "../components/accent-icon.tsx";
 import { AskComposer, AskConversation, type ComposerBlock } from "../components/ask-chat.tsx";
 import { AskConnect } from "../components/ask-connect.tsx";
 import { ScopePicker } from "../components/ask-scope.tsx";
@@ -175,26 +176,26 @@ function LibraryStart() {
       )}
       {(chats.data?.length ?? 0) > 0 ? (
         <section aria-labelledby="recent-chats" className="mt-10">
-          <h2 id="recent-chats" className="mb-1 text-[12.5px] font-medium text-muted-foreground">
+          <h2
+            id="recent-chats"
+            className="mb-1.5 text-xs/[normal] font-medium text-muted-foreground"
+          >
             Recent
           </h2>
-          <ul>
+          <ul className="-mx-2.5">
             {chats.data?.map((chat) => (
-              <li key={chat.id} className="border-t first:border-t-0">
+              <li key={chat.id}>
                 <Link
                   to="/ask"
                   search={{ chat: chat.id }}
-                  className="group flex items-center gap-3.5 py-3 outline-none focus-visible:outline-2 focus-visible:outline-ring"
+                  className="group flex h-15 items-center gap-3.5 rounded-[10px] px-2.5 outline-none hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
-                  <HugeiconsIcon
-                    icon={BubbleChatIcon}
-                    size={20}
-                    aria-hidden="true"
-                    className="shrink-0 text-primary-strong"
-                  />
+                  <span className="shrink-0">
+                    <AccentIcon icon={BubbleChatIcon} size={20} />
+                  </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14px] font-medium">{chat.title}</span>
-                    <span className="block text-[12.5px] text-muted-foreground">
+                    <span className="block truncate text-sm/5 font-medium">{chat.title}</span>
+                    <span className="block truncate text-xs/[normal] text-muted-foreground">
                       {chat.recordingCount} {chat.recordingCount === 1 ? "recording" : "recordings"}{" "}
                       · {formatDay(chat.updatedAt)}
                     </span>
