@@ -6,9 +6,19 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 const wave = readFileSync(resolve("tests/fixtures/tone.wav"));
 const video = readFileSync(resolve("tests/fixtures/sample.webm"));
 
+type MediaFile = { name: string; mimeType: string; buffer: Buffer };
+
 async function chooseAction(page: Page, name: string) {
   await page.getByRole("button", { name: "More actions", exact: true }).click();
   await page.getByRole("menuitem", { name, exact: true }).click();
+}
+
+async function importFiles(page: Page, files: MediaFile | MediaFile[]) {
+  await page.getByRole("button", { name: "Import files", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Import files" });
+  await dialog.getByLabel("Choose media files").setInputFiles(files);
+  await dialog.getByRole("button", { name: /^Import( all \d+)?$/u }).click();
+  return dialog;
 }
 
 async function expectFixturePlayback(player: Locator) {
@@ -40,11 +50,15 @@ test("imports audio, plays and seeks, reloads metadata and saves an identical co
   const title = `Próbka mowy ${randomUUID()}`;
   const name = `${title}.wav`;
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Import a file" })).toBeEnabled();
+  await page.getByRole("button", { name: "Import files" }).click();
+  const dialog = page.getByRole("dialog", { name: "Import files" });
   const chooserPromise = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Import a file" }).click();
+  await dialog.getByRole("button", { name: "Choose files" }).click();
   const chooser = await chooserPromise;
+  expect(chooser.isMultiple()).toBe(true);
   await chooser.setFiles({ name, mimeType: "audio/wav", buffer: wave });
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(dialog).toBeHidden({ timeout: 15000 });
   const itemLink = page.getByRole("link", { name: `Open ${title}`, exact: true });
   await expect(itemLink).toBeVisible();
   await itemLink.click();
@@ -63,7 +77,7 @@ test("imports audio, plays and seeks, reloads metadata and saves an identical co
   await page.getByRole("link", { name: "Back to library" }).click();
   await expect(itemLink).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("button", { name: "Import a file" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import files" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
@@ -73,31 +87,105 @@ test("imports audio, plays and seeks, reloads metadata and saves an identical co
 test("imports video and loads a seekable native player", async ({ page }, testInfo) => {
   const title = `Local video ${randomUUID()}`;
   await page.goto("/");
-  await page
-    .getByLabel("Choose media file")
-    .setInputFiles({ name: `${title}.webm`, mimeType: "video/webm", buffer: video });
+  await importFiles(page, { name: `${title}.webm`, mimeType: "video/webm", buffer: video });
   await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   await expectFixturePlayback(page.locator("video"));
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("video-detail.png"), fullPage: true });
 });
 
-test("rejects invalid media and allows a subsequent valid import", async ({ page }) => {
+test("imports several files, keeps a rejected one listed and adds dropped files", async ({
+  page,
+}) => {
+  const first = `Batch audio ${randomUUID()}`;
+  const second = `Batch video ${randomUUID()}`;
+  const dropped = `Dropped ${randomUUID()}`;
   await page.goto("/");
-  await page.getByLabel("Choose media file").setInputFiles({
-    name: "invalid.wav",
-    mimeType: "audio/wav",
-    buffer: Buffer.from("not media"),
-  });
-  await expect(page.getByRole("alert")).toContainText("Could not read this media file", {
-    timeout: 15000,
-  });
-  const title = `Recovered import ${randomUUID()}`;
-  await page
-    .getByLabel("Choose media file")
-    .setInputFiles({ name: `${title}.wav`, mimeType: "audio/wav", buffer: wave });
-  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible();
+  const dialog = await importFiles(page, [
+    { name: `${first}.wav`, mimeType: "audio/wav", buffer: wave },
+    { name: "invalid.wav", mimeType: "audio/wav", buffer: Buffer.from("not media") },
+    { name: `${second}.webm`, mimeType: "video/webm", buffer: video },
+  ]);
+  const files = dialog.getByRole("list", { name: "Files to import" });
+  await expect(files.getByRole("listitem")).toHaveCount(1, { timeout: 15000 });
+  await expect(files).toContainText("invalid.wav");
+  await expect(files).toContainText("Could not read this media file");
+  await dialog.getByRole("button", { name: "Remove invalid.wav", exact: true }).click();
+  await expect(files).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Import", exact: true })).toBeDisabled();
+  const transfer = await page.evaluateHandle(
+    ({ bytes, name }) => {
+      const data = new DataTransfer();
+      data.items.add(new File([new Uint8Array(bytes)], name, { type: "audio/wav" }));
+      return data;
+    },
+    { bytes: [...wave], name: `${dropped}.wav` },
+  );
+  await dialog
+    .getByText("Drop audio or video files here")
+    .dispatchEvent("drop", { dataTransfer: transfer });
+  await expect(files).toContainText(`${dropped}.wav`);
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(dialog).toBeHidden({ timeout: 15000 });
+  for (const title of [first, second, dropped])
+    await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("keeps the dialog open while importing and cancels without saving the file", async ({
+  page,
+}) => {
+  const title = `Cancelled import ${randomUUID()}`;
+  let uploads = 0;
+  await page.route("**/api/media", (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    uploads++;
+    return undefined;
+  });
+  await page.goto("/");
+  const dialog = await importFiles(page, {
+    name: `${title}.wav`,
+    mimeType: "audio/wav",
+    buffer: wave,
+  });
+  await expect(dialog.getByRole("button", { name: "Importing 1 of 1…" })).toBeDisabled();
+  await expect.poll(() => uploads).toBe(1);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Import", exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("list", { name: "Files to import" })).toContainText(`${title}.wav`);
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await page.unroute("**/api/media");
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(dialog).toBeHidden({ timeout: 15000 });
+  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible();
+});
+
+test("asks to transcribe with the import and stops after the first file when it cannot start", async ({
+  page,
+}) => {
+  const uploads: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/media" && request.method() === "POST") uploads.push(url.search);
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Import files", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Import files" });
+  await dialog.getByLabel("Choose media files").setInputFiles([
+    { name: "first.wav", mimeType: "audio/wav", buffer: wave },
+    { name: "second.wav", mimeType: "audio/wav", buffer: wave },
+  ]);
+  await dialog.getByRole("switch", { name: "Transcribe after import" }).click();
+  await dialog.getByRole("button", { name: "Import all 2", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toBeVisible({ timeout: 15000 });
+  expect(uploads).toEqual(["?transcribe=true"]);
+  await expect(
+    dialog.getByRole("list", { name: "Files to import" }).getByRole("listitem"),
+  ).toHaveCount(2);
+  await expect(dialog.getByRole("button", { name: "Import all 2", exact: true })).toBeEnabled();
 });
 
 test("shows a useful missing-item page for a direct link", async ({ page }) => {
@@ -116,9 +204,7 @@ test("renames a recording, recovers from a rejected save and retains the title a
   const title = `Rename ${randomUUID()}`;
   const renamed = `Rozmowa 🎙️ ${randomUUID()}`;
   await page.goto("/");
-  await page
-    .getByLabel("Choose media file")
-    .setInputFiles({ name: `${title}.wav`, mimeType: "audio/wav", buffer: wave });
+  await importFiles(page, { name: `${title}.wav`, mimeType: "audio/wav", buffer: wave });
   await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   const more = page.getByRole("button", { name: "More actions", exact: true });
   await chooseAction(page, "Rename recording");
@@ -181,9 +267,7 @@ test("confirms deletion, preserves the recording after failure and removes it af
   const title = `Delete ${randomUUID()}`;
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page
-    .getByLabel("Choose media file")
-    .setInputFiles({ name: `${title}.wav`, mimeType: "audio/wav", buffer: wave });
+  await importFiles(page, { name: `${title}.wav`, mimeType: "audio/wav", buffer: wave });
   await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   const detailUrl = page.url();
   const apiPath = `/api${new URL(detailUrl).pathname}`;
@@ -234,9 +318,7 @@ test("keeps confirmation buttons reachable for a long title on a short screen", 
   const title = `${"A long recording title ".repeat(20)}${randomUUID()}`.slice(0, 512);
   await page.setViewportSize({ width: 320, height: 320 });
   await page.goto("/");
-  await page
-    .getByLabel("Choose media file")
-    .setInputFiles({ name: `${name}.wav`, mimeType: "audio/wav", buffer: wave });
+  await importFiles(page, { name: `${name}.wav`, mimeType: "audio/wav", buffer: wave });
   await page.getByRole("link", { name: `Open ${name}`, exact: true }).click();
   const apiPath = `/api${new URL(page.url()).pathname}`;
   expect((await page.request.patch(apiPath, { data: { title } })).status()).toBe(200);
@@ -257,9 +339,7 @@ test("shows a committed deletion cleanup warning and returns to the library with
 }) => {
   const title = `Cleanup warning ${randomUUID()}`;
   await page.goto("/");
-  await page
-    .getByLabel("Choose media file")
-    .setInputFiles({ name: `${title}.wav`, mimeType: "audio/wav", buffer: wave });
+  await importFiles(page, { name: `${title}.wav`, mimeType: "audio/wav", buffer: wave });
   await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   const apiPath = `/api${new URL(page.url()).pathname}`;
   const cleanupError =
