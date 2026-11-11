@@ -388,6 +388,36 @@ test("moves the recording only as far as the open panel needs", async ({ page, r
     .toBe(36);
 });
 
+test("blocks questions about a transcript without words", async ({ page, request }) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.wav` },
+  });
+  const media: { id: string } = await uploaded.json();
+  let job: TranscriptionJob = {
+    ...completedJob(media.id, "Unused."),
+    transcript: { language: null, words: [] },
+    revision: 0,
+  };
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [] }));
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: job }),
+  );
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  await page.goto(`/media/${media.id}`);
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await expect(
+    panel.getByPlaceholder("No speech was detected, so there is nothing to ask about"),
+  ).toBeDisabled();
+
+  job = { ...job, revision: 1 };
+  await page.reload();
+  await expect(
+    panel.getByPlaceholder("Restore a version from History to ask about this recording"),
+  ).toBeDisabled();
+});
+
 test("names the latest failure once, beside its fix, and keeps earlier failures in the chat", async ({
   page,
 }) => {

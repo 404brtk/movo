@@ -189,9 +189,27 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   await expect(panel.getByRole("button", { name: "Retry transcription", exact: true })).toHaveCount(
     0,
   );
+  await expect(panel.getByRole("button", { name: "History", exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+  const more = page.getByRole("button", { name: "More actions", exact: true });
+  const removeSavedCopy = page.getByRole("menuitem", { name: /^Remove saved copy/u });
+  await more.click();
+  await expect(page.getByRole("menuitem", { name: "Transcribe again", exact: true })).toBeVisible();
+  await expect(removeSavedCopy).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  job = { ...job, revision: 1 };
+  await page.reload();
+  await expect(
+    panel.getByText("Every passage was removed. Restore an earlier version from History.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(panel.getByRole("button", { name: "History", exact: true })).toBeVisible();
+  await more.click();
+  await expect(removeSavedCopy).toBeVisible();
 });
 
 test("keeps retry progress when an older failed status arrives after retry succeeds", async ({

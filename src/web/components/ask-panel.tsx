@@ -21,6 +21,7 @@ import {
 } from "../lib/api.ts";
 import { useAskChat } from "../lib/ask-chat.ts";
 import {
+  hasEdits,
   isActiveTranscription,
   type TranscriptionActionMutation,
 } from "../lib/transcription-actions.ts";
@@ -252,8 +253,14 @@ function transcriptBlock(
   item: MediaItem,
   transcribe: TranscriptionActionMutation,
 ): ComposerBlock | null {
-  if (!loaded || job?.transcript) return null;
+  if (!loaded || (job?.transcript?.words.length ?? 0) > 0) return null;
   if (isActiveTranscription(job)) return { reason: "Ask opens once the transcript is ready" };
+  if (job?.transcript)
+    return {
+      reason: hasEdits(job)
+        ? "Restore a version from History to ask about this recording"
+        : "No speech was detected, so there is nothing to ask about",
+    };
   if (item.fileRemovedAt !== null)
     return { reason: "This recording has no transcript to ask about" };
   return {
