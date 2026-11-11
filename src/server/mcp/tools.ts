@@ -32,6 +32,7 @@ export const TranscriptionSummary = Schema.NullOr(
     ),
   }),
 );
+export const defaultListLimit = 20;
 const Page = { limit: limit(100), offset: Schema.optional(Count) };
 const Recording = Schema.Struct({ mediaId: MediaId });
 const Download = Schema.Struct({ downloadId: MediaId });

@@ -5,7 +5,7 @@ import type { ChatScope } from "../../shared/contracts/ask.ts";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import { MediaError } from "../media/error.ts";
 import type { toolHandlers } from "../mcp/server.ts";
-import { movoTools } from "../mcp/tools.ts";
+import { defaultListLimit, movoTools } from "../mcp/tools.ts";
 
 export const chatReadTools = [
   "search_library",
@@ -72,17 +72,22 @@ const runners = (
 > => ({
   search_library: (input, scope) =>
     decodeInput(movoTools.tools.search_library.parametersSchema, input).pipe(
-      Effect.flatMap((query) =>
-        handlers.search_library({
-          ...query,
-          ...(scope.library?.kind ? { kind: scope.library.kind } : {}),
-          ...(narrowed(scope) ? { limit: 100, offset: 0 } : {}),
-        }),
-      ),
-      Effect.map((found) => {
-        if (!narrowed(scope)) return found;
-        const own = found.items.filter((item) => inScope(scope, item));
-        return { items: own, total: own.length, transcribing: found.transcribing };
+      Effect.flatMap((query) => {
+        const kind = scope.library?.kind ? { kind: scope.library.kind } : {};
+        if (!narrowed(scope)) return handlers.search_library({ ...query, ...kind });
+        const { limit = defaultListLimit, offset = 0, ...filters } = query;
+        return handlers
+          .search_library({ ...filters, ...kind, limit: Number.MAX_SAFE_INTEGER })
+          .pipe(
+            Effect.map((found) => {
+              const own = found.items.filter((item) => inScope(scope, item));
+              return {
+                items: own.slice(offset, offset + limit),
+                total: own.length,
+                transcribing: found.transcribing,
+              };
+            }),
+          );
       }),
     ),
   get_recording: (input, scope) =>

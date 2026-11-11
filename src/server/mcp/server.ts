@@ -10,7 +10,7 @@ import { requestDownload, type Downloads } from "../downloads/jobs.ts";
 import { MediaError } from "../media/error.ts";
 import type { createMediaLibrary } from "../media/library.ts";
 import type { Transcriptions } from "../transcriptions/jobs.ts";
-import { movoTools } from "./tools.ts";
+import { defaultListLimit, movoTools } from "./tools.ts";
 import { defaultPagePassages, transcriptPage } from "./transcript-page.ts";
 
 export interface McpServices {
@@ -19,8 +19,6 @@ export interface McpServices {
   transcriptions: Transcriptions;
   port: number;
 }
-
-const defaultListLimit = 20;
 
 const summarize = (job: TranscriptionJob | null) =>
   job && {

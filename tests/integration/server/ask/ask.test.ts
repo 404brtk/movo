@@ -406,6 +406,26 @@ const parts = (detail: ChatDetail) =>
   detail.messages.at(-1)?.parts.map((part) => (part.type === "tool" ? part.state : part.type));
 
 it(
+  "pages library search results within the chat's scope",
+  withAsk(
+    (_options, index) => {
+      if (index === 0) return stream(call("search_library", { q: "", limit: 1, offset: 1 }));
+      return stream(text("Two recordings."));
+    },
+    async ({ request, mediaId, otherMediaId, calls }) => {
+      const chatId = await connectAndCreateChat(request, null, {
+        mediaIds: [mediaId, otherMediaId],
+      });
+      await request(`/chats/${chatId}/messages`, json({ text: "What is there?" }));
+      expect(parts(await settled(request, chatId))).toEqual(["done", "text"]);
+      const result = JSON.stringify(calls[1]?.prompt.at(-1));
+      expect(result).toContain('"total":2');
+      expect([mediaId, otherMediaId].filter((id) => result.includes(id))).toHaveLength(1);
+    },
+  ),
+);
+
+it(
   "keeps a library chat to the recordings and the kind the user chose",
   withAsk(
     (_options, index, { mediaId }) => {
