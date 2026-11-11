@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Schema } from "effect";
@@ -7,23 +7,30 @@ import { LibraryList } from "../../../../src/shared/contracts/library.ts";
 import { maxImportBytes, MediaItem } from "../../../../src/shared/contracts/media.ts";
 import { openDatabase } from "../../../../src/server/db/database.ts";
 import { createApp } from "../../../../src/server/http/app.ts";
+import { createMediaTools, type MediaTools } from "../../../../src/server/media-tools/tools.ts";
 
 const wave = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
 const video = readFileSync(new URL("../../../fixtures/sample.webm", import.meta.url));
 const base = "http://127.0.0.1:4310/api/media";
 
-async function withApp(run: (app: ReturnType<typeof createApp>) => Promise<void>) {
+async function withApp(
+  run: (app: ReturnType<typeof createApp>, directory: string) => Promise<void>,
+  wrapTools: (tools: MediaTools) => MediaTools = (tools) => tools,
+) {
   const directory = mkdtempSync(join(tmpdir(), "movo-media-http-"));
   try {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const database = yield* openDatabase(join(directory, "app.sqlite"));
-          const app = createApp(database, {
+          const config = {
             dataDirectory: directory,
             ffprobePath: process.env.FFPROBE_PATH ?? "ffprobe",
+          };
+          const app = createApp(database, config, undefined, {
+            tools: wrapTools(createMediaTools(config)),
           });
-          yield* Effect.promise(() => run(app));
+          yield* Effect.promise(() => run(app, directory));
         }),
       ),
     );
@@ -262,5 +269,35 @@ describe("media HTTP interface", () => {
       expect(forbidden.status).toBe(403);
       expect(await (await app.request(base)).json()).toEqual({ items: [], transcribing: false });
     });
+  });
+
+  it("discards an import whose request is cancelled before the recording is saved", async () => {
+    let probeResolutions = 0;
+    let saving = false;
+    await withApp(
+      async (app, directory) => {
+        const controller = new AbortController();
+        const upload = app.request(base, {
+          method: "POST",
+          headers: { "x-file-name": "cancelled.wav" },
+          body: new Uint8Array(wave),
+          signal: controller.signal,
+        });
+        await expect.poll(() => saving).toBe(true);
+        controller.abort();
+        await upload;
+        expect(await (await app.request(base)).json()).toEqual({ items: [], transcribing: false });
+        expect(readdirSync(join(directory, "media"))).toEqual([]);
+      },
+      (tools) => ({
+        ...tools,
+        resolve: (name) =>
+          ++probeResolutions === 2
+            ? Effect.sync(() => {
+                saving = true;
+              }).pipe(Effect.andThen(Effect.sleep("1 second")), Effect.andThen(tools.resolve(name)))
+            : tools.resolve(name),
+      }),
+    );
   });
 });

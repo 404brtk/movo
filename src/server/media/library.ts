@@ -273,6 +273,7 @@ export function createMediaLibrary(
         });
         return item;
       }).pipe(
+        Effect.uninterruptible,
         Effect.ensuring(
           Effect.promise(async () => {
             if (moved && !committed) await rm(filePath(item), { force: true });
@@ -380,7 +381,7 @@ export function createMediaLibrary(
             return bytes;
           },
           catch: storageError,
-        });
+        }).pipe(Effect.uninterruptible);
         return yield* save(
           temporaryPath,
           originalName,

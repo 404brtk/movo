@@ -503,6 +503,7 @@ export function createApp(
               transcribe,
             );
           }),
+          context.req.raw.signal,
         );
         return context.json(item, 201);
       },
