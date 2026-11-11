@@ -13,6 +13,19 @@ const scrollsPage = (event: KeyboardEvent) =>
 export const pinnedHeight = () =>
   Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
 
+export const pinHeight = (property: `--${string}`) => (element: HTMLElement | null) => {
+  if (!element) return undefined;
+  const root = document.documentElement;
+  const observer = new ResizeObserver(() => {
+    root.style.setProperty(property, `${element.offsetHeight}px`);
+  });
+  observer.observe(element);
+  return () => {
+    observer.disconnect();
+    root.style.removeProperty(property);
+  };
+};
+
 const currentPassageIn = (list: RefObject<HTMLElement | null>) =>
   list.current?.querySelector('[aria-current="time"]') ?? null;
 
@@ -29,6 +42,7 @@ export function useTranscriptFollow({
   passage,
   openingPassage,
   following,
+  jumps,
   suspended,
   onFollowingChange,
 }: {
@@ -36,20 +50,22 @@ export function useTranscriptFollow({
   passage: number | undefined;
   openingPassage: number | undefined;
   following: boolean;
+  jumps: number;
   suspended: boolean;
   onFollowingChange: ((following: boolean) => void) | undefined;
 }) {
   const [currentAbove, setCurrentAbove] = useState(false);
-  const followed = useRef({ following, passage: openingPassage });
+  const followed = useRef({ following, passage: openingPassage, jumps });
   const wasSuspended = useRef(suspended);
 
   useEffect(() => {
     const previous = followed.current;
-    followed.current = { following, passage };
-    if (!following || suspended || passage === undefined) return;
-    if (previous.following && previous.passage === passage) return;
+    followed.current = { following, passage, jumps };
+    if (!following || passage === undefined) return;
+    const jumped = previous.jumps !== jumps;
+    if (!jumped && (suspended || (previous.following && previous.passage === passage))) return;
     currentPassageIn(list)?.scrollIntoView({ block: "start", behavior: scrollBehavior() });
-  }, [list, following, suspended, passage]);
+  }, [list, following, suspended, passage, jumps]);
 
   useEffect(() => {
     const resumed = wasSuspended.current && !suspended;

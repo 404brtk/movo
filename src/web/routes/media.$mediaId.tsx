@@ -79,12 +79,14 @@ function PlaybackWithTranscript({
   const player = useRef<HTMLMediaElement | null>(null);
   const [positionMs, setPositionMs] = useState(startMs ?? 0);
   const [following, setFollowing] = useState(true);
+  const [jumps, setJumps] = useState(0);
   const [request, setRequest] = useState({ startMs, moment });
   if (request.startMs !== startMs || request.moment !== moment) {
     setRequest({ startMs, moment });
     if (startMs !== undefined) {
       setPositionMs(startMs);
       setFollowing(true);
+      setJumps(jumps + 1);
     }
   }
   const sought = useRef(request);
@@ -121,6 +123,7 @@ function PlaybackWithTranscript({
           onSeek: seek,
           mediaKind: item.kind,
           following,
+          jumps,
           onFollowingChange: setFollowing,
         }}
         revealMs={startMs}
