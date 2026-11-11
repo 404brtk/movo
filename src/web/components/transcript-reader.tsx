@@ -265,15 +265,13 @@ export function TranscriptReader({
             edited={edited?.firstWord === passage.firstWord ? edited : undefined}
             onEdited={setEdited}
             speakerHeading={
-              speakers.labeled &&
-              passage.speaker !== undefined &&
-              passages[index - 1]?.speaker !== passage.speaker
+              passage.speaker !== undefined && passages[index - 1]?.speaker !== passage.speaker
                 ? speakers.label(passage.speaker)
                 : null
             }
             speakerEditing={speakerEditing}
             speakerSpacing={
-              !speakers.labeled
+              speakers.ids.length < 2
                 ? undefined
                 : passages[index - 1]?.speaker === passage.speaker
                   ? "continued"

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { AiConnection, ChatMessage, ChatPart } from "../../../../src/shared/contracts/ask.ts";
+import type {
+  TranscriptionJob,
+  TranscriptWord,
+} from "../../../../src/shared/contracts/transcriptions.ts";
 import {
   connectionLabel,
   editReceipt,
@@ -142,22 +146,72 @@ describe("answer receipts", () => {
     expect(editReceipt(tool("edit_transcript", {}, { state: "denied" }))).toBe("Not changed");
   });
 
-  it("treats speaker tools as approved changes and previews who they affect", () => {
-    const assign = tool("assign_speaker", { revision: 4, speaker: 3 });
+  it("treats speaker tools as approved changes and previews the passage and speakers", () => {
+    const assign = tool("assign_speaker", { revision: 4, firstWord: 1, wordCount: 2, speaker: 3 });
     const merge = tool("merge_speakers", { revision: 4, speaker: 2, into: 1 });
     const rename = tool("rename_speaker", { speaker: 2, name: " Ann " });
+    const job = speakerJob(4, [
+      { startMs: 0, endMs: 500, text: "Hello.", speaker: 1 },
+      { startMs: 61000, endMs: 61400, text: "Fine,", speaker: 2 },
+      { startMs: 61400, endMs: 62000, text: "thanks.", speaker: 2 },
+    ]);
     expect([assign, merge, rename].every(isEditTool)).toBe(true);
     expect([assign, merge, rename].map(editReceipt)).toEqual([
       "Changed the speaker",
       "Merged speakers",
       "Named a speaker",
     ]);
-    expect([assign, merge, rename].map(proposedChange)).toEqual([
-      { before: null, after: "Speaker 3" },
-      { before: "Speaker 2", after: "Speaker 1" },
-      { before: "Speaker 2", after: "Ann" },
+    expect([assign, merge, rename].map((part) => proposedChange(part, job))).toEqual([
+      { context: "1:01 “Fine, thanks.”", before: "Bob", after: "Speaker 3" },
+      { context: null, before: "Bob", after: "Speaker 1" },
+      { context: null, before: "Bob", after: "Ann" },
     ]);
+    expect(proposedChange(tool("rename_speaker", { speaker: 2, name: "" }), job).after).toBe(
+      "Speaker 2",
+    );
     expect([assign, merge, rename].map(editRevision)).toEqual([4, 4, null]);
     expect(stepReceipt([assign, merge, rename], false)).toBeNull();
   });
+
+  it("names only the word range of a speaker change it cannot read in the current transcript", () => {
+    const assign = tool("assign_speaker", { revision: 4, firstWord: 0, wordCount: 14, speaker: 2 });
+    expect(proposedChange(assign)).toEqual({
+      context: "Words 1–14",
+      before: null,
+      after: "Speaker 2",
+    });
+    const words = Array.from({ length: 14 }, (_, index) => ({
+      startMs: index * 100,
+      endMs: index * 100 + 100,
+      text: `w${index}`,
+      speaker: 1,
+    }));
+    expect(proposedChange(assign, speakerJob(5, words))).toEqual({
+      context: "Words 1–14",
+      before: null,
+      after: "Bob",
+    });
+    expect(proposedChange(assign, speakerJob(4, words))).toEqual({
+      context: "0:00 “w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11…”",
+      before: "Speaker 1",
+      after: "Bob",
+    });
+  });
 });
+
+function speakerJob(revision: number, words: TranscriptWord[]): TranscriptionJob {
+  return {
+    mediaId: id,
+    modelId: "parakeet-ultra-q8",
+    status: "completed",
+    phase: "finished",
+    transcript: { language: "en", words, speakers: [{ id: 2, name: "Bob" }] },
+    revision,
+    resultRevision: 1,
+    device: null,
+    error: null,
+    cleanupError: null,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}

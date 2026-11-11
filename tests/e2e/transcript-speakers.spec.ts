@@ -124,7 +124,7 @@ test("names a speaker everywhere in the transcript and keeps the name after relo
   await expect(speakerHeadings(page)).toHaveText(["Speaker 1", "Speaker 2", "Speaker 1"]);
 });
 
-test("moves passages between speakers, merges them and undoes the merge from history", async ({
+test("moves passages between speakers, merges them, names the remaining speaker and undoes the merge from history", async ({
   page,
 }) => {
   const panel = transcription(page);
@@ -139,8 +139,15 @@ test("moves passages between speakers, merges them and undoes the merge from his
   await speakerHeadings(page).first().click();
   await page.getByRole("menuitem", { name: "Merge into" }).click();
   await page.getByRole("menuitem", { name: "Speaker 2" }).click();
-  await expect(speakerHeadings(page)).toHaveCount(0);
+  await expect(speakerHeadings(page)).toHaveText(["Speaker 2"]);
   await expect(passages(page)).toHaveCount(3);
+
+  await speakerHeadings(page).first().click();
+  await expect(page.getByRole("menuitem", { name: "Merge into" })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Name speaker…" }).click();
+  await page.getByRole("dialog", { name: "Name Speaker 2" }).getByRole("textbox").fill("Ann");
+  await page.keyboard.press("Enter");
+  await expect(speakerHeadings(page)).toHaveText(["Ann"]);
 
   await panel.getByRole("button", { name: "History" }).click();
   const versions = page.getByRole("list", { name: "Transcript versions" }).getByRole("listitem");
@@ -158,5 +165,5 @@ test("moves passages between speakers, merges them and undoes the merge from his
     "Restored an earlier version.",
   );
   await page.getByRole("button", { name: "Close history" }).click();
-  await expect(speakerHeadings(page)).toHaveText(["Speaker 3", "Speaker 2"]);
+  await expect(speakerHeadings(page)).toHaveText(["Speaker 3", "Ann"]);
 });
