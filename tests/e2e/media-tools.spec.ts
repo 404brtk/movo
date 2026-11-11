@@ -121,6 +121,39 @@ test("checks tools again before uploading when an executable disappears", async 
   expect(imports).toBe(0);
 });
 
+test("offers the tools setup when transcribing after import needs FFmpeg", async ({ page }) => {
+  const status: MediaToolsStatus = {
+    ...initial,
+    ffprobe: { state: "ready", source: "system", version: "9.0.2" },
+  };
+  let imports = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/media" && request.method() === "POST") imports++;
+  });
+  await page.route("**/api/media-tools", (route) => route.fulfill({ json: status }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Import files", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Import files" });
+  const title = `Without FFmpeg ${randomUUID()}`;
+  await dialog.getByLabel("Choose media files").setInputFiles({
+    name: `${title}.wav`,
+    mimeType: "audio/wav",
+    buffer: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+  });
+  const transcribe = dialog.getByRole("switch", { name: "Transcribe after import" });
+  await transcribe.click();
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Download media tools", exact: true }),
+  ).toBeVisible();
+  expect(imports).toBe(0);
+  await transcribe.click();
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible();
+  expect(imports).toBe(1);
+});
+
 test("shows actionable configuration errors and supports keyboard access", async ({ page }) => {
   const status: MediaToolsStatus = {
     ...initial,

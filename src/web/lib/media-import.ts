@@ -24,7 +24,8 @@ export function useMediaImport() {
       const abort = new AbortController();
       controller.current = abort;
       const tools = await queryClient.fetchQuery({ ...mediaToolsOptions, staleTime: 0 });
-      if (tools.ffprobe.state !== "ready") return "toolsMissing";
+      const requiredTools = transcribe ? [tools.ffprobe, tools.ffmpeg] : [tools.ffprobe];
+      if (requiredTools.some((tool) => tool.state !== "ready")) return "toolsMissing";
       let rejected = false;
       for (const entry of queue) {
         setCurrentId(entry.id);
