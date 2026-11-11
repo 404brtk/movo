@@ -23,6 +23,7 @@ function MomentLink({
       to="/media/$mediaId"
       params={{ mediaId }}
       search={startMs === undefined ? {} : { startMs }}
+      resetScroll={startMs === undefined}
       onClick={() => onMoment?.()}
       className="inline-flex h-5 items-center rounded-md bg-tint px-1.5 align-baseline text-[12px] font-medium text-primary-deep tabular-nums no-underline transition-[scale] duration-120 ease-snappy hover:bg-highlight focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring active:scale-[0.97]"
     >

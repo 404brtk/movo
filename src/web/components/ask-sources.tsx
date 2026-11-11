@@ -68,6 +68,7 @@ function SourceGroup({
                 to="/media/$mediaId"
                 params={{ mediaId: item.id }}
                 search={{ startMs: moment.startMs }}
+                resetScroll={false}
                 className="shrink-0 font-medium text-primary-strong tabular-nums hover:underline"
               >
                 {formatDuration(moment.startMs / 1000)}

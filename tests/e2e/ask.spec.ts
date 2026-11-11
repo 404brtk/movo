@@ -405,6 +405,59 @@ test("names the latest failure once, beside its fix, and keeps earlier failures 
   await expect(page).toHaveURL(/\/models$/u);
 });
 
+const passageStart = (index: number) => index * 4000;
+
+test("brings the cited passage into view when a moment in the panel is chosen", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  const media: { id: string } = await uploaded.json();
+  const cited = passageStart(50);
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({
+      json: {
+        ...completedJob(media.id, ""),
+        transcript: {
+          language: "en",
+          words: Array.from({ length: 60 }, (_, index) =>
+            timedWords(
+              passageStart(index),
+              passageStart(index) + 2000,
+              `Passage ${index} says something worth hearing.`,
+            ),
+          ).flat(),
+        },
+      },
+    }),
+  );
+  const chatId = randomUUID();
+  const detail: ChatDetail = {
+    chat: summaryOf(chatId, media.id, "Where is it?"),
+    messages: [
+      userMessage("Where is it?"),
+      answerMessage("done", [{ type: "text", text: `It is said here [${cited}].` }]),
+    ],
+    hiddenBeforeSeq: 0,
+    moments: [{ startMs: cited, mediaId: media.id }],
+  };
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [detail.chat] }));
+  await page.route(`**/api/ask/chats/${chatId}`, (route) => route.fulfill({ json: detail }));
+
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await page.goto(`/media/${media.id}`);
+  await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
+  await page.keyboard.press("/");
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  await panel.getByRole("link", { name: "3:20" }).click();
+  await expect(page).toHaveURL(new RegExp(`startMs=${cited}`, "u"));
+  await expect(page.locator(`li[data-start-ms="${cited}"]`)).toBeInViewport();
+});
+
 test("opens an earlier chat about the recording from the panel's history", async ({
   page,
   request,
