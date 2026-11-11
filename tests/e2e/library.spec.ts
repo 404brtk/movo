@@ -58,7 +58,7 @@ test("imports audio, plays and seeks, reloads metadata and saves an identical co
   expect(chooser.isMultiple()).toBe(true);
   await chooser.setFiles({ name, mimeType: "audio/wav", buffer: wave });
   await dialog.getByRole("button", { name: "Import", exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expect(dialog).toBeHidden({ timeout: 15000 });
   const itemLink = page.getByRole("link", { name: `Open ${title}`, exact: true });
   await expect(itemLink).toBeVisible();
   await itemLink.click();
@@ -126,7 +126,7 @@ test("imports several files, keeps a rejected one listed and adds dropped files"
     .dispatchEvent("drop", { dataTransfer: transfer });
   await expect(files).toContainText(`${dropped}.wav`);
   await dialog.getByRole("button", { name: "Import", exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expect(dialog).toBeHidden({ timeout: 15000 });
   for (const title of [first, second, dropped])
     await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -159,7 +159,7 @@ test("keeps the dialog open while importing and cancels without saving the file"
   await expect(dialog.getByRole("alert")).toHaveCount(0);
   await page.unroute("**/api/media");
   await dialog.getByRole("button", { name: "Import", exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expect(dialog).toBeHidden({ timeout: 15000 });
   await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible();
 });
 

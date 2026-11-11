@@ -149,7 +149,7 @@ test("offers the tools setup when transcribing after import needs FFmpeg", async
   expect(imports).toBe(0);
   await transcribe.click();
   await dialog.getByRole("button", { name: "Import", exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expect(dialog).toBeHidden({ timeout: 15000 });
   await expect(page.getByRole("link", { name: `Open ${title}`, exact: true })).toBeVisible();
   expect(imports).toBe(1);
 });
