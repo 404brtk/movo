@@ -53,6 +53,12 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   await expect(panel.getByRole("button", { name: "Export transcript", exact: true })).toHaveCount(
     0,
   );
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Copy transcript", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Export transcript", exact: true })).toHaveCount(
+    0,
+  );
+  await page.keyboard.press("Escape");
   expect(attempts).toBe(0);
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("alert")).toContainText("Download Parakeet Ultra");
@@ -200,6 +206,10 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   const removeSavedCopy = page.getByRole("menuitem", { name: /^Remove saved copy/u });
   await more.click();
   await expect(page.getByRole("menuitem", { name: "Transcribe again", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Copy transcript", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Export transcript", exact: true })).toHaveCount(
+    0,
+  );
   await expect(removeSavedCopy).toHaveCount(0);
   await page.keyboard.press("Escape");
 

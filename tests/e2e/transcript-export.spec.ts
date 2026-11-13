@@ -100,6 +100,139 @@ test.beforeEach(async ({ page, recording }) => {
   await page.goto(recording.url);
 });
 
+test("labels transcript icons on hover and keyboard focus without blocking the export menu", async ({
+  page,
+}) => {
+  const panel = page.getByRole("region", { name: "Transcription", exact: true });
+  const copy = panel.getByRole("button", { name: "Copy transcript", exact: true });
+  const exportMenu = panel.getByRole("button", { name: "Export transcript", exact: true });
+  const copyLabel = page.getByText("Copy transcript", { exact: true });
+  const exportLabel = page.getByText("Export transcript", { exact: true });
+
+  await copy.hover();
+  await expect(copyLabel).toBeVisible();
+  await exportMenu.hover();
+  await expect(exportLabel).toBeVisible();
+  await expect(copyLabel).toBeHidden();
+  await exportMenu.click();
+  await expect(page.getByRole("menu")).toBeVisible();
+  await expect(exportLabel).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(exportMenu).toBeFocused();
+  await page.getByRole("heading", { level: 1 }).hover();
+
+  await page.keyboard.press("Shift+Tab");
+  await expect(copy).toBeFocused();
+  await expect(copyLabel).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(copyLabel).toBeHidden();
+  await expect(copy).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(exportMenu).toBeFocused();
+  await expect(exportLabel).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menu")).toBeVisible();
+  await expect(exportLabel).toBeHidden();
+});
+
+test("shares transcript actions and their order with the library and exports from the recording menu", async ({
+  page,
+  recording,
+}, testInfo) => {
+  const actions = [
+    /Rename recording/u,
+    "Copy transcript",
+    "Export transcript",
+    "Save a copy",
+    "Transcribe again",
+    /Remove saved copy/u,
+    /Delete recording/u,
+  ];
+  const more = page.getByRole("button", { name: "More actions", exact: true });
+  await more.click();
+  await expect(page.getByRole("menu").getByRole("menuitem")).toHaveText(actions);
+  await page.getByRole("menuitem", { name: "Copy transcript", exact: true }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "Notifications" })
+      .getByText("Transcript copied", { exact: true }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(plainText);
+
+  await more.click();
+  await page.getByRole("menuitem", { name: "Export transcript", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await page.getByRole("menuitem", { name: /^Download TXT/u }).focus();
+  const downloadPromise = page.waitForEvent("download");
+  await page.keyboard.press("Enter");
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(`${recording.title}.txt`);
+  const path = testInfo.outputPath("menu-export.txt");
+  await download.saveAs(path);
+  expect(readFileSync(path, "utf8")).toBe(plainText);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(more).toBeFocused();
+
+  await page.getByRole("link", { name: "Back to library", exact: true }).click();
+  await page
+    .getByRole("button", { name: `More actions for ${recording.title}`, exact: true })
+    .click();
+  await expect(page.getByRole("menu").getByRole("menuitem")).toHaveText([
+    ...actions.slice(0, 5),
+    "Select",
+    ...actions.slice(5),
+  ]);
+});
+
+test("reports clipboard failures from the recording menu and allows retrying", async ({ page }) => {
+  await page.evaluate(() => {
+    const writeText = navigator.clipboard.writeText.bind(navigator.clipboard);
+    navigator.clipboard.writeText = async () => {
+      navigator.clipboard.writeText = writeText;
+      throw new DOMException("Denied", "NotAllowedError");
+    };
+  });
+  const more = page.getByRole("button", { name: "More actions", exact: true });
+  const copy = page.getByRole("menuitem", { name: "Copy transcript", exact: true });
+  await more.click();
+  await copy.click();
+  await expect(
+    page
+      .getByRole("region", { name: "Notifications" })
+      .getByText("Could not copy text. Allow clipboard access in your browser, or download TXT.", {
+        exact: true,
+      }),
+  ).toBeVisible();
+  await more.click();
+  await copy.click();
+  await expect(
+    page
+      .getByRole("region", { name: "Notifications" })
+      .getByText("Transcript copied", { exact: true }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(plainText);
+});
+
+test.describe("touch transcript actions", () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 375, height: 812 } });
+
+  test("opens export controls by touch without showing a tooltip", async ({ page }, testInfo) => {
+    await page.getByRole("button", { name: "Export transcript", exact: true }).tap();
+    await expect(page.getByRole("menuitem", { name: /^Download TXT/u })).toBeVisible();
+    await expect(page.getByText("Export transcript", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Export transcript", exact: true }).tap();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "More actions", exact: true }).tap();
+    await page.getByRole("menuitem", { name: "Export transcript", exact: true }).tap();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("menuitem", { name: /^Download SRT/u }).tap();
+    const path = testInfo.outputPath("touch-export.srt");
+    await (await downloadPromise).saveAs(path);
+    expect(readFileSync(path, "utf8")).toBe(exports[1]?.text);
+  });
+});
+
 test("copies plain text and downloads UTF-8 transcripts with keyboard-accessible actions", async ({
   page,
   recording,
@@ -244,12 +377,20 @@ test("removes the saved copy after confirmation while keeping the transcript rea
     await expect(panel.getByRole("button", { name: /^Go to / })).toHaveCount(0);
     await more.click();
     await expect(page.getByRole("menuitem", { name: "Rename recording" })).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: "Copy transcript", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: "Export transcript", exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Save a copy" })).toHaveCount(0);
     await expect(removeTrigger).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: /^Transcribe again/u })).toHaveCount(0);
     await page.keyboard.press("Escape");
   }
-  await page.getByRole("button", { name: "Export transcript", exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 700 });
+  await more.click();
+  await page.getByRole("menuitem", { name: "Export transcript", exact: true }).click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("menuitem", { name: /^Download TXT/u }).click();
   const path = testInfo.outputPath("removed-copy.txt");

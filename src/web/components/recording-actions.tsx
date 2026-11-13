@@ -102,15 +102,18 @@ export function useRecordingActions({
         Rename recording
         <KeyHint>F2</KeyHint>
       </DropdownMenuItem>
-      {library && transcription.isPending && loadTranscription ? (
+      {transcription.isPending && loadTranscription ? (
         <DropdownMenuItem disabled>
           <Spinner />
           Checking the transcript…
         </DropdownMenuItem>
       ) : null}
-      {library && hasWords ? (
+      {hasWords ? (
         <>
-          <DropdownMenuItem onClick={() => void copy.copyText()}>
+          <DropdownMenuItem
+            disabled={copy.state === "copying"}
+            onClick={() => void copy.copyText()}
+          >
             <MenuIcon icon={Copy01Icon} />
             Copy transcript
           </DropdownMenuItem>

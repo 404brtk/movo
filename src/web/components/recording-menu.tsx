@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Toast } from "@base-ui/react/toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { MediaItem } from "../../shared/contracts/media.ts";
@@ -11,6 +12,7 @@ import {
   transcriptionOptions,
 } from "../lib/api.ts";
 import type { TranscriptionActionMutation } from "../lib/transcription-actions.ts";
+import { copyFailureMessage } from "../lib/transcript-sharing.ts";
 import { useRecordingActions } from "./recording-actions.tsx";
 import { RenameRecordingDialog } from "./rename-recording-dialog.tsx";
 import { Button } from "./ui/button.tsx";
@@ -27,6 +29,7 @@ export function RecordingMenu({
   const navigate = useNavigate();
   const trigger = useRef<HTMLButtonElement>(null);
   const [renaming, setRenaming] = useState(false);
+  const { add: addToast } = Toast.useToastManager();
   const leaveRecording = async () => {
     await navigate({ to: "/", replace: true });
     queryClient.removeQueries({ queryKey: mediaItemOptions(item.id).queryKey, exact: true });
@@ -47,6 +50,15 @@ export function RecordingMenu({
     },
     deletionNotice: { acknowledge: "Back to library", onAcknowledge: () => void leaveRecording() },
   });
+  useEffect(() => {
+    if (actions.copyState === "copied") addToast({ title: "Transcript copied" });
+    if (actions.copyState === "failed")
+      addToast({
+        title: "Could not copy transcript",
+        description: copyFailureMessage,
+        priority: "high",
+      });
+  }, [actions.copyState, addToast]);
   useEffect(() => {
     const renameOnF2 = (event: KeyboardEvent) => {
       const target = event.target;

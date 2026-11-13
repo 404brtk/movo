@@ -15,6 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip.tsx";
 
 const swapIconClass =
   "col-start-1 row-start-1 transition-[opacity,scale,filter] duration-200 ease-(--ease-snappy)";
@@ -51,38 +52,52 @@ export function TranscriptActions({
   return (
     <div className="relative flex items-center">
       <output className="sr-only">{copyState === "copied" ? "Transcript copied." : ""}</output>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Copy transcript"
-        disabled={copyState === "copying"}
-        aria-busy={copyState === "copying" || undefined}
-        onClick={() => void copyText()}
-      >
-        <span className="grid">
-          <HugeiconsIcon
-            icon={Copy01Icon}
-            aria-hidden="true"
-            className={cn(swapIconClass, copyState === "copied" && hiddenIconClass)}
-          />
-          <HugeiconsIcon
-            icon={Tick02Icon}
-            aria-hidden="true"
-            className={cn(swapIconClass, "text-success", copyState !== "copied" && hiddenIconClass)}
-          />
-        </span>
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={<Button variant="ghost" size="icon-sm" className="-mr-1.5" />}
-          aria-label="Export transcript"
-        >
-          <HugeiconsIcon icon={FileExportIcon} aria-hidden="true" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <TranscriptExportItems mediaId={mediaId} />
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon-sm" disabled={copyState === "copying"} />}
+            aria-label="Copy transcript"
+            aria-busy={copyState === "copying" || undefined}
+            onClick={() => void copyText()}
+          >
+            <span className="grid">
+              <HugeiconsIcon
+                icon={Copy01Icon}
+                aria-hidden="true"
+                className={cn(swapIconClass, copyState === "copied" && hiddenIconClass)}
+              />
+              <HugeiconsIcon
+                icon={Tick02Icon}
+                aria-hidden="true"
+                className={cn(
+                  swapIconClass,
+                  "text-success",
+                  copyState !== "copied" && hiddenIconClass,
+                )}
+              />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Copy transcript</TooltipContent>
+        </Tooltip>
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <DropdownMenuTrigger
+                  render={<Button variant="ghost" size="icon-sm" className="-mr-1.5" />}
+                />
+              }
+              aria-label="Export transcript"
+            >
+              <HugeiconsIcon icon={FileExportIcon} aria-hidden="true" />
+            </TooltipTrigger>
+            <TooltipContent>Export transcript</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end" className="w-56">
+            <TranscriptExportItems mediaId={mediaId} />
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TooltipProvider>
       {copyState === "failed" ? (
         <p
           role="alert"
