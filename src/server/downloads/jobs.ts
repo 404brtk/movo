@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { and, asc, desc, eq, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
 import {
   defaultDownloadPreset,
@@ -65,8 +65,9 @@ const insertJob = (
   transaction: Pick<AppDatabase, "insert" | "update" | "select">,
   { url, preset, title }: ReturnType<typeof prepareLink>,
   transcribe: boolean,
-  now: number,
+  queuedAt: number,
 ) => {
+  const sameLink = and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset));
   transaction
     .insert(downloadJobs)
     .values({
@@ -77,27 +78,40 @@ const insertJob = (
       title,
       status: "queued",
       phase: "queued",
-      createdAt: now,
-      updatedAt: now,
+      createdAt: queuedAt,
+      updatedAt: queuedAt,
     })
     .onConflictDoNothing({ target: [downloadJobs.url, downloadJobs.preset] })
     .run();
-  if (transcribe)
-    transaction
-      .update(downloadJobs)
-      .set({ transcribe: true })
-      .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
-      .run();
+  transaction
+    .update(downloadJobs)
+    .set({
+      status: "queued",
+      phase: "queued",
+      downloadedBytes: 0,
+      totalBytes: null,
+      error: null,
+      cleanupError: null,
+      ownerPid: null,
+      updatedAt: queuedAt,
+    })
+    .where(and(sameLink, inArray(downloadJobs.status, [...retryableDownloadStates])))
+    .run();
+  if (transcribe) transaction.update(downloadJobs).set({ transcribe: true }).where(sameLink).run();
   const job = Schema.decodeUnknownSync(DownloadJob)(
-    transaction
-      .select()
-      .from(downloadJobs)
-      .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
-      .get(),
+    transaction.select().from(downloadJobs).where(sameLink).get(),
   );
   if (job.status === "completed" && job.transcribe && job.mediaId)
     queueTranscription(transaction, job.mediaId);
   return job;
+};
+const nextQueuePosition = (transaction: Pick<AppDatabase, "select">) => {
+  const last = transaction
+    .select({ updatedAt: sql<number | null>`max(${downloadJobs.updatedAt})` })
+    .from(downloadJobs)
+    .where(eq(downloadJobs.status, "queued"))
+    .get()?.updatedAt;
+  return Math.max(Date.now(), (last ?? 0) + 1);
 };
 
 export function createDownloads(
@@ -324,16 +338,13 @@ export function createDownloads(
             totalBytes: null,
             error: null,
             ownerPid: null,
-            updatedAt: Date.now(),
+            updatedAt: nextQueuePosition(database),
           })
           .where(and(eq(downloadJobs.id, id), eq(downloadJobs.status, job.status)))
           .run(),
       );
       return yield* get(id);
     }).pipe(Effect.uninterruptible, Semaphore.withPermit(retryLock));
-
-  const requeue = (job: DownloadJob) =>
-    retryableDownloadStates.has(job.status) ? retry(job.id) : Effect.succeed(job);
 
   return {
     preview: downloader.preview,
@@ -352,26 +363,20 @@ export function createDownloads(
       databaseOperation(() =>
         database.transaction((transaction) => {
           checkTranscribe(transcribe);
-          return insertJob(transaction, prepareLink({ url, preset }, 0, 1), transcribe, Date.now());
+          const link = prepareLink({ url, preset }, 0, 1);
+          return insertJob(transaction, link, transcribe, nextQueuePosition(transaction));
         }),
-      ).pipe(Effect.flatMap(requeue)),
+      ),
     enqueueAll: (links: readonly DownloadLinkRequest[], transcribe = false) =>
       databaseOperation(() =>
         database.transaction((transaction) => {
           checkTranscribe(transcribe);
           const prepared = links.map((link, index) => prepareLink(link, index, links.length));
-          const now = Date.now();
-          return prepared.map((link) => insertJob(transaction, link, transcribe, now));
+          const first = nextQueuePosition(transaction);
+          return prepared.map((link, index) =>
+            insertJob(transaction, link, transcribe, first + index),
+          );
         }),
-      ).pipe(
-        Effect.flatMap((jobs) =>
-          Effect.gen(function* () {
-            const requeued = new Map<string, DownloadJob>();
-            for (const job of jobs)
-              if (!requeued.has(job.id)) requeued.set(job.id, yield* requeue(job));
-            return jobs.map((job) => requeued.get(job.id) ?? job);
-          }),
-        ),
       ),
     cancel: (id: string) =>
       Effect.gen(function* () {

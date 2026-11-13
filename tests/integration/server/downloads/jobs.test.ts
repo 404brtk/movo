@@ -295,6 +295,62 @@ describe("persistent download jobs", () => {
     );
   });
 
+  it("queues a batch in the given order and puts a stopped link back in its place", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
+      Effect.gen(function* () {
+        let release: (() => Promise<void>) | undefined;
+        yield* Effect.acquireRelease(Effect.void, () =>
+          Effect.promise(async () => {
+            await release?.();
+          }),
+        );
+        const thirdUrl = "https://www.youtube.com/watch?v=ccccccccccc";
+        const received: string[] = [];
+        const tools = createMediaTools({ dataDirectory: directory });
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download: (url, path, update, preset) => {
+            received.push(url);
+            return fixtureDownload(url, path, update, preset);
+          },
+        });
+        const stopped = yield* jobs.enqueue(secondUrl);
+        database
+          .update(downloadJobs)
+          .set({
+            status: "failed",
+            phase: "finished",
+            error: "Previous source failure.",
+            cleanupError: "Previous cleanup failure.",
+          })
+          .where(eq(downloadJobs.id, stopped.id))
+          .run();
+        const leftover = join(directory, "downloads", stopped.id);
+        yield* Effect.promise(() => mkdir(leftover, { recursive: true }));
+        release = yield* Effect.promise(() => blockCleanup(leftover));
+        const batch = yield* jobs.enqueueAll([
+          { url: firstUrl },
+          { url: secondUrl },
+          { url: thirdUrl },
+        ]);
+        expect(batch.map((job) => [job.url, job.status, job.error, job.cleanupError])).toEqual([
+          [firstUrl, "queued", null, null],
+          [secondUrl, "queued", null, null],
+          [thirdUrl, "queued", null, null],
+        ]);
+        expect(batch[1]?.id).toBe(stopped.id);
+        yield* Effect.promise(release);
+        release = undefined;
+        const worker = yield* jobs.start();
+        yield* waitFor(jobs, batch[2]?.id ?? "", "completed");
+        expect(received).toEqual([firstUrl, secondUrl, thirdUrl]);
+        yield* Fiber.interrupt(worker);
+      }),
+    );
+  });
+
   it("runs one download at a time, cancels its process work and continues with the next job", async ({
     signal,
   }) => {
