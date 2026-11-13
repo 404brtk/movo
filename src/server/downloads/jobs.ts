@@ -197,7 +197,9 @@ export function createDownloads(
             cleanupError: Result.isFailure(result) ? result.failure.message : null,
             updatedAt: Date.now(),
           })
-          .where(eq(downloadJobs.id, id))
+          .where(
+            and(eq(downloadJobs.id, id), notInArray(downloadJobs.status, ["queued", "running"])),
+          )
           .run(),
       );
       return result;
@@ -366,7 +368,7 @@ export function createDownloads(
           const link = prepareLink({ url, preset }, 0, 1);
           return insertJob(transaction, link, transcribe, nextQueuePosition(transaction));
         }),
-      ),
+      ).pipe(Semaphore.withPermit(retryLock)),
     enqueueAll: (links: readonly DownloadLinkRequest[], transcribe = false) =>
       databaseOperation(() =>
         database.transaction((transaction) => {
@@ -377,7 +379,7 @@ export function createDownloads(
             insertJob(transaction, link, transcribe, first + index),
           );
         }),
-      ),
+      ).pipe(Semaphore.withPermit(retryLock)),
     cancel: (id: string) =>
       Effect.gen(function* () {
         const job = yield* get(id);

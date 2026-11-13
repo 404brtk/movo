@@ -395,6 +395,80 @@ describe("persistent download jobs", () => {
     );
   });
 
+  it("keeps a re-added link in its place while its cancelled attempt is still finishing", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) => {
+      const finishing = Deferred.makeUnsafe<void>();
+      return Effect.gen(function* () {
+        const received: string[] = [];
+        let attempts = 0;
+        const tools = createMediaTools({ dataDirectory: directory });
+        const download: MediaDownloader["download"] = (url, path, update, preset) => {
+          received.push(url);
+          return url === firstUrl && ++attempts === 1
+            ? Effect.never.pipe(Effect.ensuring(Deferred.await(finishing)))
+            : fixtureDownload(url, path, update, preset);
+        };
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download,
+        });
+        const first = yield* jobs.enqueue(firstUrl);
+        const worker = yield* jobs.start();
+        yield* waitFor(jobs, first.id, "running");
+        const cancelling = yield* Effect.forkChild(jobs.cancel(first.id));
+        yield* waitFor(jobs, first.id, "cancelled");
+        const batch = yield* jobs.enqueueAll([{ url: firstUrl }, { url: secondUrl }]);
+        expect(batch.map((job) => job.status)).toEqual(["queued", "queued"]);
+        yield* Effect.sleep("20 millis");
+        yield* Deferred.succeed(finishing, undefined);
+        yield* Fiber.join(cancelling);
+        yield* waitFor(jobs, batch[1]?.id ?? "", "completed");
+        expect(received).toEqual([firstUrl, firstUrl, secondUrl]);
+        expect((yield* jobs.get(first.id)).cleanupError).toBe(null);
+        yield* Fiber.interrupt(worker);
+      }).pipe(Effect.ensuring(Deferred.succeed(finishing, undefined)));
+    });
+  });
+
+  it("waits for a running retry before re-adding its link", async ({ signal }) => {
+    await withJobs(signal, (database, directory) => {
+      const finishing = Deferred.makeUnsafe<void>();
+      return Effect.gen(function* () {
+        const received: string[] = [];
+        const tools = createMediaTools({ dataDirectory: directory });
+        const download: MediaDownloader["download"] = (url, path, update, preset) => {
+          received.push(url);
+          return received.length === 1
+            ? Effect.never.pipe(Effect.ensuring(Deferred.await(finishing)))
+            : fixtureDownload(url, path, update, preset);
+        };
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download,
+        });
+        const job = yield* jobs.enqueue(firstUrl);
+        const worker = yield* jobs.start();
+        yield* waitFor(jobs, job.id, "running");
+        const cancelling = yield* Effect.forkChild(jobs.cancel(job.id));
+        yield* waitFor(jobs, job.id, "cancelled");
+        const retrying = yield* Effect.forkChild(jobs.retry(job.id));
+        yield* Effect.sleep("20 millis");
+        const adding = yield* Effect.forkChild(jobs.enqueueAll([{ url: firstUrl }]));
+        yield* Effect.sleep("20 millis");
+        expect((yield* jobs.get(job.id)).status).toBe("cancelled");
+        yield* Deferred.succeed(finishing, undefined);
+        yield* Fiber.join(cancelling);
+        expect((yield* Fiber.join(retrying)).id).toBe(job.id);
+        expect((yield* Fiber.join(adding)).map((item) => item.id)).toEqual([job.id]);
+        yield* waitFor(jobs, job.id, "completed");
+        expect(received).toEqual([firstUrl, firstUrl]);
+        yield* Fiber.interrupt(worker);
+      }).pipe(Effect.ensuring(Deferred.succeed(finishing, undefined)));
+    });
+  });
+
   it("retries a failed job without losing its identity or publishing partial media", async ({
     signal,
   }) => {
