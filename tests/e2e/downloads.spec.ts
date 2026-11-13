@@ -156,6 +156,10 @@ test("checks several links, explains skipped ones and queues each with its own c
     phase: "queued" as const,
   }));
   let queued = false;
+  let answerQueue: (() => void) | undefined;
+  const queueAnswered = new Promise<void>((resolve) => {
+    answerQueue = resolve;
+  });
   const previewed: string[] = [];
   await page.route("**/api/downloads/preview", (route) => {
     const previewUrl = Schema.decodeUnknownSync(DownloadPreviewRequest)(
@@ -166,8 +170,9 @@ test("checks several links, explains skipped ones and queues each with its own c
       json: { url: previewUrl, title: titles[previewUrl], durationSeconds: 90 },
     });
   });
-  await page.route("**/api/downloads", (route) => {
+  await page.route("**/api/downloads", async (route) => {
     if (route.request().method() === "POST") {
+      await queueAnswered;
       expect(route.request().postDataJSON()).toEqual({
         links: [
           { url, preset: "audio", title: titles[url] },
@@ -205,6 +210,14 @@ test("checks several links, explains skipped ones and queues each with its own c
   await expect(page.getByRole("group", { name: "Quality" })).toHaveCount(0);
   await expect(list).not.toContainText("Already saved");
   await page.getByRole("button", { name: "Download 3", exact: true }).click();
+  await expect(links).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Remove A short post" })).toBeDisabled();
+  await expect(
+    page
+      .getByRole("group", { name: "Save A short post as" })
+      .getByRole("button", { name: "Video" }),
+  ).toBeDisabled();
+  answerQueue?.();
   await expect(page.getByRole("dialog", { name: "Download from links" })).toBeHidden();
   await expect(page.getByText("3 downloads added", { exact: true })).toBeVisible();
   await expect(page.getByText("1 link skipped.", { exact: true })).toBeVisible();

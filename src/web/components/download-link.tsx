@@ -114,10 +114,12 @@ function LinkItem({
   view,
   onKindChange,
   onRemove,
+  locked,
 }: {
   view: LinkView;
   onKindChange: (kind: SaveKind) => void;
   onRemove: () => void;
+  locked: boolean;
 }) {
   const { row, preview, preset, skip } = view;
   const title = linkTitle(row, preview?.data);
@@ -148,7 +150,7 @@ function LinkItem({
             variant="outline"
             size="sm"
             aria-busy={preview?.isFetching}
-            disabled={preview?.isFetching}
+            disabled={locked || preview?.isFetching}
             onClick={() => void preview?.refetch()}
           >
             Check again
@@ -159,6 +161,7 @@ function LinkItem({
             size="sm"
             options={kindOptions}
             value={row.kind}
+            disabled={locked}
             onValueChange={onKindChange}
           />
         ) : (
@@ -170,6 +173,7 @@ function LinkItem({
         size="icon-sm"
         className="text-muted-foreground"
         aria-label={`Remove ${title}`}
+        disabled={locked}
         onClick={onRemove}
       >
         <HugeiconsIcon icon={Cancel01Icon} size={14} aria-hidden="true" />
@@ -293,6 +297,7 @@ export function DownloadLink() {
             spellCheck={false}
             placeholder="Paste one or more links"
             value={field}
+            disabled={download.isPending}
             aria-describedby={note || rows.length === 0 ? "download-links-help" : undefined}
             onChange={(event) => {
               setField(event.target.value);
@@ -343,6 +348,7 @@ export function DownloadLink() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        disabled={download.isPending}
                         onClick={() =>
                           remove(views.filter((view) => view.skip).map((view) => view.row.key))
                         }
@@ -357,6 +363,7 @@ export function DownloadLink() {
                     <span aria-hidden="true">Set all to</span>
                     <SegmentedChoice
                       label="Save every link as"
+                      disabled={download.isPending}
                       size="sm"
                       options={kindOptions}
                       value={sharedKind}
@@ -381,6 +388,7 @@ export function DownloadLink() {
                     view={view}
                     onKindChange={(kind) => chooseKind(view.row.key, kind)}
                     onRemove={() => remove([view.row.key])}
+                    locked={download.isPending}
                   />
                 ))}
               </ul>
