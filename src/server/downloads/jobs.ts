@@ -10,6 +10,7 @@ import {
   type DownloadLinkRequest,
   DownloadPreset,
   type DownloadRequest,
+  retryableDownloadStates,
 } from "../../shared/contracts/downloads.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
 import { isAudioOnlySite } from "../../shared/download-sources.ts";
@@ -300,6 +301,40 @@ export function createDownloads(
     }),
   );
 
+  const retry = (id: string) =>
+    Effect.gen(function* () {
+      const job = yield* get(id);
+      if (!retryableDownloadStates.has(job.status))
+        return yield* Effect.fail(
+          new MediaError(
+            "invalid",
+            "Only failed, cancelled or interrupted downloads can be retried.",
+          ),
+        );
+      if (active?.id === id) yield* Fiber.interrupt(active.fiber);
+      const cleaned = yield* cleanupAndRecord(id);
+      if (Result.isFailure(cleaned)) return yield* Effect.fail(cleaned.failure);
+      yield* databaseOperation(() =>
+        database
+          .update(downloadJobs)
+          .set({
+            status: "queued",
+            phase: "queued",
+            downloadedBytes: 0,
+            totalBytes: null,
+            error: null,
+            ownerPid: null,
+            updatedAt: Date.now(),
+          })
+          .where(and(eq(downloadJobs.id, id), eq(downloadJobs.status, job.status)))
+          .run(),
+      );
+      return yield* get(id);
+    }).pipe(Effect.uninterruptible, Semaphore.withPermit(retryLock));
+
+  const requeue = (job: DownloadJob) =>
+    retryableDownloadStates.has(job.status) ? retry(job.id) : Effect.succeed(job);
+
   return {
     preview: downloader.preview,
     get,
@@ -319,7 +354,7 @@ export function createDownloads(
           checkTranscribe(transcribe);
           return insertJob(transaction, prepareLink({ url, preset }, 0, 1), transcribe, Date.now());
         }),
-      ),
+      ).pipe(Effect.flatMap(requeue)),
     enqueueAll: (links: readonly DownloadLinkRequest[], transcribe = false) =>
       databaseOperation(() =>
         database.transaction((transaction) => {
@@ -328,6 +363,15 @@ export function createDownloads(
           const now = Date.now();
           return prepared.map((link) => insertJob(transaction, link, transcribe, now));
         }),
+      ).pipe(
+        Effect.flatMap((jobs) =>
+          Effect.gen(function* () {
+            const requeued = new Map<string, DownloadJob>();
+            for (const job of jobs)
+              if (!requeued.has(job.id)) requeued.set(job.id, yield* requeue(job));
+            return jobs.map((job) => requeued.get(job.id) ?? job);
+          }),
+        ),
       ),
     cancel: (id: string) =>
       Effect.gen(function* () {
@@ -349,36 +393,7 @@ export function createDownloads(
         if (active?.id === id) yield* Fiber.interrupt(active.fiber);
         return yield* get(id);
       }),
-    retry: (id: string) =>
-      Effect.gen(function* () {
-        const job = yield* get(id);
-        if (!["failed", "cancelled", "interrupted"].includes(job.status))
-          return yield* Effect.fail(
-            new MediaError(
-              "invalid",
-              "Only failed, cancelled or interrupted downloads can be retried.",
-            ),
-          );
-        if (active?.id === id) yield* Fiber.interrupt(active.fiber);
-        const cleaned = yield* cleanupAndRecord(id);
-        if (Result.isFailure(cleaned)) return yield* Effect.fail(cleaned.failure);
-        yield* databaseOperation(() =>
-          database
-            .update(downloadJobs)
-            .set({
-              status: "queued",
-              phase: "queued",
-              downloadedBytes: 0,
-              totalBytes: null,
-              error: null,
-              ownerPid: null,
-              updatedAt: Date.now(),
-            })
-            .where(and(eq(downloadJobs.id, id), eq(downloadJobs.status, job.status)))
-            .run(),
-        );
-        return yield* get(id);
-      }).pipe(Effect.uninterruptible, Semaphore.withPermit(retryLock)),
+    retry,
     start: () =>
       Effect.gen(function* () {
         if (started)

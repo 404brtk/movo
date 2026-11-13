@@ -4,6 +4,7 @@ import {
   type DownloadPreview,
   getDownloadPreset,
   maxDownloadLinks,
+  retryableDownloadStates,
 } from "../../shared/contracts/downloads.ts";
 import {
   type DownloadSource,
@@ -81,7 +82,7 @@ export function linkSkip(
     return { reason: "unavailable", tone: "warning", message: preview.error.message };
   const url = row.source.url;
   const existing = jobs.find((job) => job.url === url && job.preset === preset);
-  if (!existing) return null;
+  if (!existing || retryableDownloadStates.has(existing.status)) return null;
   if (existing.status === "completed" && existing.mediaId)
     return {
       reason: "saved",

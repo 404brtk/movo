@@ -97,5 +97,6 @@ describe("link options", () => {
     expect(video && linkSkip(video, "audio", none, [job({ status: "completed", mediaId })])).toBe(
       null,
     );
+    expect(video && linkSkip(video, "video-1080p", none, [job({ status: "failed" })])).toBe(null);
   });
 });

@@ -237,6 +237,14 @@ it("validates HTTP input, queues independently of its request and exposes cancel
             expect((await app.request(`${base}/${job.id}/retry`, { method: "POST" })).status).toBe(
               202,
             );
+            await app.request(`${base}/${job.id}/cancel`, { method: "POST" });
+            const again = Schema.decodeUnknownSync(DownloadJobList)(
+              await (await app.request(base, json({ links: [{ url }, { url }] }))).json(),
+            );
+            expect(again.map((item) => [item.id, item.status])).toEqual([
+              [job.id, "queued"],
+              [job.id, "queued"],
+            ]);
             expect((await app.request(`${base}/invalid-id`)).status).toBe(404);
           });
           yield* Fiber.interrupt(worker);

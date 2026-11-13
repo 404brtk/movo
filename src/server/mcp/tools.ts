@@ -136,7 +136,7 @@ export const movoTools = Toolkit.make(
     hints({ readOnly: true, destructive: false, idempotent: true, openWorld: true }),
   ),
   Tool.make("download_links", {
-    description: `Queue downloads of videos or podcast episodes from ${downloadSiteNames} into the library, in the given order. Pass up to ${maxDownloadLinks} links, each with its own url and optional preset. Returns one job per link. If any link is unsupported, nothing is queued. preset is video-480p, video-720p, video-1080p (default), video-best or audio; video presets cap the shorter side of the frame and use the best lower resolution a source offers; podcast episodes are always saved as audio. Set transcribe to transcribe each recording once it is saved. The same link and preset return the existing job. Downloads run one at a time in the background; check them with get_download every few seconds.`,
+    description: `Queue downloads of videos or podcast episodes from ${downloadSiteNames} into the library, in the given order. Pass up to ${maxDownloadLinks} links, each with its own url and optional preset. Returns one job per link. If any link is unsupported, nothing is queued. preset is video-480p, video-720p, video-1080p (default), video-best or audio; video presets cap the shorter side of the frame and use the best lower resolution a source offers; podcast episodes are always saved as audio. Set transcribe to transcribe each recording once it is saved. The same link and preset return the existing job; a failed, cancelled or interrupted one is queued again. Downloads run one at a time in the background; check them with get_download every few seconds.`,
     parameters: DownloadRequest,
     success: Schema.Struct({ jobs: Schema.Array(DownloadJob) }),
     failure,

@@ -28,6 +28,11 @@ export const downloadStates = [
   "cancelled",
   "interrupted",
 ] as const;
+export const retryableDownloadStates: ReadonlySet<(typeof downloadStates)[number]> = new Set([
+  "failed",
+  "cancelled",
+  "interrupted",
+]);
 export const DownloadPreviewRequest = Schema.Struct({ url: Schema.String });
 export const maxDownloadLinks = 20;
 const DownloadTitle = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512));
