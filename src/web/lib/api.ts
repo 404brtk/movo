@@ -42,6 +42,9 @@ import {
   TranscriptionJob,
   TranscriptionStatus,
   type PassageEdit,
+  type SpeakerAssignment,
+  type SpeakerMerge,
+  type SpeakerRename,
   type TranscriptExportFormat,
   type TranscriptReplace,
   type TranscriptRestore,
@@ -303,6 +306,27 @@ export const replaceInTranscript = (id: string, replace: TranscriptReplace) =>
 export const restoreTranscript = (id: string, restore: TranscriptRestore) =>
   readResponse(
     client.api.media[":id"].transcription.restore.$post({ param: { id } }, jsonBody(restore)),
+    TranscriptionJob,
+  );
+export const assignSpeaker = (id: string, assignment: SpeakerAssignment) =>
+  readResponse(
+    client.api.media[":id"].transcription.speakers.assign.$post(
+      { param: { id } },
+      jsonBody(assignment),
+    ),
+    TranscriptionJob,
+  );
+export const mergeSpeakers = (id: string, merge: SpeakerMerge) =>
+  readResponse(
+    client.api.media[":id"].transcription.speakers.merge.$post({ param: { id } }, jsonBody(merge)),
+    TranscriptionJob,
+  );
+export const renameSpeaker = (id: string, rename: SpeakerRename) =>
+  readResponse(
+    client.api.media[":id"].transcription.speakers.rename.$post(
+      { param: { id } },
+      jsonBody(rename),
+    ),
     TranscriptionJob,
   );
 

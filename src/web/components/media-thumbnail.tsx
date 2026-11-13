@@ -1,4 +1,5 @@
 import type { MediaItem } from "../../shared/contracts/media.ts";
+import { cn } from "../lib/utils.ts";
 
 const videoHues = [250, 205, 175, 285, 320, 352] as const;
 const waveformBars = 11;
@@ -48,10 +49,19 @@ function VideoFrame({ hue }: { hue: number }) {
   );
 }
 
-export function MediaThumbnail({ item }: { item: Pick<MediaItem, "id" | "kind"> }) {
+export function MediaThumbnail({
+  item,
+  className,
+}: {
+  item: Pick<MediaItem, "id" | "kind">;
+  className?: string;
+}) {
   const seed = hash(item.id);
   return (
-    <span aria-hidden="true" className="grid h-[30px] w-11 shrink-0 place-items-center">
+    <span
+      aria-hidden="true"
+      className={cn("grid h-[30px] w-11 shrink-0 place-items-center", className)}
+    >
       {item.kind === "video" ? (
         <VideoFrame hue={videoHues[seed % videoHues.length] ?? videoHues[0]} />
       ) : (

@@ -12,6 +12,10 @@ import { LibraryItem, LibraryQuery } from "../../shared/contracts/library.ts";
 import { MediaDeletion, MediaId, MediaItem, MediaTitle } from "../../shared/contracts/media.ts";
 import {
   PassageEdit,
+  SpeakerAssignment,
+  SpeakerId,
+  SpeakerMerge,
+  SpeakerRename,
   Transcript,
   TranscriptHistory,
   TranscriptionJob,
@@ -26,11 +30,16 @@ const Milliseconds = Count;
 const limit = (maximum: number) =>
   Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum })));
 
+const Speakers = Schema.Array(Schema.Struct({ id: SpeakerId, name: Schema.String }));
 export const TranscriptionSummary = Schema.NullOr(
   Schema.Struct({
     ...Struct.omit(TranscriptionJob.fields, ["transcript"]),
     transcript: Schema.NullOr(
-      Schema.Struct({ language: Transcript.fields.language, passageCount: Count }),
+      Schema.Struct({
+        language: Transcript.fields.language,
+        passageCount: Count,
+        speakers: Speakers,
+      }),
     ),
   }),
 );
@@ -80,7 +89,7 @@ export const movoTools = Toolkit.make(
     failure,
   }).annotateMerge(reads),
   Tool.make("read_transcript", {
-    description: `Read a saved transcript as timestamped passages, starting at the first passage that begins at or after fromMs (default 0). Returns at most maxPassages passages (default 200, up to ${maxPagePassages}); continue with nextFromMs until it is null. Each passage has the firstWord and wordCount that edit_transcript accepts, and revision identifies the transcript version that edits must name.`,
+    description: `Read a saved transcript as timestamped passages, starting at the first passage that begins at or after fromMs (default 0). Returns at most maxPassages passages (default 200, up to ${maxPagePassages}); continue with nextFromMs until it is null. Each passage has the firstWord and wordCount that edit_transcript accepts, and revision identifies the transcript version that edits must name. When speakers were identified, each passage has the id of its speaker and speakers lists every speaker with its name, or Speaker and the id when it has no name.`,
     parameters: Schema.Struct({
       ...Recording.fields,
       fromMs: Schema.optional(Milliseconds),
@@ -89,6 +98,7 @@ export const movoTools = Toolkit.make(
     success: Schema.Struct({
       language: Transcript.fields.language,
       revision: Count,
+      speakers: Speakers,
       passages: Schema.Array(
         Schema.Struct({
           startMs: Milliseconds,
@@ -96,6 +106,7 @@ export const movoTools = Toolkit.make(
           text: Schema.String,
           firstWord: Count,
           wordCount: Count,
+          speaker: Schema.optionalKey(SpeakerId),
         }),
       ),
       nextFromMs: Schema.NullOr(Milliseconds),
@@ -183,6 +194,27 @@ export const movoTools = Toolkit.make(
     success: TranscriptionSummary,
     failure,
   }).annotateMerge(changes({ idempotent: false })),
+  Tool.make("assign_speaker", {
+    description:
+      "Attribute consecutive transcript words, usually a passage from read_transcript given by its firstWord and wordCount, to one speaker. speaker is an id from speakers in read_transcript, or the highest id plus one to add a new speaker. Use it when speakers were identified and a passage belongs to someone else. revision must be the current one. The change is saved in the transcript history.",
+    parameters: Schema.Struct({ ...Recording.fields, ...SpeakerAssignment.fields }),
+    success: TranscriptionSummary,
+    failure,
+  }).annotateMerge(changes({ idempotent: false })),
+  Tool.make("merge_speakers", {
+    description:
+      "Attribute every word of speaker to into, for example when one person was identified as two speakers. Both are ids from speakers in read_transcript and must differ. revision must be the current one. The change is saved in the transcript history.",
+    parameters: Schema.Struct({ ...Recording.fields, ...SpeakerMerge.fields }),
+    success: TranscriptionSummary,
+    failure,
+  }).annotateMerge(changes({ idempotent: false })),
+  Tool.make("rename_speaker", {
+    description:
+      "Name a speaker of a transcript, for example after the speakers introduce themselves. speaker is an id from speakers in read_transcript. An empty name removes the name. Names are not part of the transcript history and do not change its revision.",
+    parameters: Schema.Struct({ ...Recording.fields, ...SpeakerRename.fields }),
+    success: TranscriptionSummary,
+    failure,
+  }).annotateMerge(changes({ idempotent: true })),
   Tool.make("list_transcript_changes", {
     description:
       "List a transcript's saved changes, newest first, with the first replaced text of each as before and after. The transcription result itself is resultRevision from get_recording. Returns at most limit changes (default 20, up to 100) after skipping offset (default 0), and the total number of changes.",

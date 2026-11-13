@@ -9,19 +9,23 @@ import {
 } from "../../shared/contracts/transcriptions.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
-import { transcriptionModel } from "../models/catalog.ts";
+import { speakerModel, transcriptionModel } from "../models/catalog.ts";
 import type { Models } from "../models/models.ts";
 import { runCommand } from "../process/command.ts";
 
-const EnginePhase = Schema.Literals(["loading", "transcribing"]);
+const EnginePhase = Schema.Literals(["loading", "transcribing", "speakers"]);
 
 export function createTranscriptionEngine(
   tools: Pick<MediaTools, "resolve">,
-  models: Pick<Models, "resolve">,
+  models: Pick<Models, "resolve" | "installed">,
   run = runCommand,
 ) {
   const resources = () =>
-    Effect.all({ ffmpeg: tools.resolve("ffmpeg"), model: models.resolve(transcriptionModel.id) });
+    Effect.all({
+      ffmpeg: tools.resolve("ffmpeg"),
+      model: models.resolve(transcriptionModel.id),
+      speakers: models.installed(speakerModel.id),
+    });
   return {
     check: () => resources().pipe(Effect.asVoid),
     transcribe: (
@@ -31,7 +35,7 @@ export function createTranscriptionEngine(
       reportDevice: (device: TranscriptionDevice) => void,
     ) =>
       Effect.gen(function* () {
-        const { ffmpeg, model } = yield* resources();
+        const { ffmpeg, model, speakers } = yield* resources();
         const pcm = join(directory, "audio.f32");
         const resultPath = join(directory, "result.json");
         update("preparing");
@@ -80,29 +84,34 @@ export function createTranscriptionEngine(
           import.meta.url,
         );
         let deviceReported = false;
-        yield* run(process.execPath, [fileURLToPath(worker), model, pcm, resultPath], {
-          timeoutMs: 6 * 60 * 60 * 1000,
-          ipc: true,
-          onLine: (line) => {
-            if (line.startsWith("MOVO_DEVICE:")) {
-              reportDevice(
-                Schema.decodeUnknownSync(TranscriptionDevice)(
-                  JSON.parse(line.slice("MOVO_DEVICE:".length)),
-                ),
-              );
-              deviceReported = true;
-              return;
-            }
-            if (!line.startsWith("MOVO_PHASE:")) return;
-            const phase = line.slice("MOVO_PHASE:".length);
-            if (!Schema.is(EnginePhase)(phase))
-              throw new MediaError(
-                "unsupported",
-                "The transcription engine returned an invalid phase.",
-              );
-            update(phase);
+        const speakerArguments = speakers === null ? [] : [speakers];
+        yield* run(
+          process.execPath,
+          [fileURLToPath(worker), model, pcm, resultPath, ...speakerArguments],
+          {
+            timeoutMs: 6 * 60 * 60 * 1000,
+            ipc: true,
+            onLine: (line) => {
+              if (line.startsWith("MOVO_DEVICE:")) {
+                reportDevice(
+                  Schema.decodeUnknownSync(TranscriptionDevice)(
+                    JSON.parse(line.slice("MOVO_DEVICE:".length)),
+                  ),
+                );
+                deviceReported = true;
+                return;
+              }
+              if (!line.startsWith("MOVO_PHASE:")) return;
+              const phase = line.slice("MOVO_PHASE:".length);
+              if (!Schema.is(EnginePhase)(phase))
+                throw new MediaError(
+                  "unsupported",
+                  "The transcription engine returned an invalid phase.",
+                );
+              update(phase);
+            },
           },
-        }).pipe(
+        ).pipe(
           Effect.mapError(
             (cause) =>
               new MediaError(

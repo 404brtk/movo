@@ -1,7 +1,9 @@
 import { Schema } from "effect";
 
-export const ModelId = Schema.Literals(["parakeet-ultra-q8"]);
+export const ModelId = Schema.Literals(["parakeet-ultra-q8", "sortformer-4spk-q8"]);
 export type ModelId = typeof ModelId.Type;
+export const ModelRole = Schema.Literals(["transcription", "speakers"]);
+export type ModelRole = typeof ModelRole.Type;
 export const activeModelPhases = ["checking", "downloading", "verifying"];
 export const ModelInstallation = Schema.Struct({
   phase: Schema.Literals([
@@ -20,6 +22,7 @@ export const ModelInstallation = Schema.Struct({
 export type ModelInstallation = typeof ModelInstallation.Type;
 export const ModelStatus = Schema.Struct({
   id: ModelId,
+  role: ModelRole,
   name: Schema.String,
   description: Schema.String,
   bytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),

@@ -139,6 +139,14 @@ const readyEngine: TranscriptionEngine = {
   check: () => Effect.void,
   transcribe: () => Effect.succeed({ language: "en", words }),
 };
+const conversationEngine: TranscriptionEngine = {
+  check: () => Effect.void,
+  transcribe: () =>
+    Effect.succeed({
+      language: "en",
+      words: words.map((word, index) => ({ ...word, speaker: index < 4 ? 1 : 2 })),
+    }),
+};
 const missingModelEngine: TranscriptionEngine = {
   check: () => Effect.fail(new MediaError("unavailable", "Install the transcription model first.")),
   transcribe: () => Effect.never,
@@ -183,6 +191,9 @@ describe("MCP endpoint", () => {
         "retry_transcription",
         "edit_transcript",
         "replace_in_transcript",
+        "assign_speaker",
+        "merge_speakers",
+        "rename_speaker",
         "list_transcript_changes",
         "restore_transcript",
         "rename_recording",
@@ -316,6 +327,7 @@ describe("MCP endpoint", () => {
       ).toEqual({
         language: "en",
         revision: 1,
+        speakers: [],
         passages: [
           { startMs: 600, endMs: 1100, text: "Second sentence.", firstWord: 2, wordCount: 2 },
         ],
@@ -491,6 +503,83 @@ describe("MCP endpoint", () => {
       expect(await toolSuccess(DownloadPage, app, "list_downloads", { offset: 3 })).toEqual({
         jobs: [],
         total: 3,
+      });
+    }),
+  );
+
+  it(
+    "reads, names, assigns and merges identified speakers through tools",
+    withMovo(conversationEngine, async (app) => {
+      const item = await toolSuccess(MediaItem, app, "import_file", { path: fixture });
+      await toolSuccess(TranscriptionSummary, app, "transcribe_recording", { mediaId: item.id });
+      const recording = Schema.Struct({ transcription: TranscriptionSummary });
+      await expect
+        .poll(
+          async () =>
+            (await toolSuccess(recording, app, "get_recording", { mediaId: item.id }))
+              .transcription,
+        )
+        .toMatchObject({
+          status: "completed",
+          transcript: {
+            speakers: [
+              { id: 1, name: "Speaker 1" },
+              { id: 2, name: "Speaker 2" },
+            ],
+          },
+        });
+      const read = async () =>
+        (await callTool(app, "read_transcript", { mediaId: item.id })).structuredContent;
+      expect(await read()).toMatchObject({
+        passages: [{ speaker: 1 }, { speaker: 1 }, { speaker: 2, firstWord: 4, wordCount: 2 }],
+      });
+
+      const renamed = await toolSuccess(TranscriptionSummary, app, "rename_speaker", {
+        mediaId: item.id,
+        speaker: 2,
+        name: "Ann",
+      });
+      expect(renamed).toMatchObject({
+        revision: 1,
+        transcript: {
+          speakers: [
+            { id: 1, name: "Speaker 1" },
+            { id: 2, name: "Ann" },
+          ],
+        },
+      });
+      const assigned = await toolSuccess(TranscriptionSummary, app, "assign_speaker", {
+        mediaId: item.id,
+        revision: 1,
+        firstWord: 2,
+        wordCount: 2,
+        speaker: 2,
+      });
+      expect(assigned?.revision).toBe(2);
+      expect(await read()).toMatchObject({
+        speakers: [
+          { id: 1, name: "Speaker 1" },
+          { id: 2, name: "Ann" },
+        ],
+        passages: [{ speaker: 1 }, { speaker: 2 }, { speaker: 2 }],
+      });
+      expect(
+        await toolError(app, "merge_speakers", {
+          mediaId: item.id,
+          revision: 2,
+          speaker: 2,
+          into: 2,
+        }),
+      ).toBe("Choose a different speaker to merge into.");
+      const merged = await toolSuccess(TranscriptionSummary, app, "merge_speakers", {
+        mediaId: item.id,
+        revision: 2,
+        speaker: 1,
+        into: 2,
+      });
+      expect(merged).toMatchObject({
+        revision: 3,
+        transcript: { speakers: [{ id: 2, name: "Ann" }] },
       });
     }),
   );

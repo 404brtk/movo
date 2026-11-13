@@ -11,7 +11,7 @@ import { MediaError } from "../media/error.ts";
 import type { ModelDefinition } from "./catalog.ts";
 
 type Availability = Pick<ModelStatus, "state" | "message">;
-const ModelMetadata = Schema.Struct({ "general.architecture": Schema.Literal("parakeet") });
+const ModelMetadata = Schema.Struct({ "general.architecture": Schema.String });
 const hasCode = (cause: unknown, code: string) =>
   cause instanceof Error && "code" in cause && cause.code === code;
 const fingerprint = (file: Stats) =>
@@ -38,12 +38,18 @@ export function modelCachePath(directory: string, definition: ModelDefinition) {
   );
 }
 
-async function verifyHeader(path: string) {
+async function verifyHeader(path: string, definition: ModelDefinition) {
   try {
     const { metadata } = await gguf(path, { allowLocalFile: true });
-    Schema.decodeUnknownSync(ModelMetadata)(metadata);
+    const architecture = Schema.decodeUnknownSync(ModelMetadata)(metadata)["general.architecture"];
+    if (architecture !== definition.architecture)
+      throw new Error(`Expected ${definition.architecture}, found ${architecture}.`);
   } catch (cause) {
-    throw new MediaError("unsupported", "The model is not a supported Parakeet GGUF file.", cause);
+    throw new MediaError(
+      "unsupported",
+      `The model is not a supported ${definition.name} GGUF file.`,
+      cause,
+    );
   }
 }
 
@@ -58,7 +64,7 @@ export function createModelCache(directory: string, definition: ModelDefinition)
     if (hash.digest("hex") !== definition.sha256)
       throw new MediaError("unsupported", "The cached model failed its SHA-256 integrity check.");
     signal.throwIfAborted();
-    await verifyHeader(path);
+    await verifyHeader(path, definition);
     signal.throwIfAborted();
     if (fingerprint(await stat(path)) !== fingerprint(initial))
       throw new MediaError("unavailable", "The model changed during verification. Check again.");
@@ -118,7 +124,7 @@ export function createModelCache(directory: string, definition: ModelDefinition)
       try {
         await downloadFile(definition, partial, signal, progress);
         const downloaded = await stat(partial);
-        await verifyHeader(partial);
+        await verifyHeader(partial, definition);
         signal.throwIfAborted();
         try {
           await link(partial, path);

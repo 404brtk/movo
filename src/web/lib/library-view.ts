@@ -55,6 +55,10 @@ export function groupByImportPeriod<Item extends { importedAt: number }>(
   return groups;
 }
 
+export const canStartTranscription = (item: LibraryItem) =>
+  (item.transcription === "none" || item.transcription === "stopped") &&
+  item.fileRemovedAt === null;
+
 export function describeMedia(item: LibraryItem, { detailed }: { detailed: boolean }) {
   const source = item.sourceUrl ? formatSourceHost(item.sourceUrl) : null;
   return [

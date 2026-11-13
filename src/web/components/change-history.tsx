@@ -29,6 +29,10 @@ function describeEdit(change: TranscriptEdit) {
       ? `Replaced ${quoted(change.before)} with ${quoted(change.after)}`
       : `Removed ${quoted(change.before)}`;
   const at = change.startMs === null ? "" : ` at ${formatDuration(change.startMs / 1000)}`;
+  if (change.kind === "speaker")
+    return change.replacementCount > 1
+      ? "Changed the speaker in several places"
+      : `Changed the speaker${at}`;
   if (!change.before) return `Added a passage${at}`;
   return change.after ? `Edited passage${at}` : `Removed passage${at}`;
 }

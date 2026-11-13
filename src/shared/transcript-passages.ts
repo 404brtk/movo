@@ -39,6 +39,7 @@ export interface TranscriptPassage {
   endMs: number;
   text: string;
   firstWord: number;
+  speaker: number | undefined;
   words: readonly TranscriptWord[];
 }
 
@@ -50,6 +51,7 @@ function passage(words: readonly TranscriptWord[], firstWord: number): Transcrip
     endMs: Math.max(...words.map((word) => word.endMs)),
     text: words.map((word) => word.text).join(" "),
     firstWord,
+    speaker: first.speaker,
     words,
   };
 }
@@ -100,7 +102,12 @@ export function transcriptPassages(words: readonly TranscriptWord[]) {
   words.forEach((word, index) => {
     latestEndMs = Math.max(latestEndMs, word.endMs);
     const next = words[index + 1];
-    if (next && !endsSentence(word.text) && next.startMs - latestEndMs < passageBreakSilenceMs)
+    if (
+      next &&
+      next.speaker === word.speaker &&
+      !endsSentence(word.text) &&
+      next.startMs - latestEndMs < passageBreakSilenceMs
+    )
       return;
     passages.push(...fittingPassages(words.slice(firstWord, index + 1), firstWord));
     firstWord = index + 1;

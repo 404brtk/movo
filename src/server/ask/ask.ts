@@ -334,7 +334,7 @@ function instructionsFor(mediaId: string | null, scope: ChatScope | null) {
     ...shared,
     `This chat is about one recording, mediaId ${mediaId}. Tools only work with that recording.`,
     citeMoments,
-    "To fix the transcript, use edit_transcript or replace_in_transcript. The user approves each change. When a change is not approved, don't try it again.",
+    "To fix the transcript, use edit_transcript or replace_in_transcript. When speakers were identified, use rename_speaker to name a speaker, assign_speaker to attribute a passage to another speaker and merge_speakers when one person appears as two speakers. The user approves each change. When a change is not approved, don't try it again.",
   ].join("\n");
 }
 

@@ -9,6 +9,7 @@ import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { createMediaTools, type MediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
 import type { MediaItem } from "../../../../src/shared/contracts/media.ts";
+import type { Transcript } from "../../../../src/shared/contracts/transcriptions.ts";
 import {
   createTranscriptions,
   type Transcriptions,
@@ -634,6 +635,108 @@ it("rejects edits during a new attempt and never reuses a revision after it comp
         );
         expect(earlier.reason).toBe("conflict");
       }
+      yield* Fiber.interrupt(worker);
+    }),
+  );
+});
+
+const speakersOf = (job: { transcript: Transcript | null } | null) =>
+  job?.transcript?.words.map((word) => word.speaker);
+
+it("assigns, merges and names speakers, keeping names apart from the history it restores", async ({
+  signal,
+}) => {
+  await withRecording(signal, (database, directory, tools, _library, media) =>
+    Effect.gen(function* () {
+      const spoken = {
+        ...transcript,
+        words: transcript.words.map((word, index) => ({ ...word, speaker: index < 3 ? 1 : 2 })),
+      };
+      const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
+        check: () => Effect.void,
+        transcribe: (_path, _staging, _update, reportDevice) =>
+          Effect.sync(() => {
+            reportDevice(device);
+            return spoken;
+          }),
+      });
+      yield* jobs.enqueue(media.id);
+      const worker = yield* jobs.start();
+      yield* waitFor(jobs, media.id, "completed");
+
+      const named = yield* jobs.renameSpeaker(media.id, { speaker: 2, name: "  Ann  " });
+      expect(named).toMatchObject({
+        revision: 1,
+        transcript: { speakers: [{ id: 2, name: "Ann" }] },
+      });
+      expect(
+        (yield* Effect.flip(jobs.renameSpeaker(media.id, { speaker: 3, name: "Bob" }))).reason,
+      ).toBe("invalid");
+
+      const assigned = yield* jobs.assignSpeaker(
+        media.id,
+        { revision: 1, firstWord: 3, wordCount: 2, speaker: 3 },
+        "app",
+      );
+      expect(assigned?.revision).toBe(2);
+      expect(speakersOf(assigned)).toEqual([1, 1, 1, 3, 3]);
+      expect(assigned?.transcript?.speakers).toEqual([{ id: 2, name: "Ann" }]);
+      for (const request of [
+        { revision: 2, firstWord: 0, wordCount: 1, speaker: 5 },
+        { revision: 2, firstWord: 4, wordCount: 2, speaker: 1 },
+      ])
+        expect((yield* Effect.flip(jobs.assignSpeaker(media.id, request, "app"))).reason).toBe(
+          "invalid",
+        );
+
+      const merged = yield* jobs.mergeSpeakers(
+        media.id,
+        { revision: 2, speaker: 3, into: 2 },
+        "mcp",
+      );
+      expect(speakersOf(merged)).toEqual([1, 1, 1, 2, 2]);
+      for (const request of [
+        { revision: 3, speaker: 1, into: 1 },
+        { revision: 3, speaker: 1, into: 4 },
+        { revision: 3, speaker: 1, into: 3 },
+        { revision: 3, speaker: 3, into: 1 },
+      ])
+        expect((yield* Effect.flip(jobs.mergeSpeakers(media.id, request, "app"))).reason).toBe(
+          "invalid",
+        );
+      expect(
+        (yield* Effect.flip(
+          jobs.assignSpeaker(
+            media.id,
+            { revision: 3, firstWord: 0, wordCount: 1, speaker: 4 },
+            "app",
+          ),
+        )).message,
+      ).toBe("Choose a speaker from the transcript, or 3 for a new speaker.");
+      expect(yield* jobs.history(media.id, { limit: 10, offset: 0 })).toMatchObject({
+        total: 2,
+        changes: [
+          { revision: 3, kind: "speaker", source: "mcp", replacementCount: 1 },
+          {
+            revision: 2,
+            kind: "speaker",
+            source: "app",
+            startMs: transcript.words[3]?.startMs,
+            before: "Another passage.",
+            after: "Another passage.",
+          },
+        ],
+      });
+
+      const restored = yield* jobs.restore(media.id, { revision: 3, target: 2 }, "app");
+      expect(restored).toMatchObject({
+        revision: 4,
+        transcript: { speakers: [{ id: 2, name: "Ann" }] },
+      });
+      expect(speakersOf(restored)).toEqual([1, 1, 1, 3, 3]);
+      const cleared = yield* jobs.renameSpeaker(media.id, { speaker: 2, name: " " });
+      expect(cleared?.revision).toBe(4);
+      expect(cleared?.transcript).not.toHaveProperty("speakers");
       yield* Fiber.interrupt(worker);
     }),
   );
