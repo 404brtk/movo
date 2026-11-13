@@ -213,7 +213,7 @@ export function DownloadLink() {
   const previews = useQueries({
     queries: checks.map(({ row, options, settled }) => ({
       ...options,
-      enabled: ready && row.source !== undefined && (settled || running.has(row.key)),
+      enabled: open && ready && row.source !== undefined && (settled || running.has(row.key)),
     })),
   });
   const views: LinkView[] = rows.map((row, index) => {
