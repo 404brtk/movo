@@ -60,7 +60,7 @@ describe("adding pasted links", () => {
     const result = addLinks([], links.join(" "), "video");
     expect(result.rows).toHaveLength(20);
     expect(result.remaining).toBe(links.slice(20).join(" "));
-    expect(result.note).toBe("Add the rest once these links are downloaded.");
+    expect(result.note).toBe("The rest are added after you download these.");
   });
 });
 

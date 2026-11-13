@@ -233,10 +233,11 @@ export function DownloadLink() {
   const download = useMutation({
     mutationFn: enqueueDownload,
     onSuccess: async (_jobs, request) => {
-      setOpen(false);
-      setRows([]);
-      setField("");
-      setNote(null);
+      const rest = addLinks([], field, lastKind);
+      setRows(rest.rows);
+      setField(rest.remaining);
+      setNote(rest.note);
+      setOpen(rest.rows.length > 0);
       await queryClient.invalidateQueries({ queryKey: downloadsOptions.queryKey });
       toastManager.add({
         title: `${countLabel(request.links.length, "download")} added`,

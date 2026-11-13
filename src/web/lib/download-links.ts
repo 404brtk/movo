@@ -48,7 +48,7 @@ export function addLinks(rows: readonly LinkRow[], text: string, kind: SaveKind)
       notLinks.length > 0
         ? "Paste full links that start with https://."
         : later.length > 0
-          ? "Add the rest once these links are downloaded."
+          ? "The rest are added after you download these."
           : duplicates > 0 && added.length === 0
             ? "Already in the list."
             : null,

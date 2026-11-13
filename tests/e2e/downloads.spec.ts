@@ -293,11 +293,11 @@ test("checks an X post again after a source error and keeps polling while anothe
   await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
 });
 
-test("scrolls only the link list and keeps the options and download button in view", async ({
+test("scrolls only the link list, keeps the options in view and keeps links past the limit", async ({
   page,
 }) => {
   const urls = Array.from(
-    { length: 20 },
+    { length: 21 },
     (_, index) => `https://www.youtube.com/watch?v=${String(index).padStart(11, "a")}`,
   );
   await page.route("**/api/downloads/preview", (route) => {
@@ -323,10 +323,16 @@ test("scrolls only the link list and keeps the options and download button in vi
   await links.fill(urls.slice(1).join("\n"));
   await links.press("Enter");
   await expect(list.getByRole("listitem")).toHaveCount(20);
+  await expect(links).toHaveValue(urls[20] ?? "");
   expect(await dialog.evaluate(scrollingAreas)).toEqual(["Links"]);
   await expect(links).toBeInViewport();
   await expect(page.getByRole("group", { name: "Quality" })).toBeInViewport();
-  await expect(page.getByRole("button", { name: "Download 20", exact: true })).toBeInViewport();
+  const download = page.getByRole("button", { name: "Download 20", exact: true });
+  await expect(download).toBeInViewport();
+  await download.click();
+  await expect(page.getByText("20 downloads added", { exact: true })).toBeVisible();
+  await expect(list.getByRole("listitem")).toHaveCount(1);
+  await expect(links).toHaveValue("");
 });
 
 test("retries and cancels a download, retains its state after reload and fits a narrow screen", async ({
