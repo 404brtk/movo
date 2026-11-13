@@ -1,9 +1,9 @@
 import { useState } from "react";
 import {
   Alert02Icon,
+  CheckmarkCircle02Icon,
   CpuIcon,
   RefreshIcon,
-  Tick02Icon,
   Wrench01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -26,8 +26,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx";
 const steps = [
   { phase: "preparing", label: "Preparing audio" },
   { phase: "loading", label: "Loading Parakeet Ultra" },
-  { phase: "transcribing", label: "Transcribing…" },
-  { phase: "speakers", label: "Identifying speakers…" },
+  { phase: "transcribing", label: "Transcribing" },
+  { phase: "speakers", label: "Identifying speakers" },
 ] as const satisfies readonly { phase: TranscriptionPhase; label: string }[];
 const phaseOrder: TranscriptionPhase[] = [
   "queued",
@@ -92,18 +92,16 @@ export function NoTranscriptCard({
 }
 
 function StepMarker({ state }: { state: "done" | "current" | "pending" }) {
-  if (state === "done")
-    return (
-      <span className="grid size-[22px] shrink-0 place-items-center rounded-full bg-[oklch(0.955_0.045_152)] text-success">
-        <HugeiconsIcon icon={Tick02Icon} size={13} aria-hidden="true" />
-      </span>
-    );
-  if (state === "current")
-    return (
-      <span className="size-[22px] shrink-0 animate-spin rounded-full border-2 border-highlight border-t-primary [animation-duration:800ms] motion-reduce:[animation-duration:2.4s]" />
-    );
   return (
-    <span className="size-[22px] shrink-0 rounded-full shadow-[inset_0_0_0_1.5px_var(--color-border)]" />
+    <span className="mt-px grid size-[18px] shrink-0 place-items-center">
+      {state === "done" ? (
+        <AccentIcon icon={CheckmarkCircle02Icon} size={18} />
+      ) : state === "current" ? (
+        <span className="size-[15px] animate-spin rounded-full step-arc [animation-duration:900ms] motion-reduce:[animation-duration:2.4s]" />
+      ) : (
+        <span className="size-[15px] rounded-full shadow-[inset_0_0_0_1.25px_var(--color-border-strong)]" />
+      )}
+    </span>
   );
 }
 
@@ -141,8 +139,9 @@ export function TranscribingCard({
           </p>
         </div>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
+          className="-mt-0.5 -mr-2.5"
           aria-busy={cancelling}
           disabled={cancelling}
           onClick={onCancel}
@@ -152,32 +151,39 @@ export function TranscribingCard({
         </Button>
       </div>
       <output className="sr-only">{queued ? "Waiting to transcribe" : currentStep}</output>
-      <ol aria-label="Progress" className="mt-5 grid gap-3">
+      <ol aria-label="Progress" className="mt-5 grid gap-3.5">
         {shownSteps.map((step, index) => {
           const state =
             position > index + 1 ? "done" : position === index + 1 ? "current" : "pending";
+          const shownDevice =
+            state === "current" && step.phase === "transcribing" ? job.device : null;
           return (
             <li
               key={step.phase}
               aria-current={state === "current" ? "step" : undefined}
               className={cn(
-                "flex items-center gap-3 text-[13.5px]",
-                state === "done" && "text-muted-foreground",
+                "relative flex items-start gap-3 text-[13.5px]/5",
+                "not-last:after:absolute not-last:after:top-[23px] not-last:after:-bottom-3 not-last:after:left-[8.5px] not-last:after:w-px not-last:after:rounded-full not-last:after:bg-input",
+                state === "done" &&
+                  "text-muted-foreground not-last:after:bg-linear-to-b not-last:after:from-primary-from not-last:after:to-primary-to",
                 state === "current" && "font-medium",
                 state === "pending" && "text-muted-foreground/70",
               )}
             >
               <StepMarker state={state} />
-              {step.label}
-              {state === "done" ? <span className="sr-only">, done</span> : null}
+              <span>
+                {state === "current" ? `${step.label}…` : step.label}
+                {state === "done" ? <span className="sr-only">, done</span> : null}
+                {shownDevice ? (
+                  <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                    On {formatDevice(shownDevice)}
+                  </span>
+                ) : null}
+              </span>
             </li>
           );
         })}
       </ol>
-      <p className="mt-5 flex items-center gap-2 border-t pt-4 text-xs text-muted-foreground">
-        <HugeiconsIcon icon={CpuIcon} size={14} aria-hidden="true" />
-        {job.device ? `Running on ${formatDevice(job.device)}` : "Running on this computer"}
-      </p>
     </section>
   );
 }

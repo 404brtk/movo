@@ -35,6 +35,17 @@
     var(--subtle);
 }
 
+@utility step-arc {
+  background: conic-gradient(
+    from 0.1turn,
+    transparent,
+    var(--primary-from) 0.35turn,
+    var(--primary-to) 0.8turn,
+    var(--highlight) 0.8turn
+  );
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.75px), black calc(100% - 1.5px));
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Inter Variable", sans-serif;

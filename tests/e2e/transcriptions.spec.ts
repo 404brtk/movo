@@ -132,7 +132,7 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
     transcript: null,
     revision: 0,
     resultRevision: 0,
-    device: null,
+    device: { backend: "vulkan", name: "Test GPU" },
     error: null,
     cleanupError: null,
     createdAt: Date.now(),
@@ -163,13 +163,16 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/media/${media.id}`);
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
+  const device = panel.getByText("On Test GPU · Vulkan", { exact: true });
   await expect(panel.getByRole("status")).toContainText("Loading Parakeet Ultra");
+  await expect(device).toHaveCount(0);
   await panel.getByRole("button", { name: "Cancel transcription", exact: true }).click();
   await expect(panel.getByRole("heading", { name: "Transcription stopped" })).toBeVisible();
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("alert")).toHaveText("Check folder permissions and try again.");
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Transcribing");
+  await expect(device).toBeVisible();
   job = {
     ...job,
     status: "completed",
