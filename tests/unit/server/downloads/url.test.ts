@@ -84,7 +84,13 @@ describe("single links from other supported sites", () => {
       "https://www.tiktok.com/@movo.test/video/7706564076964498719?is_from_webapp=1",
       "tiktok",
       "7706564076964498719",
-      "https://www.tiktok.com/@movo.test/video/7706564076964498719",
+      "https://www.tiktok.com/@/video/7706564076964498719",
+    ],
+    [
+      "https://m.tiktok.com/@another_name/video/7706564076964498719",
+      "tiktok",
+      "7706564076964498719",
+      "https://www.tiktok.com/@/video/7706564076964498719",
     ],
     [
       "https://www.instagram.com/reels/DfP5u9CFOTK/",

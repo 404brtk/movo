@@ -39,9 +39,8 @@ const sites = [
     site: "tiktok",
     host: /^(?:(?:www|m)\.)?tiktok\.com$/u,
     locate: (url: URL): Located => {
-      const [, user, id] =
-        /^\/@([\w.]{1,24})\/video\/([1-9]\d{0,19})\/?$/u.exec(url.pathname) ?? [];
-      return user && id ? { id, url: `https://www.tiktok.com/@${user}/video/${id}` } : undefined;
+      const id = /^\/@[\w.]{0,24}\/video\/([1-9]\d{0,19})\/?$/u.exec(url.pathname)?.[1];
+      return id ? { id, url: `https://www.tiktok.com/@/video/${id}` } : undefined;
     },
   },
   {
