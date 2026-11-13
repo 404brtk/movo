@@ -31,8 +31,8 @@ export function LibraryWelcome() {
           Your library starts here
         </EmptyTitle>
         <EmptyDescription className="mt-2 text-sm/[22px]">
-          Import an audio or video file to save a copy, or download one from a YouTube or X link.
-          Your original stays where it is.
+          Import an audio or video file to save a copy, or download one from a video or podcast
+          link. Your original stays where it is.
         </EmptyDescription>
       </EmptyHeader>
     </Empty>

@@ -46,23 +46,25 @@ it("checks transcription prerequisites before accepting or upgrading a combined 
           });
           const app = createApp(database, config, undefined, { tools, downloads, transcriptions });
           yield* Effect.promise(async () => {
-            const blocked = await app.request(base, json({ urls: [url], transcribe: true }));
+            const blocked = await app.request(base, json({ links: [{ url }], transcribe: true }));
             expect(blocked.status).toBe(503);
             expect(await blocked.json()).toEqual({
               error: "Install the transcription model first.",
             });
             expect(await Effect.runPromise(downloads.list())).toEqual([]);
             expect(
-              (await app.request(base, json({ urls: [url], transcribe: "true" }))).status,
+              (await app.request(base, json({ links: [{ url }], transcribe: "true" }))).status,
             ).toBe(400);
-            const plain = oneJob(await (await app.request(base, json({ urls: [url] }))).json());
-            expect(plain.transcribe).toBe(false);
-            expect((await app.request(base, json({ urls: [url], transcribe: true }))).status).toBe(
-              503,
+            const plain = oneJob(
+              await (await app.request(base, json({ links: [{ url }] }))).json(),
             );
+            expect(plain.transcribe).toBe(false);
+            expect(
+              (await app.request(base, json({ links: [{ url }], transcribe: true }))).status,
+            ).toBe(503);
             expect((await Effect.runPromise(downloads.get(plain.id))).transcribe).toBe(false);
             ready = true;
-            const accepted = await app.request(base, json({ urls: [url], transcribe: true }));
+            const accepted = await app.request(base, json({ links: [{ url }], transcribe: true }));
             expect(accepted.status).toBe(202);
             expect(oneJob(await accepted.json())).toMatchObject({
               id: plain.id,
@@ -98,20 +100,21 @@ it("validates HTTP input, queues independently of its request and exposes cancel
             expect((await app.request(base, json({}))).status).toBe(400);
             expect((await app.request(base, { method: "POST", body: "{" })).status).toBe(400);
             expect(
-              (await app.request(base, json({ urls: ["https://example.com/video"] }))).status,
+              (await app.request(base, json({ links: [{ url: "https://example.com/video" }] })))
+                .status,
             ).toBe(400);
-            expect((await app.request(base, json({ urls: ["x".repeat(1_100_000)] }))).status).toBe(
-              413,
-            );
+            expect(
+              (await app.request(base, json({ links: [{ url: "x".repeat(1_100_000) }] }))).status,
+            ).toBe(413);
             expect(
               (
                 await app.request(base, {
-                  ...json({ urls: [url] }),
+                  ...json({ links: [{ url }] }),
                   headers: { origin: "https://foreign.example" },
                 })
               ).status,
             ).toBe(403);
-            const response = await app.request(base, json({ urls: [url] }));
+            const response = await app.request(base, json({ links: [{ url }] }));
             expect(response.status).toBe(202);
             const job = oneJob(await response.json());
             expect(job.preset).toBe("video-1080p");
@@ -129,16 +132,21 @@ it("validates HTTP input, queues independently of its request and exposes cancel
               "",
               `${url}&t=${"1".repeat(2048)}`,
             ]) {
-              const rejected = await app.request(base, json({ urls: [secondUrl, invalid] }));
+              const rejected = await app.request(
+                base,
+                json({ links: [{ url: secondUrl }, { url: invalid }] }),
+              );
               expect(rejected.status).toBe(400);
               expect(await rejected.json()).toEqual({
                 error: expect.stringMatching(/^Link 2: /u),
               });
             }
             expect(await Effect.runPromise(downloads.list())).toHaveLength(1);
-            expect((await app.request(base, json({ urls: [] }))).status).toBe(400);
+            expect((await app.request(base, json({ links: [] }))).status).toBe(400);
             const batch = Schema.decodeUnknownSync(DownloadJobList)(
-              await (await app.request(base, json({ urls: [secondUrl, url] }))).json(),
+              await (
+                await app.request(base, json({ links: [{ url: secondUrl }, { url }] }))
+              ).json(),
             );
             expect(batch.map((item) => item.url)).toEqual([
               "https://www.youtube.com/watch?v=bbbbbbbbbbb",
@@ -146,21 +154,27 @@ it("validates HTTP input, queues independently of its request and exposes cancel
             ]);
             expect(batch[1]?.id).toBe(job.id);
             expect(
-              (await app.request(base, json({ urls: [url], preset: "video-2160p" }))).status,
+              (await app.request(base, json({ links: [{ url, preset: "video-2160p" }] }))).status,
             ).toBe(400);
-            expect((await app.request(base, json({ urls: [url], preset: 720 }))).status).toBe(400);
+            expect((await app.request(base, json({ links: [{ url, preset: 720 }] }))).status).toBe(
+              400,
+            );
             const audio = oneJob(
-              await (await app.request(base, json({ urls: [url], preset: "audio" }))).json(),
+              await (await app.request(base, json({ links: [{ url, preset: "audio" }] }))).json(),
             );
             const smaller = oneJob(
-              await (await app.request(base, json({ urls: [url], preset: "video-720p" }))).json(),
+              await (
+                await app.request(base, json({ links: [{ url, preset: "video-720p" }] }))
+              ).json(),
             );
             expect(audio).toMatchObject({ preset: "audio" });
             expect(smaller).toMatchObject({ preset: "video-720p" });
             expect(new Set([job.id, audio.id, smaller.id]).size).toBe(3);
             const xResponse = await app.request(
               base,
-              json({ urls: ["https://twitter.com/example/status/123?s=20"], preset: "audio" }),
+              json({
+                links: [{ url: "https://twitter.com/example/status/123?s=20", preset: "audio" }],
+              }),
             );
             expect(xResponse.status).toBe(202);
             const xJob = oneJob(await xResponse.json());
@@ -172,10 +186,50 @@ it("validates HTTP input, queues independently of its request and exposes cancel
               (
                 await app.request(
                   base,
-                  json({ urls: ["https://x.com/example/status/123/video/2"] }),
+                  json({ links: [{ url: "https://x.com/example/status/123/video/2" }] }),
                 )
               ).status,
             ).toBe(400);
+            const episode = oneJob(
+              await (
+                await app.request(
+                  base,
+                  json({
+                    links: [
+                      {
+                        url: "https://podcasts.apple.com/us/podcast/a-show/id1?i=2",
+                        preset: "video-720p",
+                        title: "An episode",
+                      },
+                    ],
+                  }),
+                )
+              ).json(),
+            );
+            expect(episode).toMatchObject({
+              url: "https://podcasts.apple.com/podcast/id1?i=2",
+              preset: "audio",
+              title: "An episode",
+            });
+            const mixed = Schema.decodeUnknownSync(DownloadJobList)(
+              await (
+                await app.request(
+                  base,
+                  json({
+                    links: [
+                      { url: "https://youtu.be/ccccccccccc", preset: "audio" },
+                      { url: "https://youtu.be/ddddddddddd" },
+                    ],
+                  }),
+                )
+              ).json(),
+            );
+            expect(mixed.map((item) => item.preset)).toEqual(["audio", "video-1080p"]);
+            const tooMany = Array.from({ length: 21 }, (_, index) => ({
+              url: `https://youtu.be/${String(index).padStart(11, "e")}`,
+            }));
+            expect((await app.request(base, json({ links: tooMany }))).status).toBe(400);
+            expect((await app.request(base, json({ links: tooMany.slice(1) }))).status).toBe(202);
             expect((await app.request(`${base}/${job.id}/cancel`, { method: "POST" })).status).toBe(
               200,
             );
@@ -183,6 +237,14 @@ it("validates HTTP input, queues independently of its request and exposes cancel
             expect((await app.request(`${base}/${job.id}/retry`, { method: "POST" })).status).toBe(
               202,
             );
+            await app.request(`${base}/${job.id}/cancel`, { method: "POST" });
+            const again = Schema.decodeUnknownSync(DownloadJobList)(
+              await (await app.request(base, json({ links: [{ url }, { url }] }))).json(),
+            );
+            expect(again.map((item) => [item.id, item.status])).toEqual([
+              [job.id, "queued"],
+              [job.id, "queued"],
+            ]);
             expect((await app.request(`${base}/invalid-id`)).status).toBe(404);
           });
           yield* Fiber.interrupt(worker);

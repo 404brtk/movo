@@ -11,7 +11,7 @@ export function SegmentedChoice<Value extends string>({
 }: {
   label: string;
   options: readonly (readonly [value: Value, label: string])[];
-  value: Value;
+  value: Value | null;
   onValueChange: (value: Value) => void;
   size?: "default" | "sm";
   disabled?: boolean;
@@ -23,7 +23,7 @@ export function SegmentedChoice<Value extends string>({
       variant="segmented"
       size={size}
       className={className}
-      value={[value]}
+      value={value === null ? [] : [value]}
       disabled={disabled ?? false}
       onValueChange={([selected]) => {
         const option = options.find(([optionValue]) => optionValue === selected);

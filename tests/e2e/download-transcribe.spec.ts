@@ -112,21 +112,23 @@ test("downloads and transcribes once, reports missing prerequisites and shows th
   await page.setViewportSize({ width: 320, height: 760 });
   await page.goto(workflow.origin);
   await page.getByRole("button", { name: "Download from link", exact: true }).click();
-  await page.getByRole("textbox", { name: "Video links" }).fill(sourceUrl);
-  await page.getByRole("button", { name: "Check link", exact: true }).click();
+  const links = page.getByRole("textbox", { name: "Add links" });
+  await links.fill(sourceUrl);
+  await links.press("Enter");
   const checkbox = page.getByRole("switch", { name: "Transcribe after download" });
   await expect(checkbox).not.toBeChecked();
   await checkbox.focus();
   await page.keyboard.press("Space");
   await expect(checkbox).toBeChecked();
   await page
-    .getByRole("group", { name: "Save as" })
-    .getByRole("button", { name: "Audio only" })
+    .getByRole("group", { name: `Save ${title} as` })
+    .getByRole("button", { name: "Audio" })
     .click();
   await page.getByRole("button", { name: "Download", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("Install Parakeet Ultra before transcribing.");
   workflow.enableModel();
   await page.getByRole("button", { name: "Download", exact: true }).click();
+  await page.getByRole("button", { name: "View downloads", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Downloads", exact: true })).toBeVisible();
   await expect(page.getByText("Saved to library", { exact: false })).toBeVisible();
   await page.reload();

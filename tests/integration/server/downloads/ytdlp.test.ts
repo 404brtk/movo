@@ -17,6 +17,7 @@ const ytdlp = () => Effect.succeed("yt-dlp");
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
 const metadata = {
   id: "aaaaaaaaaaa",
+  extractor_key: "Youtube",
   title: "A public video",
   duration: 2,
   live_status: "not_live",
@@ -89,9 +90,14 @@ describe("Media downloader protocol", () => {
   });
 
   it.each([
-    ["video-480p", "bv*[height<=480]+ba/b[height<=480]"],
-    ["video-720p", "bv*[height<=720]+ba/b[height<=720]"],
-    ["video-1080p", "bv*[height<=1080]+ba/b[height<=1080]"],
+    [
+      "video-480p",
+      "bv*[height<=480][aspect_ratio>=?1]+ba/bv*[width<=480][aspect_ratio<1]+ba/bv*[height<=?480][width<=?480]+ba/b[height<=480][aspect_ratio>=?1]/b[width<=480][aspect_ratio<1]/b[height<=?480][width<=?480]",
+    ],
+    [
+      "video-1080p",
+      "bv*[height<=1080][aspect_ratio>=?1]+ba/bv*[width<=1080][aspect_ratio<1]+ba/bv*[height<=?1080][width<=?1080]+ba/b[height<=1080][aspect_ratio>=?1]/b[width<=1080][aspect_ratio<1]/b[height<=?1080][width<=?1080]",
+    ],
     ["video-best", "bv*+ba/b"],
     ["audio", "ba"],
   ] as const)("requests %s without converting the source streams", async (preset, selector) => {
@@ -137,7 +143,7 @@ describe("Media downloader protocol", () => {
     await expect(Effect.runPromise(downloader.preview(xUrl))).rejects.toMatchObject({
       reason: "unavailable",
       message:
-        "This X video is unavailable to Movo. Use a public post that opens without signing in, or try again later.",
+        "This X link is unavailable to Movo. Use a public link that opens without signing in, or try again later.",
     });
   });
 
@@ -264,4 +270,109 @@ describe("Media downloader protocol", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+});
+
+describe("Site-specific yt-dlp profiles", () => {
+  const combined1080 =
+    "b[height<=1080][aspect_ratio>=?1]/b[width<=1080][aspect_ratio<1]/b[height<=?1080][width<=?1080]";
+  const sites = [
+    {
+      link: "https://www.tiktok.com/@movo.test/video/123",
+      extractor: "tiktok",
+      result: { id: "123", extractor_key: "TikTok" },
+      video: combined1080,
+      audio: "b",
+    },
+    {
+      link: "https://clips.twitch.tv/SomeClip-abc",
+      extractor: "twitch:clips",
+      result: { id: "987", display_id: "SomeClip-abc", extractor_key: "TwitchClips" },
+      video: combined1080,
+      audio: "ba/b",
+    },
+    {
+      link: "https://www.instagram.com/reel/DfP5u9CFOTK/",
+      extractor: "instagram",
+      result: { id: "DfP5u9CFOTK", extractor_key: "Instagram" },
+      video: `bv*[height<=1080][aspect_ratio>=?1]+ba/bv*[width<=1080][aspect_ratio<1]+ba/bv*[height<=?1080][width<=?1080]+ba/${combined1080}`,
+      audio: "ba/b",
+    },
+    {
+      link: "https://podcasts.apple.com/us/podcast/show/id1?i=2",
+      extractor: "apple:podcasts",
+      result: { id: "2", extractor_key: "ApplePodcasts" },
+      video: "ba/b",
+      audio: "ba/b",
+    },
+  ];
+
+  it.each(sites)(
+    "previews $link with the $extractor extractor and its own identity",
+    async ({ link, extractor, result }) => {
+      command.mockReturnValue(Effect.succeed(JSON.stringify({ ...metadata, ...result })));
+      const downloader = createMediaDownloader(
+        ytdlp,
+        createMediaTools({ dataDirectory: tmpdir() }),
+      );
+      expect(await Effect.runPromise(downloader.preview(link))).toMatchObject({
+        title: metadata.title,
+      });
+      const args = command.mock.calls[0]?.[1] ?? [];
+      expect(args[args.indexOf("--use-extractors") + 1]).toBe(extractor);
+    },
+  );
+
+  it.each(sites)(
+    "rejects $extractor metadata from another extractor or item",
+    async ({ link, result }) => {
+      const downloader = createMediaDownloader(
+        ytdlp,
+        createMediaTools({ dataDirectory: tmpdir() }),
+      );
+      for (const invalid of [
+        { ...metadata, ...result, extractor_key: "Generic" },
+        { ...metadata, ...result, id: "other", display_id: "other" },
+      ]) {
+        command.mockReturnValueOnce(Effect.succeed(JSON.stringify(invalid)));
+        await expect(Effect.runPromise(downloader.preview(link))).rejects.toMatchObject({
+          reason: "unsupported",
+        });
+      }
+    },
+  );
+
+  it.for(
+    sites.flatMap((site) => [
+      { ...site, preset: "video-1080p" as const, selector: site.video },
+      { ...site, preset: "audio" as const, selector: site.audio },
+    ]),
+  )(
+    "selects $selector for $extractor $preset downloads",
+    async ({ link, extractor, result, preset, selector, audio }) => {
+      const directory = await mkdtemp(join(tmpdir(), "movo-ytdlp-site-"));
+      const tools = createMediaTools({ dataDirectory: directory });
+      try {
+        command.mockReturnValueOnce(Effect.succeed(JSON.stringify({ ...metadata, ...result })));
+        command.mockImplementationOnce((_file, _args, options) =>
+          Effect.promise(async () => {
+            const path = join(directory, "media.m4a");
+            await writeFile(path, "completed source stream");
+            options.onLine?.(`MOVO_FILE:${JSON.stringify(path)}`);
+            return "";
+          }),
+        );
+        await Effect.runPromise(
+          createMediaDownloader(ytdlp, tools).download(link, directory, () => undefined, preset),
+        );
+        const args = command.mock.calls[1]?.[1] ?? [];
+        expect(args[args.indexOf("--format") + 1]).toBe(selector);
+        expect(args.includes("--extract-audio")).toBe(selector === audio);
+        expect(args.includes("--merge-output-format")).toBe(selector !== audio);
+        expect(args.includes("m3u8:ffmpeg")).toBe(extractor === "apple:podcasts");
+      } finally {
+        await Effect.runPromise(tools.close());
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 });

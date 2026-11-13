@@ -1,16 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { and, asc, desc, eq, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
 import {
   defaultDownloadPreset,
   DownloadJob,
   DownloadJobList,
+  type DownloadLinkRequest,
   DownloadPreset,
   type DownloadRequest,
+  retryableDownloadStates,
 } from "../../shared/contracts/downloads.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
+import { isAudioOnlySite } from "../../shared/download-sources.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError } from "../media/error.ts";
 import { createMediaLibrary } from "../media/library.ts";
@@ -38,19 +41,33 @@ const databaseOperation = <A>(operation: () => A) =>
           ),
   });
 
-const checkOptions = (preset: DownloadPreset, transcribe: boolean) => {
-  if (!Schema.is(DownloadPreset)(preset))
-    throw new MediaError("invalid", "Choose a supported download option.");
+const checkTranscribe = (transcribe: boolean) => {
   if (!Schema.is(Schema.Boolean)(transcribe))
     throw new MediaError("invalid", "Choose whether to transcribe after downloading.");
 };
+const prepareLink = (link: DownloadLinkRequest, index: number, count: number) => {
+  const preset = link.preset ?? defaultDownloadPreset;
+  if (!Schema.is(DownloadPreset)(preset))
+    throw new MediaError("invalid", "Choose a supported download option.");
+  try {
+    const source = downloadSource(link.url);
+    return {
+      url: source.url,
+      preset: isAudioOnlySite(source.site) ? ("audio" as const) : preset,
+      title: link.title ?? null,
+    };
+  } catch (cause) {
+    if (count === 1 || !(cause instanceof MediaError)) throw cause;
+    throw new MediaError(cause.reason, `Link ${index + 1}: ${cause.message}`, cause);
+  }
+};
 const insertJob = (
   transaction: Pick<AppDatabase, "insert" | "update" | "select">,
-  url: string,
-  preset: DownloadPreset,
+  { url, preset, title }: ReturnType<typeof prepareLink>,
   transcribe: boolean,
-  now: number,
+  queuedAt: number,
 ) => {
+  const sameLink = and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset));
   transaction
     .insert(downloadJobs)
     .values({
@@ -58,37 +75,43 @@ const insertJob = (
       url,
       preset,
       transcribe,
+      title,
       status: "queued",
       phase: "queued",
-      createdAt: now,
-      updatedAt: now,
+      createdAt: queuedAt,
+      updatedAt: queuedAt,
     })
     .onConflictDoNothing({ target: [downloadJobs.url, downloadJobs.preset] })
     .run();
-  if (transcribe)
-    transaction
-      .update(downloadJobs)
-      .set({ transcribe: true })
-      .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
-      .run();
+  transaction
+    .update(downloadJobs)
+    .set({
+      status: "queued",
+      phase: "queued",
+      downloadedBytes: 0,
+      totalBytes: null,
+      error: null,
+      cleanupError: null,
+      ownerPid: null,
+      updatedAt: queuedAt,
+    })
+    .where(and(sameLink, inArray(downloadJobs.status, [...retryableDownloadStates])))
+    .run();
+  if (transcribe) transaction.update(downloadJobs).set({ transcribe: true }).where(sameLink).run();
   const job = Schema.decodeUnknownSync(DownloadJob)(
-    transaction
-      .select()
-      .from(downloadJobs)
-      .where(and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset)))
-      .get(),
+    transaction.select().from(downloadJobs).where(sameLink).get(),
   );
   if (job.status === "completed" && job.transcribe && job.mediaId)
     queueTranscription(transaction, job.mediaId);
   return job;
 };
-const linkUrl = (input: string, index: number, count: number) => {
-  try {
-    return downloadSource(input).url;
-  } catch (cause) {
-    if (count === 1 || !(cause instanceof MediaError)) throw cause;
-    throw new MediaError(cause.reason, `Link ${index + 1}: ${cause.message}`, cause);
-  }
+const nextQueuePosition = (transaction: Pick<AppDatabase, "select">) => {
+  const last = transaction
+    .select({ updatedAt: sql<number | null>`max(${downloadJobs.updatedAt})` })
+    .from(downloadJobs)
+    .where(eq(downloadJobs.status, "queued"))
+    .get()?.updatedAt;
+  return Math.max(Date.now(), (last ?? 0) + 1);
 };
 
 export function createDownloads(
@@ -174,7 +197,9 @@ export function createDownloads(
             cleanupError: Result.isFailure(result) ? result.failure.message : null,
             updatedAt: Date.now(),
           })
-          .where(eq(downloadJobs.id, id))
+          .where(
+            and(eq(downloadJobs.id, id), notInArray(downloadJobs.status, ["queued", "running"])),
+          )
           .run(),
       );
       return result;
@@ -292,6 +317,37 @@ export function createDownloads(
     }),
   );
 
+  const retry = (id: string) =>
+    Effect.gen(function* () {
+      const job = yield* get(id);
+      if (!retryableDownloadStates.has(job.status))
+        return yield* Effect.fail(
+          new MediaError(
+            "invalid",
+            "Only failed, cancelled or interrupted downloads can be retried.",
+          ),
+        );
+      if (active?.id === id) yield* Fiber.interrupt(active.fiber);
+      const cleaned = yield* cleanupAndRecord(id);
+      if (Result.isFailure(cleaned)) return yield* Effect.fail(cleaned.failure);
+      yield* databaseOperation(() =>
+        database
+          .update(downloadJobs)
+          .set({
+            status: "queued",
+            phase: "queued",
+            downloadedBytes: 0,
+            totalBytes: null,
+            error: null,
+            ownerPid: null,
+            updatedAt: nextQueuePosition(database),
+          })
+          .where(and(eq(downloadJobs.id, id), eq(downloadJobs.status, job.status)))
+          .run(),
+      );
+      return yield* get(id);
+    }).pipe(Effect.uninterruptible, Semaphore.withPermit(retryLock));
+
   return {
     preview: downloader.preview,
     get,
@@ -305,26 +361,25 @@ export function createDownloads(
             .all(),
         ),
       ),
-    enqueue: (input: string, preset: DownloadPreset = defaultDownloadPreset, transcribe = false) =>
+    enqueue: (url: string, preset: DownloadPreset = defaultDownloadPreset, transcribe = false) =>
       databaseOperation(() =>
         database.transaction((transaction) => {
-          checkOptions(preset, transcribe);
-          return insertJob(transaction, downloadSource(input).url, preset, transcribe, Date.now());
+          checkTranscribe(transcribe);
+          const link = prepareLink({ url, preset }, 0, 1);
+          return insertJob(transaction, link, transcribe, nextQueuePosition(transaction));
         }),
-      ),
-    enqueueAll: (
-      inputs: readonly string[],
-      preset: DownloadPreset = defaultDownloadPreset,
-      transcribe = false,
-    ) =>
+      ).pipe(Semaphore.withPermit(retryLock)),
+    enqueueAll: (links: readonly DownloadLinkRequest[], transcribe = false) =>
       databaseOperation(() =>
         database.transaction((transaction) => {
-          checkOptions(preset, transcribe);
-          const urls = inputs.map((input, index) => linkUrl(input, index, inputs.length));
-          const now = Date.now();
-          return urls.map((url) => insertJob(transaction, url, preset, transcribe, now));
+          checkTranscribe(transcribe);
+          const prepared = links.map((link, index) => prepareLink(link, index, links.length));
+          const first = nextQueuePosition(transaction);
+          return prepared.map((link, index) =>
+            insertJob(transaction, link, transcribe, first + index),
+          );
         }),
-      ),
+      ).pipe(Semaphore.withPermit(retryLock)),
     cancel: (id: string) =>
       Effect.gen(function* () {
         const job = yield* get(id);
@@ -345,36 +400,7 @@ export function createDownloads(
         if (active?.id === id) yield* Fiber.interrupt(active.fiber);
         return yield* get(id);
       }),
-    retry: (id: string) =>
-      Effect.gen(function* () {
-        const job = yield* get(id);
-        if (!["failed", "cancelled", "interrupted"].includes(job.status))
-          return yield* Effect.fail(
-            new MediaError(
-              "invalid",
-              "Only failed, cancelled or interrupted downloads can be retried.",
-            ),
-          );
-        if (active?.id === id) yield* Fiber.interrupt(active.fiber);
-        const cleaned = yield* cleanupAndRecord(id);
-        if (Result.isFailure(cleaned)) return yield* Effect.fail(cleaned.failure);
-        yield* databaseOperation(() =>
-          database
-            .update(downloadJobs)
-            .set({
-              status: "queued",
-              phase: "queued",
-              downloadedBytes: 0,
-              totalBytes: null,
-              error: null,
-              ownerPid: null,
-              updatedAt: Date.now(),
-            })
-            .where(and(eq(downloadJobs.id, id), eq(downloadJobs.status, job.status)))
-            .run(),
-        );
-        return yield* get(id);
-      }).pipe(Effect.uninterruptible, Semaphore.withPermit(retryLock)),
+    retry,
     start: () =>
       Effect.gen(function* () {
         if (started)
@@ -413,5 +439,5 @@ export const requestDownload = (
 ) =>
   Effect.gen(function* () {
     if (request.transcribe) yield* transcriptions.check();
-    return yield* downloads.enqueueAll(request.urls, request.preset, request.transcribe);
+    return yield* downloads.enqueueAll(request.links, request.transcribe);
   });

@@ -53,6 +53,6 @@ Ordinary Vitest tests use real temporary files, a local HTTP download server and
 
 yt-dlp tests serve a small file over loopback HTTP and cover activation without restart, rediscovery, system discovery, a broken `YTDLP_PATH` and a download that is not a working yt-dlp.
 
-Playwright checks explicit setup, failed-request retry, progress after page reload, keyboard focus and the upload preflight. For yt-dlp it checks that **Check link** opens setup before any preview request and works once setup completes. Those UI failure states use controlled HTTP responses; actual package installation is verified separately.
+Playwright checks explicit setup, failed-request retry, progress after page reload, keyboard focus and the upload preflight. For yt-dlp it checks that adding a link opens setup before any preview request and that the link is checked once setup completes. Those UI failure states use controlled HTTP responses; actual package installation is verified separately.
 
 Run `bun run test:tools:real` to download the pinned packages and verify real managed executables, local audio import, conversion, rediscovery and the managed yt-dlp version in an isolated temporary directory. This test requires a supported platform, network access, `tar` and Linux XZ support. It is excluded from normal checks and CI, and removes its temporary data afterward.

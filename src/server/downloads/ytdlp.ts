@@ -11,7 +11,117 @@ import { maxImportBytes } from "../../shared/contracts/media.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
 import { runCommand } from "../process/command.ts";
+import type { DownloadSite } from "../../shared/download-sources.ts";
 import { downloadSource } from "./url.ts";
+
+type SiteProfile = {
+  label: string;
+  extractor: string;
+  extractorKey: string;
+  identity: "id" | "display_id";
+  video: "separate" | "combined" | null;
+  audio: "ba" | "ba/b" | "b";
+  downloadArguments?: readonly string[];
+};
+
+const profiles: Record<DownloadSite, SiteProfile> = {
+  youtube: {
+    label: "YouTube",
+    extractor: "youtube",
+    extractorKey: "Youtube",
+    identity: "id",
+    video: "separate",
+    audio: "ba",
+  },
+  x: {
+    label: "X",
+    extractor: "twitter",
+    extractorKey: "Twitter",
+    identity: "display_id",
+    video: "separate",
+    audio: "ba/b",
+  },
+  tiktok: {
+    label: "TikTok",
+    extractor: "tiktok",
+    extractorKey: "TikTok",
+    identity: "id",
+    video: "combined",
+    audio: "b",
+  },
+  instagram: {
+    label: "Instagram",
+    extractor: "instagram",
+    extractorKey: "Instagram",
+    identity: "id",
+    video: "separate",
+    audio: "ba/b",
+  },
+  facebook: {
+    label: "Facebook",
+    extractor: "facebook",
+    extractorKey: "Facebook",
+    identity: "id",
+    video: "separate",
+    audio: "ba/b",
+  },
+  twitchVod: {
+    label: "Twitch",
+    extractor: "twitch:vod",
+    extractorKey: "TwitchVod",
+    identity: "id",
+    video: "combined",
+    audio: "ba/b",
+  },
+  twitchClip: {
+    label: "Twitch",
+    extractor: "twitch:clips",
+    extractorKey: "TwitchClips",
+    identity: "display_id",
+    video: "combined",
+    audio: "ba/b",
+  },
+  applePodcasts: {
+    label: "Apple Podcasts",
+    extractor: "apple:podcasts",
+    extractorKey: "ApplePodcasts",
+    identity: "id",
+    video: null,
+    audio: "ba/b",
+    downloadArguments: ["--downloader", "m3u8:ffmpeg"],
+  },
+  googleDrive: {
+    label: "Google Drive",
+    extractor: "GoogleDrive",
+    extractorKey: "GoogleDrive",
+    identity: "id",
+    video: "separate",
+    audio: "ba/b",
+  },
+  dropbox: {
+    label: "Dropbox",
+    extractor: "dropbox",
+    extractorKey: "Dropbox",
+    identity: "id",
+    video: "separate",
+    audio: "ba/b",
+  },
+};
+
+const videoFormat = (streams: "separate" | "combined", maxShortSide: number | null) => {
+  const sizes =
+    maxShortSide === null
+      ? [""]
+      : [
+          `[height<=${maxShortSide}][aspect_ratio>=?1]`,
+          `[width<=${maxShortSide}][aspect_ratio<1]`,
+          `[height<=?${maxShortSide}][width<=?${maxShortSide}]`,
+        ];
+  return [
+    ...(streams === "separate" ? sizes.map((size) => `bv*${size}+ba`) : []),
+    ...sizes.map((size) => `b${size}`),
+  ].join("/");
+};
 
 const Metadata = Schema.Struct({
   id: Schema.String,
@@ -77,20 +187,21 @@ export function createMediaDownloader(
             : new MediaError("invalid", "Invalid download URL.", cause),
       });
       const { url } = source;
+      const profile = profiles[source.site];
       const raw = yield* run(
         [
           ...baseArguments,
           "--use-extractors",
-          source.site === "x" ? "twitter" : "youtube",
+          profile.extractor,
           "--simulate",
           "--dump-single-json",
           "--",
           url,
         ],
         { timeoutMs: 45000 },
-        source.site === "x"
-          ? "This X video is unavailable to Movo. Use a public post that opens without signing in, or try again later."
-          : undefined,
+        source.site === "youtube"
+          ? undefined
+          : `This ${profile.label} link is unavailable to Movo. Use a public link that opens without signing in, or try again later.`,
       );
       const preview = yield* Effect.try({
         try: () => {
@@ -105,15 +216,12 @@ export function createMediaDownloader(
               "unsupported",
               "Live and upcoming streams are not supported. Choose a completed video.",
             );
-          if (
-            source.site === "x" &&
-            (metadata.extractor_key !== "Twitter" || !/^[1-9]\d{0,19}$/u.test(metadata.id))
-          )
+          if (metadata.extractor_key !== profile.extractorKey)
             throw new MediaError(
               "unsupported",
-              "Choose an X post with one directly attached video. External players and broadcasts are not supported.",
+              `Choose a ${profile.label} link with one directly attached video or episode. External players and broadcasts are not supported.`,
             );
-          if ((source.site === "youtube" ? metadata.id : metadata.display_id) !== source.id)
+          if (metadata[profile.identity] !== source.id)
             throw new MediaError(
               "unsupported",
               "The source returned metadata for a different video.",
@@ -129,11 +237,11 @@ export function createMediaDownloader(
             ? cause
             : new MediaError(
                 "unsupported",
-                "Could not read this video's metadata. Choose a public YouTube video or X post with one completed video.",
+                "Could not read this link's metadata. Choose one public, completed video or podcast episode.",
                 cause,
               ),
       });
-      return { preview, raw, source };
+      return { preview, raw, profile };
     });
 
   return {
@@ -152,12 +260,14 @@ export function createMediaDownloader(
     ) =>
       Effect.gen(function* () {
         const selected = getDownloadPreset(preset);
-        const { preview, raw, source } = yield* inspect(url);
-        const extractAudio = selected.kind === "audio" && source.site === "x";
-        const ffmpeg =
-          selected.kind === "video" || extractAudio ? yield* tools.resolve("ffmpeg") : undefined;
+        const { preview, raw, profile } = yield* inspect(url);
+        const video =
+          selected.kind === "video" && profile.video !== null
+            ? videoFormat(profile.video, selected.maxHeight)
+            : undefined;
+        const extractAudio = !video && profile.audio !== "ba";
+        const ffmpeg = video || extractAudio ? yield* tools.resolve("ffmpeg") : undefined;
         const ffprobe = yield* tools.resolve("ffprobe");
-        const limit = selected.maxHeight === null ? "" : `[height<=${selected.maxHeight}]`;
         yield* Effect.tryPromise({
           try: async () => {
             await mkdir(directory, { recursive: true });
@@ -188,10 +298,11 @@ export function createMediaDownloader(
             join(directory, "source.info.json"),
             "--no-simulate",
             "--format",
-            extractAudio ? "ba/b" : selected.kind === "audio" ? "ba" : `bv*${limit}+ba/b${limit}`,
+            video ?? profile.audio,
             ...(ffmpeg ? ["--ffmpeg-location", ffmpeg] : []),
+            ...(profile.downloadArguments ?? []),
             ...(extractAudio ? ["--extract-audio", "--audio-format", "best"] : []),
-            ...(selected.kind === "video"
+            ...(video
               ? ["--format-sort", "res,fps,vcodec:h264,acodec:aac", "--merge-output-format", "mp4"]
               : []),
             "--max-filesize",
