@@ -31,9 +31,9 @@ test("installs yt-dlp before checking a link and returns focus after setup", asy
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Download from link", exact: true }).click();
-  await page.getByRole("textbox", { name: "Video links" }).fill(url);
-  const check = page.getByRole("button", { name: "Check link", exact: true });
-  await check.click();
+  const links = page.getByRole("textbox", { name: "Add links" });
+  await links.fill(url);
+  await links.press("Enter");
   await expect(page.getByRole("heading", { name: "yt-dlp is needed", exact: true })).toBeVisible();
   expect(previews).toBe(0);
   await page.getByRole("button", { name: "Download yt-dlp", exact: true }).click();
@@ -49,8 +49,7 @@ test("installs yt-dlp before checking a link and returns focus after setup", asy
     .getByRole("button", { name: "Close", exact: true })
     .click();
   await expect(page.getByRole("region", { name: "yt-dlp is ready" })).toHaveCount(0);
-  await expect(check).toBeFocused();
-  await check.click();
+  await expect(links).toBeFocused();
   await expect(page.getByText("A source recording", { exact: true })).toBeVisible();
   expect(previews).toBe(1);
 });
@@ -61,8 +60,9 @@ test("explains manual yt-dlp setup where automatic downloads are unavailable", a
   );
   await page.goto("/");
   await page.getByRole("button", { name: "Download from link", exact: true }).click();
-  await page.getByRole("textbox", { name: "Video links" }).fill(url);
-  await page.getByRole("button", { name: "Check link", exact: true }).click();
+  const links = page.getByRole("textbox", { name: "Add links" });
+  await links.fill(url);
+  await links.press("Enter");
   await expect(page.getByText(/add it to PATH or set YTDLP_PATH/u)).toBeVisible();
   await expect(page.getByRole("button", { name: "Download yt-dlp", exact: true })).toHaveCount(0);
 });

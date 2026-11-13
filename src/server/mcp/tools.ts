@@ -5,6 +5,8 @@ import {
   DownloadPreview,
   DownloadPreviewRequest,
   DownloadRequest,
+  downloadSiteNames,
+  maxDownloadLinks,
 } from "../../shared/contracts/downloads.ts";
 import { LibraryItem, LibraryQuery } from "../../shared/contracts/library.ts";
 import { MediaDeletion, MediaId, MediaItem, MediaTitle } from "../../shared/contracts/media.ts";
@@ -115,8 +117,7 @@ export const movoTools = Toolkit.make(
     failure,
   }).annotateMerge(reads),
   Tool.make("preview_link", {
-    description:
-      "Check a YouTube video or X post link and return its title and duration without downloading it.",
+    description: `Check a link to one video or podcast episode from ${downloadSiteNames} and return its title and duration without downloading it.`,
     parameters: DownloadPreviewRequest,
     success: DownloadPreview,
     failure,
@@ -124,8 +125,7 @@ export const movoTools = Toolkit.make(
     hints({ readOnly: true, destructive: false, idempotent: true, openWorld: true }),
   ),
   Tool.make("download_links", {
-    description:
-      "Queue downloads of YouTube videos or X posts into the library, in the given order. Returns one job per link. If any link is unsupported, nothing is queued. preset is video-480p, video-720p, video-1080p (default), video-best or audio and applies to every link; video presets set a maximum height and use the best lower resolution a source offers. Set transcribe to transcribe each recording once it is saved. The same link and preset return the existing job. Downloads run one at a time in the background; check them with get_download every few seconds.",
+    description: `Queue downloads of videos or podcast episodes from ${downloadSiteNames} into the library, in the given order. Pass up to ${maxDownloadLinks} links, each with its own url and optional preset. Returns one job per link. If any link is unsupported, nothing is queued. preset is video-480p, video-720p, video-1080p (default), video-best or audio; video presets cap the shorter side of the frame and use the best lower resolution a source offers; podcast episodes are always saved as audio. Set transcribe to transcribe each recording once it is saved. The same link and preset return the existing job. Downloads run one at a time in the background; check them with get_download every few seconds.`,
     parameters: DownloadRequest,
     success: Schema.Struct({ jobs: Schema.Array(DownloadJob) }),
     failure,

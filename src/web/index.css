@@ -24,6 +24,17 @@
     --tw-gradient-to 150ms ease;
 }
 
+@utility scroll-shadow-y {
+  background:
+    linear-gradient(var(--subtle) 30%, transparent) top / 100% 24px no-repeat local,
+    linear-gradient(transparent, var(--subtle) 70%) bottom / 100% 24px no-repeat local,
+    radial-gradient(farthest-side at 50% 0, oklch(0.2 0.01 262 / 0.14), transparent) top / 100% 8px
+      no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, oklch(0.2 0.01 262 / 0.14), transparent) bottom /
+      100% 8px no-repeat scroll,
+    var(--subtle);
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Inter Variable", sans-serif;

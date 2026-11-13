@@ -407,7 +407,7 @@ describe("MCP endpoint", () => {
       );
       expect(
         await toolError(app, "download_links", {
-          urls: ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
+          links: [{ url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }],
           transcribe: true,
         }),
       ).toBe("Install the transcription model first.");
@@ -416,14 +416,20 @@ describe("MCP endpoint", () => {
         total: 0,
       });
       const { jobs } = await toolSuccess(DownloadJobs, app, "download_links", {
-        urls: ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ"],
+        links: [
+          { url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+          { url: "https://youtu.be/dQw4w9WgXcQ" },
+        ],
       });
       expect(jobs).toHaveLength(2);
       expect(jobs[1]?.id).toBe(jobs[0]?.id);
       expect(jobs[0]).toMatchObject({ status: "queued", preset: "video-1080p", transcribe: false });
       expect(
         await toolError(app, "download_links", {
-          urls: ["https://www.youtube.com/watch?v=aaaaaaaaaaa", "https://example.com/video"],
+          links: [
+            { url: "https://www.youtube.com/watch?v=aaaaaaaaaaa" },
+            { url: "https://example.com/video" },
+          ],
         }),
       ).toMatch(/^Link 2: /u);
       expect((await callTool(app, "list_downloads", {})).structuredContent).toMatchObject({
@@ -443,9 +449,9 @@ describe("MCP endpoint", () => {
     "pages through downloads and recordings beyond the first page",
     withMovo(readyEngine, async (app) => {
       const { jobs: queued } = await toolSuccess(DownloadJobs, app, "download_links", {
-        urls: ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"].map(
-          (videoId) => `https://www.youtube.com/watch?v=${videoId}`,
-        ),
+        links: ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"].map((videoId) => ({
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+        })),
       });
       const imported = [];
       for (let copy = 0; copy < 3; copy++)

@@ -57,7 +57,7 @@ function Models() {
             icon={Link01Icon}
             name="yt-dlp"
             title="yt-dlp"
-            description="Reads and downloads YouTube and X links"
+            description="Reads and downloads video and podcast links"
             options={ytdlpOptions}
             tools={(status) => ({ "yt-dlp": status.ytdlp })}
             setup={YtdlpSetup}

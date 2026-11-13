@@ -11,6 +11,8 @@ export const downloadPresets = [
 export const DownloadPreset = Schema.Literals(downloadPresets.map((preset) => preset.id));
 export type DownloadPreset = typeof DownloadPreset.Type;
 export const defaultDownloadPreset: DownloadPreset = "video-1080p";
+export const downloadSiteNames =
+  "YouTube, X, TikTok, Instagram, Facebook, Twitch, Apple Podcasts, Google Drive or Dropbox";
 
 export function getDownloadPreset(id: DownloadPreset) {
   const preset = downloadPresets.find((option) => option.id === id);
@@ -27,15 +29,25 @@ export const downloadStates = [
   "interrupted",
 ] as const;
 export const DownloadPreviewRequest = Schema.Struct({ url: Schema.String });
-export const DownloadRequest = Schema.Struct({
-  urls: Schema.Array(Schema.String).check(Schema.isMinLength(1)),
+export const maxDownloadLinks = 20;
+const DownloadTitle = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512));
+export const DownloadLinkRequest = Schema.Struct({
+  url: Schema.String,
   preset: Schema.optional(DownloadPreset),
+  title: Schema.optional(DownloadTitle),
+});
+export type DownloadLinkRequest = typeof DownloadLinkRequest.Type;
+export const DownloadRequest = Schema.Struct({
+  links: Schema.Array(DownloadLinkRequest).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(maxDownloadLinks),
+  ),
   transcribe: Schema.optional(Schema.Boolean),
 });
 export type DownloadRequest = typeof DownloadRequest.Type;
 export const DownloadPreview = Schema.Struct({
   url: Schema.String,
-  title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+  title: DownloadTitle,
   durationSeconds: Schema.NullOr(Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))),
 });
 export type DownloadPreview = typeof DownloadPreview.Type;

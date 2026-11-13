@@ -67,7 +67,7 @@ function Downloads() {
               No downloads yet
             </EmptyTitle>
             <EmptyDescription className="mt-1.5 text-[13.5px]/[21px] text-pretty">
-              Paste a YouTube or X link and Movo saves the video or its audio to your library.
+              Paste a video or podcast link and Movo saves the recording to your library.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

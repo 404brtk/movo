@@ -7,10 +7,12 @@ import {
   defaultDownloadPreset,
   DownloadJob,
   DownloadJobList,
+  type DownloadLinkRequest,
   DownloadPreset,
   type DownloadRequest,
 } from "../../shared/contracts/downloads.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
+import { isAudioOnlySite } from "../../shared/download-sources.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError } from "../media/error.ts";
 import { createMediaLibrary } from "../media/library.ts";
@@ -38,16 +40,29 @@ const databaseOperation = <A>(operation: () => A) =>
           ),
   });
 
-const checkOptions = (preset: DownloadPreset, transcribe: boolean) => {
-  if (!Schema.is(DownloadPreset)(preset))
-    throw new MediaError("invalid", "Choose a supported download option.");
+const checkTranscribe = (transcribe: boolean) => {
   if (!Schema.is(Schema.Boolean)(transcribe))
     throw new MediaError("invalid", "Choose whether to transcribe after downloading.");
 };
+const prepareLink = (link: DownloadLinkRequest, index: number, count: number) => {
+  const preset = link.preset ?? defaultDownloadPreset;
+  if (!Schema.is(DownloadPreset)(preset))
+    throw new MediaError("invalid", "Choose a supported download option.");
+  try {
+    const source = downloadSource(link.url);
+    return {
+      url: source.url,
+      preset: isAudioOnlySite(source.site) ? ("audio" as const) : preset,
+      title: link.title ?? null,
+    };
+  } catch (cause) {
+    if (count === 1 || !(cause instanceof MediaError)) throw cause;
+    throw new MediaError(cause.reason, `Link ${index + 1}: ${cause.message}`, cause);
+  }
+};
 const insertJob = (
   transaction: Pick<AppDatabase, "insert" | "update" | "select">,
-  url: string,
-  preset: DownloadPreset,
+  { url, preset, title }: ReturnType<typeof prepareLink>,
   transcribe: boolean,
   now: number,
 ) => {
@@ -58,6 +73,7 @@ const insertJob = (
       url,
       preset,
       transcribe,
+      title,
       status: "queued",
       phase: "queued",
       createdAt: now,
@@ -81,14 +97,6 @@ const insertJob = (
   if (job.status === "completed" && job.transcribe && job.mediaId)
     queueTranscription(transaction, job.mediaId);
   return job;
-};
-const linkUrl = (input: string, index: number, count: number) => {
-  try {
-    return downloadSource(input).url;
-  } catch (cause) {
-    if (count === 1 || !(cause instanceof MediaError)) throw cause;
-    throw new MediaError(cause.reason, `Link ${index + 1}: ${cause.message}`, cause);
-  }
 };
 
 export function createDownloads(
@@ -305,24 +313,20 @@ export function createDownloads(
             .all(),
         ),
       ),
-    enqueue: (input: string, preset: DownloadPreset = defaultDownloadPreset, transcribe = false) =>
+    enqueue: (url: string, preset: DownloadPreset = defaultDownloadPreset, transcribe = false) =>
       databaseOperation(() =>
         database.transaction((transaction) => {
-          checkOptions(preset, transcribe);
-          return insertJob(transaction, downloadSource(input).url, preset, transcribe, Date.now());
+          checkTranscribe(transcribe);
+          return insertJob(transaction, prepareLink({ url, preset }, 0, 1), transcribe, Date.now());
         }),
       ),
-    enqueueAll: (
-      inputs: readonly string[],
-      preset: DownloadPreset = defaultDownloadPreset,
-      transcribe = false,
-    ) =>
+    enqueueAll: (links: readonly DownloadLinkRequest[], transcribe = false) =>
       databaseOperation(() =>
         database.transaction((transaction) => {
-          checkOptions(preset, transcribe);
-          const urls = inputs.map((input, index) => linkUrl(input, index, inputs.length));
+          checkTranscribe(transcribe);
+          const prepared = links.map((link, index) => prepareLink(link, index, links.length));
           const now = Date.now();
-          return urls.map((url) => insertJob(transaction, url, preset, transcribe, now));
+          return prepared.map((link) => insertJob(transaction, link, transcribe, now));
         }),
       ),
     cancel: (id: string) =>
@@ -413,5 +417,5 @@ export const requestDownload = (
 ) =>
   Effect.gen(function* () {
     if (request.transcribe) yield* transcriptions.check();
-    return yield* downloads.enqueueAll(request.urls, request.preset, request.transcribe);
+    return yield* downloads.enqueueAll(request.links, request.transcribe);
   });

@@ -1,6 +1,6 @@
 # Local model setup
 
-Model weights are optional. The library, imports and YouTube/X downloads work without them. This feature manages model availability; transcription jobs and transcript presentation are separate product work.
+Model weights are optional. The library, imports and link downloads work without them. This feature manages model availability; transcription jobs and transcript presentation are separate product work.
 
 ## Supported model
 
