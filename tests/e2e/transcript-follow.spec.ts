@@ -221,6 +221,8 @@ test("reveals the current search match below the pinned video when the search or
   await field.pressSequentially(" of");
   await expect(search.getByText("1 of 1")).toBeVisible();
   await expectBelowSearch();
+  await expect(page).toHaveURL(/\?q=step(\+|%20)20(\+|%20)of$/u);
+  await expectBelowSearch();
 
   await page.evaluate(() => window.scrollTo(0, 0));
   await serveSpeakerNames([{ id: 1, name: "Neil" }]);

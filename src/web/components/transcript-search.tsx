@@ -25,7 +25,11 @@ export function useTranscriptSearch(transcript: Transcript) {
   const navigate = useNavigate({ from: "/media/$mediaId" });
   const applyQuery = useCallback(
     (q: string | undefined) =>
-      void navigate({ search: (previous) => ({ ...previous, q }), replace: true }),
+      void navigate({
+        search: (previous) => ({ ...previous, q }),
+        replace: true,
+        resetScroll: false,
+      }),
     [navigate],
   );
   const [draft, setDraft] = useSearchDraft(query, applyQuery);
