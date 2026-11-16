@@ -98,7 +98,7 @@ export function stepReceipt(parts: readonly ChatPart[], library: boolean) {
   const steps = parts.flatMap((part) =>
     part.type === "tool" && !isEditTool(part) && part.state !== "running" ? [part] : [],
   );
-  if (steps.length === 0) return null;
+  if (steps.length === 0) return [];
   if (library) {
     const searched = steps.some((part) => part.toolName === "search_library");
     const read = new Set(
@@ -106,12 +106,13 @@ export function stepReceipt(parts: readonly ChatPart[], library: boolean) {
         part.toolName === "read_transcript" ? [textField(part.input, "mediaId")] : [],
       ),
     ).size;
-    return [searched ? "Searched the library" : null, read > 0 ? `read ${read}` : null]
+    const summary = [searched ? "Searched the library" : null, read > 0 ? `read ${read}` : null]
       .filter(Boolean)
       .join(" · ")
       .replace(/^read/u, "Read");
+    return summary ? [summary] : [];
   }
-  return [...new Set(steps.map((part) => describeTool(part)))].slice(0, 3).join(" · ");
+  return [...new Set(steps.map((part) => describeTool(part)))].slice(0, 3);
 }
 
 export function editReceipt(part: ToolPart) {

@@ -459,6 +459,77 @@ test("offers Try again only while the recording has words to ask about", async (
   expect(sends).toBe(0);
 });
 
+test("keeps long steps, failures and model names inside the panel, one step per line", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  const media: { id: string } = await uploaded.json();
+  const chatId = randomUUID();
+  const summary = summaryOf(chatId, media.id, "Who presents?");
+  const query = "who presents the quarterly numbers and the budget for next year ".repeat(3).trim();
+  const failure = `OpenRouter didn't answer: Failed after 3 attempts. ${"The model is temporarily rate-limited upstream. ".repeat(4).trim()}`;
+  const longModel = `Model ${"B".repeat(120)}`;
+  const detail: ChatDetail = {
+    chat: summary,
+    messages: [
+      userMessage("Who presents?"),
+      failedAnswer(2, failure, "busy"),
+      { ...userMessage("Who presents the numbers?"), seq: 3 },
+      {
+        ...answerMessage("done", [
+          tool("search_library", { q: query }),
+          tool("read_transcript", { mediaId: media.id }),
+          { type: "text", text: "Anna presents the numbers." },
+        ]),
+        seq: 4,
+        modelName: longModel,
+      },
+    ],
+    hiddenBeforeSeq: 0,
+  };
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [summary] }));
+  await page.route(`**/api/ask/chats/${chatId}`, (route) => route.fulfill({ json: detail }));
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const box = async (locator: ReturnType<typeof page.getByText>) => {
+    const found = await locator.boundingBox();
+    if (!found) throw new Error("The element has no box.");
+    return found;
+  };
+
+  await page.goto(`/media/${media.id}`);
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  const searched = panel.getByText(`Searched for “${query}”`, { exact: true });
+  const read = panel.getByText("Read the transcript", { exact: true });
+  const failed = panel.getByText(failure, { exact: true });
+  await expect(searched).toBeVisible();
+  await expect(read).toBeVisible();
+  await expect(failed).toBeVisible();
+  await expect(async () => {
+    const panelBox = await box(panel);
+    const panelRight = panelBox.x + panelBox.width;
+    for (const line of [
+      searched,
+      read,
+      failed,
+      panel.getByText(`${longModel} answers from here`, { exact: true }),
+      panel.getByText("Who presents the numbers?", { exact: true }),
+    ]) {
+      const lineBox = await box(line);
+      expect(lineBox.x + lineBox.width).toBeLessThanOrEqual(panelRight);
+    }
+    expect((await box(read)).y).toBeGreaterThan((await box(searched)).y);
+    expect((await box(failed)).x).toBe((await box(searched)).x);
+  }).toPass();
+});
+
 test("returns a queued question to the field when the transcript loses its words during the answer", async ({
   page,
   request,
