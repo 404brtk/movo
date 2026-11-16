@@ -1,25 +1,27 @@
 import { useDeferredValue, useMemo, useState } from "react";
-import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { maxReplaceCharacters, type Transcript } from "../../shared/contracts/transcriptions.ts";
 import { findWords, replaceWords } from "../../shared/transcript-edits.ts";
 import { transcriptPassages } from "../../shared/transcript-passages.ts";
 import { replaceInTranscript } from "../lib/api.ts";
+import {
+  focusOnMount,
+  matchCountLabel,
+  stepOnEnter,
+  useMatchStepper,
+  type StepDirection,
+} from "../lib/match-stepper.ts";
 import { marksByPassage, type TranscriptMatches } from "../lib/passage-marks.ts";
 import { useTranscriptChange } from "../lib/transcript-change.ts";
-import { pinHeight } from "../lib/transcript-follow.ts";
+import { MatchStepper, PinnedBelowPlayer } from "./match-navigation.tsx";
 import { Spinner } from "./spinner.tsx";
 import { Button } from "./ui/button.tsx";
 import { Input } from "./ui/input.tsx";
 
-const focusOnMount = (input: HTMLInputElement | null) => input?.focus();
-const pinBelowPlayer = pinHeight("--pinned-find");
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "es"}`;
 
 export function useFindAndReplace(transcript: Transcript) {
   const [find, setFind] = useState("");
   const [replacement, setReplacement] = useState("");
-  const [current, setCurrent] = useState(0);
   const previewFind = useDeferredValue(find);
   const previewReplacement = useDeferredValue(replacement);
   const found = useMemo(
@@ -34,7 +36,8 @@ export function useFindAndReplace(transcript: Transcript) {
     () => marksByPassage(transcriptPassages(transcript.words), { ranges: found, current: 0 }).size,
     [found, transcript.words],
   );
-  const index = found.length === 0 ? 0 : Math.min(current, found.length - 1);
+  const stepper = useMatchStepper(found.length);
+  const { index } = stepper;
   const matches = useMemo<TranscriptMatches | undefined>(
     () => (found.length === 0 ? undefined : { ranges: found, current: index }),
     [found, index],
@@ -50,11 +53,12 @@ export function useFindAndReplace(transcript: Transcript) {
     previewCurrent: previewFind === find && previewReplacement === replacement,
     setFind: (value: string) => {
       setFind(value);
-      setCurrent(0);
+      stepper.reset();
     },
     setReplacement,
-    step: (direction: 1 | -1) =>
-      setCurrent((found.length + index + direction) % Math.max(found.length, 1)),
+    step: (direction: StepDirection) => {
+      stepper.step(direction);
+    },
   };
 }
 
@@ -79,10 +83,7 @@ export function FindAndReplace({
   const ready = state.changeCount > 0 && state.previewCurrent && !replace.isPending;
   const steppable = state.count > 0 && !replace.isPending;
   return (
-    <div
-      ref={pinBelowPlayer}
-      className="sticky top-[var(--pinned-player,0px)] z-30 bg-background pt-3 pb-1 after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-4 after:bg-linear-to-b after:from-background after:to-transparent"
-    >
+    <PinnedBelowPlayer>
       <form
         aria-label="Find and replace"
         className="grid gap-2 rounded-xl bg-subtle p-2.5 shadow-[inset_0_0_0_1px_var(--color-border)] sm:grid-cols-[1fr_1fr_auto]"
@@ -111,43 +112,16 @@ export function FindAndReplace({
                 state.setFind(event.target.value);
                 setReplaced(null);
               }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-                event.preventDefault();
-                state.step(event.shiftKey ? -1 : 1);
-              }}
+              onKeyDown={stepOnEnter(state.step)}
             />
             <span
               id="transcript-find-count"
               className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-[11.5px] text-muted-foreground tabular-nums"
             >
-              {searching && state.previewCurrent
-                ? state.count > 0
-                  ? `${state.index + 1} of ${state.count}`
-                  : "No matches"
-                : ""}
+              {matchCountLabel({ ...state, searching })}
             </span>
           </div>
-          <div className="flex">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Previous match"
-              disabled={!steppable}
-              onClick={() => state.step(-1)}
-            >
-              <HugeiconsIcon icon={ArrowUp01Icon} aria-hidden="true" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Next match"
-              disabled={!steppable}
-              onClick={() => state.step(1)}
-            >
-              <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden="true" />
-            </Button>
-          </div>
+          <MatchStepper steppable={steppable} onStep={state.step} />
         </div>
         <div className="flex items-center gap-2 sm:contents">
           <label htmlFor="transcript-replacement" className="sr-only">
@@ -189,6 +163,6 @@ export function FindAndReplace({
           </Button>
         </div>
       </form>
-    </div>
+    </PinnedBelowPlayer>
   );
 }

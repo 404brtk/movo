@@ -65,7 +65,7 @@ function Library() {
             {items && items.length > 0 ? (
               <div aria-busy={library.isPlaceholderData}>
                 {searching ? (
-                  <LibrarySearchResults items={items} />
+                  <LibrarySearchResults items={items} query={search.q ?? ""} />
                 ) : (
                   <LibraryList items={items} sort={sort} />
                 )}

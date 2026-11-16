@@ -15,6 +15,8 @@ export const searchPassages = sqliteTable(
     startMs: integer("start_ms").notNull(),
     text: text("text").notNull(),
     searchText: text("search_text").notNull(),
+    speaker: text("speaker"),
+    speakerSearchText: text("speaker_search_text"),
   },
   (table) => [index("search_passages_media_order").on(table.mediaId, table.startMs)],
 );

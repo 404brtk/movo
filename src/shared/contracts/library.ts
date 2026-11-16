@@ -31,11 +31,15 @@ const PassageMatch = Schema.Struct({
   startMs: Offset,
   text: Schema.String,
   ranges: Schema.Array(TextRange),
+  speaker: Schema.optionalKey(
+    Schema.Struct({ name: Schema.String, ranges: Schema.Array(TextRange) }),
+  ),
 });
 export const LibraryMatch = Schema.Struct({
   title: Schema.Array(TextRange),
   passages: Schema.Array(PassageMatch),
   passageCount: Offset,
+  everyWordPassageCount: Offset,
 });
 export type LibraryMatch = typeof LibraryMatch.Type;
 export const LibraryItem = Schema.Struct({
