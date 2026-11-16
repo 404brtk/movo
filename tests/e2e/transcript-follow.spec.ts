@@ -53,10 +53,11 @@ async function openTranscribedVideo(
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
+  let served = job;
   await page.route(`**/api/media/${media.id}/transcription`, async (route) => {
     expect(route.request().method()).toBe("GET");
     await transcriptReady;
-    return route.fulfill({ json: job });
+    return route.fulfill({ json: served });
   });
   await page.goto(`/media/${media.id}${startMs === undefined ? "" : `?startMs=${startMs}`}`);
   const video = page.locator("video");
@@ -70,6 +71,20 @@ async function openTranscribedVideo(
       video.evaluate((element: HTMLMediaElement, position) => {
         element.currentTime = position;
       }, seconds),
+    serveSpeakerNames: async (speakers: { id: number; name: string }[]) => {
+      if (!served.transcript) throw new Error("Expected a transcript.");
+      served = {
+        ...served,
+        transcript: {
+          ...served.transcript,
+          words: served.transcript.words.map((word) => ({ ...word, speaker: 1 })),
+          speakers,
+        },
+      };
+      await page.evaluate(() =>
+        document.dispatchEvent(new Event("visibilitychange", { bubbles: true })),
+      );
+    },
   };
 }
 
@@ -171,11 +186,11 @@ test("keeps the find form pinned below the video while it reveals a match furthe
   await expect(form.getByText(`1 of ${passageCount}`)).toBeVisible();
 });
 
-test("reveals the current search match below the pinned video whenever the search changes", async ({
+test("reveals the current search match below the pinned video when the search or match changes", async ({
   page,
   request,
 }) => {
-  const { player, passages, seek } = await openTranscribedVideo(page, request);
+  const { player, passages, seek, serveSpeakerNames } = await openTranscribedVideo(page, request);
   await expect(passages).toHaveCount(passageCount);
   await seek(0.06);
   await expect(passages.nth(0).locator("mark")).toHaveCount(1);
@@ -205,6 +220,16 @@ test("reveals the current search match below the pinned video whenever the searc
   await expect(match).not.toBeInViewport();
   await field.pressSequentially(" of");
   await expect(search.getByText("1 of 1")).toBeVisible();
+  await expectBelowSearch();
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await serveSpeakerNames([{ id: 1, name: "Neil" }]);
+  await expect(page.getByText("Neil", { exact: true })).toBeVisible();
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
+  await expect(match).not.toBeInViewport();
+  await search.getByRole("button", { name: "Next match" }).click();
   await expectBelowSearch();
 });
 

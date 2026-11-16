@@ -12,6 +12,7 @@ export interface PassageHit {
 export interface TranscriptFound {
   hits: ReadonlyMap<number, PassageHit>;
   current: number | undefined;
+  reveal: { firstWord: number } | undefined;
 }
 
 export function searchPassages(

@@ -133,6 +133,7 @@ const Passage = memo(function Passage({
       ref={revealed && scrollsIntoView ? revealElement : undefined}
       aria-current={current ? "time" : undefined}
       data-start-ms={passage.startMs}
+      data-first-word={passage.firstWord}
       className={cn(
         "group/passage relative scroll-mt-14 py-3",
         revealed &&
@@ -270,12 +271,14 @@ export function TranscriptReader({
   const openingWord = currentWordIndex(transcript.words, revealMs ?? 0);
   const openingPassage = passages.find((passage) => contains(passage, openingWord));
   const suspended = searching || Boolean(edited?.open);
+  const reveal = found?.reveal;
   useEffect(() => {
-    if (found?.current === undefined) return undefined;
-    const index = passages.findIndex((passage) => passage.firstWord === found.current);
-    const frame = requestAnimationFrame(() => revealIfHidden(list.current?.children[index]));
+    if (!reveal) return undefined;
+    const frame = requestAnimationFrame(() =>
+      revealIfHidden(list.current?.querySelector(`[data-first-word="${reveal.firstWord}"]`)),
+    );
     return () => cancelAnimationFrame(frame);
-  }, [found, passages]);
+  }, [reveal]);
   const { currentAbove } = useTranscriptFollow({
     list,
     passage: currentPassage?.firstWord,

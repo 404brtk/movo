@@ -26,6 +26,7 @@ export function useTranscriptSearch(transcript: Transcript) {
   );
   const [draft, setDraft] = useSearchDraft(query, applyQuery);
   const [current, setCurrent] = useState(0);
+  const [reveal, setReveal] = useState<{ firstWord: number } | undefined>();
   const previewDraft = useDeferredValue(draft);
   const terms = useMemo(() => searchTerms(previewDraft), [previewDraft]);
   const hits = useMemo(
@@ -35,9 +36,19 @@ export function useTranscriptSearch(transcript: Transcript) {
   );
   const order = useMemo(() => [...hits.keys()], [hits]);
   const index = order.length === 0 ? 0 : Math.min(current, order.length - 1);
+  const revealAt = (position: number) => {
+    const firstWord = order[position];
+    setReveal(firstWord === undefined ? undefined : { firstWord });
+  };
+  const [revealedTerms, setRevealedTerms] = useState<readonly string[] | null>(null);
+  if (terms !== revealedTerms) {
+    setRevealedTerms(terms);
+    revealAt(index);
+  }
+  const currentPassage = order[index];
   const found = useMemo<TranscriptFound | undefined>(
-    () => (terms.length === 0 ? undefined : { hits, current: order[index] }),
-    [terms, hits, order, index],
+    () => (terms.length === 0 ? undefined : { hits, current: currentPassage, reveal }),
+    [terms, hits, currentPassage, reveal],
   );
   return {
     query,
@@ -51,8 +62,11 @@ export function useTranscriptSearch(transcript: Transcript) {
       setDraft(value);
       setCurrent(0);
     },
-    step: (direction: 1 | -1) =>
-      setCurrent((order.length + index + direction) % Math.max(order.length, 1)),
+    step: (direction: 1 | -1) => {
+      const next = (order.length + index + direction) % Math.max(order.length, 1);
+      setCurrent(next);
+      revealAt(next);
+    },
     clear: () => {
       setDraft("");
       setCurrent(0);
