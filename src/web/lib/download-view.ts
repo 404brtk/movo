@@ -14,6 +14,11 @@ const runningLabels = {
 export const isActiveDownload = (job: DownloadJob) =>
   job.status === "queued" || job.status === "running";
 
+export const unseenRetries = (jobs: readonly DownloadJob[], seenAt: number) =>
+  jobs.filter(
+    (job) => (job.status === "failed" || job.status === "interrupted") && job.updatedAt > seenAt,
+  ).length;
+
 export const downloadTitle = (job: DownloadJob) =>
   job.title ?? job.url.replace(/^https?:\/\/(www\.)?/u, "");
 

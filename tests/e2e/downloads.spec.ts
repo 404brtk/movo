@@ -67,7 +67,9 @@ test("keeps saved media available when temporary download cleanup fails", async 
   await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
 });
 
-test("opens downloads from the header slot, which counts failed downloads", async ({ page }) => {
+test("opens downloads from the header slot, which counts downloads to retry until they are seen", async ({
+  page,
+}) => {
   let jobs: DownloadJob[] = [];
   await page.route("**/api/downloads", (route) => route.fulfill({ json: jobs }));
   await page.goto("/");
@@ -90,12 +92,18 @@ test("opens downloads from the header slot, which counts failed downloads", asyn
       phase: "finished",
       error: "This post has no video. Use a post with exactly one video.",
     },
+    { ...jobFixture(), status: "interrupted", phase: "downloading" },
+    { ...jobFixture(), status: "cancelled", phase: "finished" },
   ];
   await page.goto("/settings");
-  const failed = page.getByRole("link", { name: "Downloads, 1 failed download", exact: true });
-  await expect(failed).toHaveText("1 failed");
-  await failed.click();
+  const toRetry = page.getByRole("link", { name: "Downloads, 2 downloads to retry", exact: true });
+  await expect(toRetry).toHaveText("2 to retry");
+  await toRetry.click();
   await expect(page.getByRole("list", { name: "Recent" })).toContainText("Download failed");
+  await main.getByRole("link", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Downloads", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("link", { name: "Downloads", exact: true })).toBeVisible();
 });
 
 for (const choice of [
