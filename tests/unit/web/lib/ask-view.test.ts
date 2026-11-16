@@ -130,6 +130,9 @@ describe("answer receipts", () => {
         true,
       ),
     ).toEqual(["Searched the library · read 2"]);
+    expect(
+      stepReceipt([tool("get_recording", {}), tool("list_transcript_changes", {})], true),
+    ).toEqual([]);
     expect(stepReceipt([tool("read_transcript", {}, { state: "running" })], false)).toEqual([]);
   });
 

@@ -106,12 +106,11 @@ export function stepReceipt(parts: readonly ChatPart[], library: boolean) {
         part.toolName === "read_transcript" ? [textField(part.input, "mediaId")] : [],
       ),
     ).size;
-    return [
-      [searched ? "Searched the library" : null, read > 0 ? `read ${read}` : null]
-        .filter(Boolean)
-        .join(" · ")
-        .replace(/^read/u, "Read"),
-    ];
+    const summary = [searched ? "Searched the library" : null, read > 0 ? `read ${read}` : null]
+      .filter(Boolean)
+      .join(" · ")
+      .replace(/^read/u, "Read");
+    return summary ? [summary] : [];
   }
   return [...new Set(steps.map((part) => describeTool(part)))].slice(0, 3);
 }
