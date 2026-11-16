@@ -62,9 +62,11 @@ const failureIcons = {
 
 function Divider({ children, icon }: { children: string; icon?: IconSvgElement | undefined }) {
   return (
-    <p className="flex items-center gap-2.5 text-[11.5px]/4 whitespace-nowrap text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
-      {icon ? <HugeiconsIcon icon={icon} size={13} aria-hidden="true" /> : null}
-      {children}
+    <p className="flex items-center gap-2.5 text-[11.5px]/4 text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
+      {icon ? (
+        <HugeiconsIcon icon={icon} size={13} aria-hidden="true" className="shrink-0" />
+      ) : null}
+      <span className="truncate">{children}</span>
     </p>
   );
 }
@@ -81,11 +83,11 @@ function ActivityLine({ text }: { text: string }) {
   );
 }
 
-function ReceiptLine({ text }: { text: string }) {
+function StatusLine({ icon, children }: { icon: IconSvgElement; children: ReactNode }) {
   return (
-    <p className="ask-fade-in flex items-center gap-1.5 text-[12px] text-muted-foreground">
-      <HugeiconsIcon icon={Tick02Icon} size={13} aria-hidden="true" className="shrink-0" />
-      <span className="truncate">{text}</span>
+    <p className="flex items-start gap-1.5 text-[12px]/[18px] text-muted-foreground">
+      <HugeiconsIcon icon={icon} size={13} aria-hidden="true" className="mt-[2.5px] shrink-0" />
+      <span className="min-w-0 wrap-anywhere">{children}</span>
     </p>
   );
 }
@@ -156,12 +158,7 @@ function EditCard({
     },
   });
   if (part.state === "failed")
-    return (
-      <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-        <HugeiconsIcon icon={Alert02Icon} size={13} aria-hidden="true" />
-        The change couldn't be made.
-      </p>
-    );
+    return <StatusLine icon={Alert02Icon}>The change couldn't be made.</StatusLine>;
   const before = editRevision(part);
   const canUndo =
     part.state === "done" &&
@@ -268,8 +265,16 @@ function Answer({
       ? "Thinking"
       : null;
   return (
-    <div className="grid gap-2" aria-busy={answering}>
-      {receipt ? <ReceiptLine text={receipt} /> : null}
+    <div className="grid grid-cols-1 gap-2" aria-busy={answering}>
+      {receipt.length > 0 ? (
+        <div className="ask-fade-in grid gap-0.5">
+          {receipt.map((step) => (
+            <StatusLine key={step} icon={Tick02Icon}>
+              {step}
+            </StatusLine>
+          ))}
+        </div>
+      ) : null}
       {message.parts.map((part, index) =>
         part.type === "text" ? (
           <AskMarkdown key={index} text={part.text} moments={moments} />
@@ -286,10 +291,7 @@ function Answer({
         <p className="ask-fade-in text-[12px] text-muted-foreground">Stopped</p>
       ) : null}
       {message.state === "failed" && !(latest && message.errorKind) ? (
-        <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-          <HugeiconsIcon icon={Alert02Icon} size={13} aria-hidden="true" />
-          {message.error}
-        </p>
+        <StatusLine icon={Alert02Icon}>{message.error}</StatusLine>
       ) : null}
     </div>
   );
@@ -344,7 +346,7 @@ export function AskConversation({
         onScroll={(event) => setAwayFromLatest(event.currentTarget.scrollTop < -80)}
         className="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto overscroll-contain"
       >
-        <div className="mb-auto grid gap-4 px-4 py-4">
+        <div className="mb-auto grid grid-cols-1 gap-4 px-4 py-4">
           {detail.messages.map((message, index) => {
             const previous = detail.messages[index - 1];
             const hiddenStart =

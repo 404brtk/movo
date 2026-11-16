@@ -119,7 +119,7 @@ describe("answer receipts", () => {
         ],
         false,
       ),
-    ).toBe("Searched for “budget” · Read the transcript");
+    ).toEqual(["Searched for “budget”", "Read the transcript"]);
     expect(
       stepReceipt(
         [
@@ -129,8 +129,8 @@ describe("answer receipts", () => {
         ],
         true,
       ),
-    ).toBe("Searched the library · read 2");
-    expect(stepReceipt([tool("read_transcript", {}, { state: "running" })], false)).toBeNull();
+    ).toEqual(["Searched the library · read 2"]);
+    expect(stepReceipt([tool("read_transcript", {}, { state: "running" })], false)).toEqual([]);
   });
 
   it("describes what an approved or declined change did", () => {
@@ -170,7 +170,7 @@ describe("answer receipts", () => {
       "Speaker 2",
     );
     expect([assign, merge, rename].map(editRevision)).toEqual([4, 4, null]);
-    expect(stepReceipt([assign, merge, rename], false)).toBeNull();
+    expect(stepReceipt([assign, merge, rename], false)).toEqual([]);
   });
 
   it("names only the word range of a speaker change it cannot read in the current transcript", () => {
