@@ -20,6 +20,7 @@ const passagesPerInsert = 1000;
 interface FoundPassages {
   passages: { startMs: number; text: string; speaker: string | null }[];
   total: number;
+  everyWordTotal: number;
 }
 
 const matchExpression = (terms: readonly string[], operator: " " | " OR ") =>
@@ -118,24 +119,31 @@ export function findPassageMatches(
     text: string;
     speaker: string | null;
     total: number;
+    everyWordTotal: number;
   }>(
-    sql`select media_id as mediaId, start_ms as startMs, text, speaker, total from (
-      select ${searchPassages.mediaId}, ${searchPassages.startMs}, ${searchPassages.text}, ${searchPassages.speaker},
-        row_number() over (
-          partition by ${searchPassages.mediaId}
-          order by passage_search.rowid in (
+    sql`select media_id as mediaId, start_ms as startMs, text, speaker, total, every_word_total as everyWordTotal from (
+      select media_id, start_ms, text, speaker,
+        row_number() over (partition by media_id order by every_word desc, start_ms) as position,
+        count(*) over (partition by media_id) as total,
+        sum(every_word) over (partition by media_id) as every_word_total
+      from (
+        select ${searchPassages.mediaId}, ${searchPassages.startMs}, ${searchPassages.text}, ${searchPassages.speaker},
+          passage_search.rowid in (
             select rowid from passage_search where passage_search match ${matchExpression(terms, " ")}
-          ) desc, ${searchPassages.startMs}
-        ) as position,
-        count(*) over (partition by ${searchPassages.mediaId}) as total
-      from passage_search join ${searchPassages} on ${searchPassages.id} = passage_search.rowid
-      where passage_search match ${matchExpression(terms, " OR ")}
-        and ${inArray(searchPassages.mediaId, [...mediaIds])}
+          ) as every_word
+        from passage_search join ${searchPassages} on ${searchPassages.id} = passage_search.rowid
+        where passage_search match ${matchExpression(terms, " OR ")}
+          and ${inArray(searchPassages.mediaId, [...mediaIds])}
+      )
     ) where position <= ${maxPassageMatches} order by mediaId, position`,
   );
   const matches = new Map<string, FoundPassages>();
   for (const row of rows) {
-    const match = matches.get(row.mediaId) ?? { passages: [], total: row.total };
+    const match = matches.get(row.mediaId) ?? {
+      passages: [],
+      total: row.total,
+      everyWordTotal: row.everyWordTotal,
+    };
     match.passages.push({ startMs: row.startMs, text: row.text, speaker: row.speaker });
     matches.set(row.mediaId, match);
   }
@@ -157,5 +165,6 @@ export function describeMatch(
         : { speaker: { name: speaker, ranges: matchedRanges(speaker, terms) } }),
     })),
     passageCount: found?.total ?? 0,
+    everyWordPassageCount: found?.everyWordTotal ?? 0,
   };
 }

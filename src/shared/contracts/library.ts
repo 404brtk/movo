@@ -39,6 +39,7 @@ export const LibraryMatch = Schema.Struct({
   title: Schema.Array(TextRange),
   passages: Schema.Array(PassageMatch),
   passageCount: Offset,
+  everyWordPassageCount: Offset,
 });
 export type LibraryMatch = typeof LibraryMatch.Type;
 export const LibraryItem = Schema.Struct({

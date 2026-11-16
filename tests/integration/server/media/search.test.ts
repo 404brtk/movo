@@ -114,7 +114,12 @@ it("finds titles and transcript passages regardless of case, diacritics and word
       expect(yield* library.list({ q: "LODZ" })).toEqual([
         {
           ...listedMeeting,
-          match: { title: [{ start: 0, end: 4 }], passages: [], passageCount: 0 },
+          match: {
+            title: [{ start: 0, end: 4 }],
+            passages: [],
+            passageCount: 0,
+            everyWordPassageCount: 0,
+          },
         },
       ]);
       expect(yield* library.list({ q: "zrodl budzet" })).toEqual([
@@ -133,6 +138,7 @@ it("finds titles and transcript passages regardless of case, diacritics and word
               },
             ],
             passageCount: 1,
+            everyWordPassageCount: 1,
           },
         },
       ]);
@@ -221,9 +227,18 @@ it("finds passages by the names given to speakers and follows renames and merges
           },
         ],
         passageCount: 2,
+        everyWordPassageCount: 2,
       });
       const [both] = yield* library.list({ q: "kowalska budzet" });
       expect(both?.match?.passageCount).toBe(3);
+      expect(both?.match?.everyWordPassageCount).toBe(1);
+      const [elsewhere] = yield* library.list({ q: "kowalska review" });
+      expect(elsewhere?.id).toBe(review.id);
+      expect(elsewhere?.match?.passageCount).toBe(2);
+      expect(elsewhere?.match?.everyWordPassageCount).toBe(0);
+      const [spokenByOthers] = yield* library.list({ q: "kowalska gotowy" });
+      expect(spokenByOthers?.match?.passageCount).toBe(3);
+      expect(spokenByOthers?.match?.everyWordPassageCount).toBe(0);
       expect(both?.match?.passages).toEqual([
         {
           startMs: 1000,

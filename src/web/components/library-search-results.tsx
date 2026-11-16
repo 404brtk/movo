@@ -8,7 +8,7 @@ import { LibraryRow } from "./library-row.tsx";
 
 function SearchResult({ item, query }: { item: LibraryItem; query: string }) {
   const passages = item.match?.passages ?? [];
-  const hidden = (item.match?.passageCount ?? 0) - passages.length;
+  const moreInRecording = (item.match?.everyWordPassageCount ?? 0) > passages.length;
   const untranscribed = item.transcription === "none" || item.transcription === "stopped";
   return (
     <li>
@@ -56,7 +56,7 @@ function SearchResult({ item, query }: { item: LibraryItem; query: string }) {
           ))}
         </ol>
       ) : null}
-      {hidden > 0 ? (
+      {moreInRecording ? (
         <Link
           to="/media/$mediaId"
           params={{ mediaId: item.id }}
