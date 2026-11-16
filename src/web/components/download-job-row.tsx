@@ -1,10 +1,22 @@
-import { useId } from "react";
-import { RefreshIcon } from "@hugeicons/core-free-icons";
+import { type RefObject, useId, useRef } from "react";
+import {
+  Copy01Icon,
+  Delete02Icon,
+  MoreHorizontalIcon,
+  RefreshIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Toast } from "@base-ui/react/toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { type DownloadJob, getDownloadPreset } from "../../shared/contracts/downloads.ts";
-import { cancelDownload, downloadsOptions, retryDownload } from "../lib/api.ts";
+import {
+  cancelDownload,
+  downloadPreviewKey,
+  downloadsOptions,
+  removeDownload,
+  retryDownload,
+} from "../lib/api.ts";
 import {
   describeDownload,
   describePreset,
@@ -12,12 +24,76 @@ import {
   downloadTitle,
   isActiveDownload,
 } from "../lib/download-view.ts";
+import { rowMenuNeighbourClassName, rowMenuTriggerClassName } from "../lib/row-menu.ts";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
+import { MenuIcon } from "./menu-icon.tsx";
 import { SourceSite } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
 import { StatusIndicator } from "./status-indicator.tsx";
 import { Button, buttonVariants } from "./ui/button.tsx";
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
 import { Progress } from "./ui/progress.tsx";
+
+function focusAfterRemoving(row: HTMLElement | null) {
+  const neighbour = row?.nextElementSibling ?? row?.previousElementSibling;
+  const target =
+    neighbour?.querySelector<HTMLElement>("a, button") ??
+    document.querySelector<HTMLElement>("[data-download-link-trigger]");
+  return () => target?.focus();
+}
+
+function useDownloadMenu(job: DownloadJob, row: RefObject<HTMLLIElement | null>) {
+  const queryClient = useQueryClient();
+  const { add: addToast } = Toast.useToastManager();
+  const remove = useMutation({
+    mutationFn: () => removeDownload(job.id),
+    onMutate: () => focusAfterRemoving(row.current),
+    onSuccess: (jobs, _variables, restoreFocus) => {
+      queryClient.setQueryData(downloadsOptions.queryKey, jobs);
+      void queryClient.invalidateQueries({ queryKey: downloadPreviewKey });
+      restoreFocus();
+    },
+    onError: (error) =>
+      addToast({ title: "Could not remove the download", description: error.message }),
+  });
+  const copyLink = () =>
+    navigator.clipboard.writeText(job.url).then(
+      () => addToast({ title: "Link copied" }),
+      () =>
+        addToast({
+          title: "Could not copy the link",
+          description: "Allow clipboard access for this page, then try again.",
+        }),
+    );
+  return (
+    <>
+      <DropdownMenuItem onClick={() => void copyLink()}>
+        <MenuIcon icon={Copy01Icon} />
+        Copy link
+      </DropdownMenuItem>
+      {isActiveDownload(job) ? null : (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={remove.isPending}
+            onClick={() => remove.mutate()}
+          >
+            <HugeiconsIcon icon={Delete02Icon} aria-hidden="true" />
+            Remove from list
+          </DropdownMenuItem>
+        </>
+      )}
+    </>
+  );
+}
 
 function DownloadJobAction({ job, describedBy }: { job: DownloadJob; describedBy: string }) {
   const queryClient = useQueryClient();
@@ -78,49 +154,74 @@ export function DownloadJobRow({ job }: { job: DownloadJob }) {
   const active = isActiveDownload(job);
   const error = job.status === "failed" ? job.error : null;
   const cleanupError = job.cleanupError !== job.error ? job.cleanupError : null;
+  const row = useRef<HTMLLIElement>(null);
+  const menuItems = useDownloadMenu(job, row);
   return (
-    <li className="flex items-start gap-3.5 border-t py-3.5 first:border-t-0">
-      <span className="mt-[5px]">
-        <MediaThumbnail item={{ id: job.id, kind: getDownloadPreset(job.preset).kind }} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p id={titleId} className="text-sm/5 font-medium max-sm:line-clamp-2 sm:truncate">
-          {title}
-        </p>
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground tabular-nums">
-          <span>{describePreset(job)} ·</span>
-          <a
-            href={job.url}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          >
-            <SourceSite url={job.url} />
-          </a>
-        </p>
-        <div className="mt-2 flex leading-[normal]">
-          <StatusIndicator tone={state.tone}>{state.label}</StatusIndicator>
-        </div>
-        {progress === null ? null : (
-          <Progress value={progress} aria-labelledby={titleId} className="mt-2 block" />
-        )}
-        {job.transcribe && (active || job.status === "completed") ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {active
-              ? "Transcription starts after the download."
-              : "Transcription was queued after the download."}
+    <ContextMenu>
+      <ContextMenuTrigger
+        render={
+          <li
+            ref={row}
+            className="group flex items-start gap-3.5 border-t py-3.5 first:border-t-0"
+          />
+        }
+      >
+        <span className="mt-[5px]">
+          <MediaThumbnail item={{ id: job.id, kind: getDownloadPreset(job.preset).kind }} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p id={titleId} className="text-sm/5 font-medium max-sm:line-clamp-2 sm:truncate">
+            {title}
           </p>
-        ) : null}
-        {error ? (
-          <p className="mt-1 text-[12.5px]/[19px] wrap-anywhere text-destructive">{error}</p>
-        ) : null}
-        {cleanupError ? (
-          <p className="mt-1 text-[12.5px]/[19px] wrap-anywhere text-warning">{cleanupError}</p>
-        ) : null}
-      </div>
-      <div className="mt-[5px] shrink-0">
-        <DownloadJobAction job={job} describedBy={titleId} />
-      </div>
-    </li>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground tabular-nums">
+            <span>{describePreset(job)} ·</span>
+            <a
+              href={job.url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <SourceSite url={job.url} />
+            </a>
+          </p>
+          <div className="mt-2 flex leading-[normal]">
+            <StatusIndicator tone={state.tone}>{state.label}</StatusIndicator>
+          </div>
+          {progress === null ? null : (
+            <Progress value={progress} aria-labelledby={titleId} className="mt-2 block" />
+          )}
+          {job.transcribe && (active || job.status === "completed") ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {active
+                ? "Transcription starts after the download."
+                : "Transcription was queued after the download."}
+            </p>
+          ) : null}
+          {error ? (
+            <p className="mt-1 text-[12.5px]/[19px] wrap-anywhere text-destructive">{error}</p>
+          ) : null}
+          {cleanupError ? (
+            <p className="mt-1 text-[12.5px]/[19px] wrap-anywhere text-warning">{cleanupError}</p>
+          ) : null}
+        </div>
+        <div className="mt-[5px] flex shrink-0 items-start gap-1.5">
+          <div className={rowMenuNeighbourClassName}>
+            <DownloadJobAction job={job} describedBy={titleId} />
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon-sm" className={rowMenuTriggerClassName} />}
+              aria-label={`More actions for ${title}`}
+            >
+              <HugeiconsIcon icon={MoreHorizontalIcon} aria-hidden="true" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[200px]">
+              {menuItems}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-[200px]">{menuItems}</ContextMenuContent>
+    </ContextMenu>
   );
 }

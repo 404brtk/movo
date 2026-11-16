@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
 import {
   defaultDownloadPreset,
@@ -9,10 +9,11 @@ import {
   DownloadJobList,
   type DownloadLinkRequest,
   DownloadPreset,
+  DownloadPreview,
   type DownloadRequest,
   retryableDownloadStates,
 } from "../../shared/contracts/downloads.ts";
-import { MediaId } from "../../shared/contracts/media.ts";
+import { MediaId, type MediaItem } from "../../shared/contracts/media.ts";
 import { isAudioOnlySite } from "../../shared/download-sources.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError } from "../media/error.ts";
@@ -27,6 +28,9 @@ import { queueTranscription } from "../transcriptions/queue.ts";
 import type { Transcriptions } from "../transcriptions/jobs.ts";
 
 export type DownloadsConfig = MediaToolsConfig & YtdlpConfig;
+
+const unsettledStates: DownloadJob["status"][] = ["queued", "running"];
+const isActive = (job: DownloadJob) => job.status === "queued" || job.status === "running";
 
 const databaseOperation = <A>(operation: () => A) =>
   Effect.try({
@@ -61,6 +65,16 @@ const prepareLink = (link: DownloadLinkRequest, index: number, count: number) =>
     throw new MediaError(cause.reason, `Link ${index + 1}: ${cause.message}`, cause);
   }
 };
+const savedRecording = (
+  transaction: Pick<AppDatabase, "select">,
+  url: string,
+  preset: DownloadPreset,
+) =>
+  transaction
+    .select()
+    .from(mediaItems)
+    .where(and(eq(mediaItems.sourceUrl, url), eq(mediaItems.sourcePreset, preset)))
+    .get();
 const insertJob = (
   transaction: Pick<AppDatabase, "insert" | "update" | "select">,
   { url, preset, title }: ReturnType<typeof prepareLink>,
@@ -68,33 +82,39 @@ const insertJob = (
   queuedAt: number,
 ) => {
   const sameLink = and(eq(downloadJobs.url, url), eq(downloadJobs.preset, preset));
+  const saved = savedRecording(transaction, url, preset);
+  const state = saved
+    ? {
+        status: "completed" as const,
+        phase: "finished" as const,
+        mediaId: saved.id,
+        title: saved.title,
+        durationSeconds: saved.durationSeconds,
+        downloadedBytes: saved.byteSize,
+        totalBytes: null,
+        error: null,
+        cleanupError: null,
+        ownerPid: null,
+        updatedAt: queuedAt,
+      }
+    : {
+        status: "queued" as const,
+        phase: "queued" as const,
+        downloadedBytes: 0,
+        totalBytes: null,
+        error: null,
+        cleanupError: null,
+        ownerPid: null,
+        updatedAt: queuedAt,
+      };
   transaction
     .insert(downloadJobs)
-    .values({
-      id: randomUUID(),
-      url,
-      preset,
-      transcribe,
-      title,
-      status: "queued",
-      phase: "queued",
-      createdAt: queuedAt,
-      updatedAt: queuedAt,
-    })
+    .values({ id: randomUUID(), url, preset, transcribe, title, createdAt: queuedAt, ...state })
     .onConflictDoNothing({ target: [downloadJobs.url, downloadJobs.preset] })
     .run();
   transaction
     .update(downloadJobs)
-    .set({
-      status: "queued",
-      phase: "queued",
-      downloadedBytes: 0,
-      totalBytes: null,
-      error: null,
-      cleanupError: null,
-      ownerPid: null,
-      updatedAt: queuedAt,
-    })
+    .set(state)
     .where(and(sameLink, inArray(downloadJobs.status, [...retryableDownloadStates])))
     .run();
   if (transcribe) transaction.update(downloadJobs).set({ transcribe: true }).where(sameLink).run();
@@ -141,7 +161,10 @@ export function createDownloads(
       .where(and(eq(downloadJobs.id, id), eq(downloadJobs.status, "running")))
       .run();
   };
-  const markCompleted = (id: string, media: typeof mediaItems.$inferSelect) =>
+  const markCompleted = (
+    id: string,
+    media: Pick<MediaItem, "id" | "title" | "durationSeconds" | "byteSize">,
+  ) =>
     database.transaction((transaction) => {
       const job = transaction.select().from(downloadJobs).where(eq(downloadJobs.id, id)).get();
       if (!job || job.status !== "running") return;
@@ -197,9 +220,7 @@ export function createDownloads(
             cleanupError: Result.isFailure(result) ? result.failure.message : null,
             updatedAt: Date.now(),
           })
-          .where(
-            and(eq(downloadJobs.id, id), notInArray(downloadJobs.status, ["queued", "running"])),
-          )
+          .where(and(eq(downloadJobs.id, id), notInArray(downloadJobs.status, unsettledStates)))
           .run(),
       );
       return result;
@@ -243,7 +264,7 @@ export function createDownloads(
               const item = yield* library.adoptDownload(
                 result.path,
                 result.preview.title,
-                result.preview.url,
+                { url: result.preview.url, preset: job.preset },
                 job.id,
               );
               yield* databaseOperation(() => markCompleted(job.id, item));
@@ -348,19 +369,77 @@ export function createDownloads(
       return yield* get(id);
     }).pipe(Effect.uninterruptible, Semaphore.withPermit(retryLock));
 
-  return {
-    preview: downloader.preview,
-    get,
-    list: () =>
-      databaseOperation(() =>
-        Schema.decodeUnknownSync(DownloadJobList)(
+  const list = () =>
+    databaseOperation(() =>
+      Schema.decodeUnknownSync(DownloadJobList)(
+        database
+          .select()
+          .from(downloadJobs)
+          .orderBy(desc(downloadJobs.createdAt), desc(downloadJobs.id))
+          .all(),
+      ),
+    );
+
+  const removeSettled = (ids: readonly string[]) =>
+    Effect.gen(function* () {
+      let failure: MediaError | undefined;
+      for (const id of ids) {
+        const cleaned = yield* cleanupAndRecord(id);
+        if (Result.isFailure(cleaned)) {
+          failure ??= cleaned.failure;
+          continue;
+        }
+        yield* databaseOperation(() =>
           database
-            .select()
-            .from(downloadJobs)
-            .orderBy(desc(downloadJobs.createdAt), desc(downloadJobs.id))
-            .all(),
+            .delete(downloadJobs)
+            .where(and(eq(downloadJobs.id, id), notInArray(downloadJobs.status, unsettledStates)))
+            .run(),
+        );
+      }
+      if (failure) return yield* Effect.fail(failure);
+      return yield* list();
+    }).pipe(Effect.uninterruptible, Semaphore.withPermit(retryLock));
+
+  return {
+    preview: (url: string) =>
+      downloader.preview(url).pipe(
+        Effect.flatMap((details) =>
+          databaseOperation(() =>
+            Schema.decodeUnknownSync(DownloadPreview)({
+              ...details,
+              saved: database
+                .select({ preset: mediaItems.sourcePreset, mediaId: mediaItems.id })
+                .from(mediaItems)
+                .where(
+                  and(eq(mediaItems.sourceUrl, details.url), isNotNull(mediaItems.sourcePreset)),
+                )
+                .all(),
+            }),
+          ),
         ),
       ),
+    get,
+    list,
+    remove: (id: string) =>
+      Effect.gen(function* () {
+        const job = yield* get(id);
+        if (isActive(job))
+          return yield* Effect.fail(
+            new MediaError("conflict", "Cancel this download before removing it from the list."),
+          );
+        return yield* removeSettled([id]);
+      }),
+    clear: () =>
+      Effect.gen(function* () {
+        const settled = yield* databaseOperation(() =>
+          database
+            .select({ id: downloadJobs.id })
+            .from(downloadJobs)
+            .where(notInArray(downloadJobs.status, unsettledStates))
+            .all(),
+        );
+        return yield* removeSettled(settled.map(({ id }) => id));
+      }),
     enqueue: (url: string, preset: DownloadPreset = defaultDownloadPreset, transcribe = false) =>
       databaseOperation(() =>
         database.transaction((transaction) => {
@@ -383,7 +462,7 @@ export function createDownloads(
     cancel: (id: string) =>
       Effect.gen(function* () {
         const job = yield* get(id);
-        if (!["queued", "running"].includes(job.status) || job.phase === "saving") return job;
+        if (!isActive(job) || job.phase === "saving") return job;
         yield* databaseOperation(() =>
           database
             .update(downloadJobs)
@@ -420,7 +499,7 @@ export function createDownloads(
           return database
             .select({ id: downloadJobs.id })
             .from(downloadJobs)
-            .where(notInArray(downloadJobs.status, ["running", "queued"]))
+            .where(notInArray(downloadJobs.status, unsettledStates))
             .all();
         });
         for (const { id } of recovered) yield* cleanupAndRecord(id);

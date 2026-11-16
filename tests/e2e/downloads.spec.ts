@@ -106,6 +106,71 @@ test("opens downloads from the header slot, which counts downloads to retry unti
   await expect(page.getByRole("link", { name: "Downloads", exact: true })).toBeVisible();
 });
 
+test("removes one download from the list, keeps active ones and clears the rest", async ({
+  page,
+}) => {
+  const running = jobFixture();
+  const saved: DownloadJob = {
+    ...jobFixture(),
+    title: "A saved talk",
+    status: "completed",
+    phase: "finished",
+    mediaId: randomUUID(),
+  };
+  const failed: DownloadJob = {
+    ...jobFixture(),
+    title: "A broken post",
+    status: "failed",
+    phase: "finished",
+    error: "This post has no video. Use a post with exactly one video.",
+  };
+  const cancelled: DownloadJob = {
+    ...jobFixture(),
+    title: "A cancelled episode",
+    status: "cancelled",
+    phase: "finished",
+  };
+  let jobs = [running, saved, failed, cancelled];
+  const removed: string[] = [];
+  await page.route("**/api/downloads", (route) => {
+    if (route.request().method() === "DELETE")
+      jobs = jobs.filter((job) => job.status === "queued" || job.status === "running");
+    return route.fulfill({ json: jobs });
+  });
+  await page.route("**/api/downloads/*", (route) => {
+    expect(route.request().method()).toBe("DELETE");
+    const id = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+    removed.push(id);
+    jobs = jobs.filter((job) => job.id !== id);
+    return route.fulfill({ json: jobs });
+  });
+  await page.goto("/downloads");
+  const recent = page.getByRole("list", { name: "Recent" });
+  const row = (title: string) => page.getByRole("listitem").filter({ hasText: title });
+
+  await row("A saved talk").click({ button: "right", position: { x: 300, y: 10 } });
+  await expect(page.getByRole("menuitem", { name: "Remove from list" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await row("A queued video").hover();
+  await page.getByRole("button", { name: "More actions for A queued video" }).click();
+  await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Remove from list" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await row("A broken post").hover();
+  await page.getByRole("button", { name: "More actions for A broken post" }).click();
+  await page.getByRole("menuitem", { name: "Remove from list" }).click();
+  await expect(recent).not.toContainText("A broken post");
+  expect(removed).toEqual([failed.id]);
+  await expect(row("A cancelled episode").getByRole("link").first()).toBeFocused();
+
+  await page.getByRole("button", { name: "Clear recent downloads", exact: true }).click();
+  await expect(recent).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "In progress" })).toContainText("A queued video");
+  await expect(page.getByRole("button", { name: "Download from link", exact: true })).toBeFocused();
+});
+
 for (const choice of [
   { preset: "video-480p", option: "480p", label: "Video · Up to 480p" },
   { preset: "video-720p", option: "720p", label: "Video · Up to 720p" },
@@ -119,7 +184,7 @@ for (const choice of [
     await page.route("**/api/downloads/preview", (route) => {
       expect(route.request().method()).toBe("POST");
       expect(route.request().postDataJSON()).toEqual({ url });
-      return route.fulfill({ json: { url, title, durationSeconds: 2 } });
+      return route.fulfill({ json: { url, title, durationSeconds: 2, saved: [] } });
     });
     await page.route("**/api/downloads", (route) => {
       if (route.request().method() === "POST") {
@@ -210,7 +275,7 @@ test("checks several links, explains skipped ones and queues each with its own c
     ).url;
     previewed.push(previewUrl);
     return route.fulfill({
-      json: { url: previewUrl, title: titles[previewUrl], durationSeconds: 90 },
+      json: { url: previewUrl, title: titles[previewUrl], durationSeconds: 90, saved: [] },
     });
   });
   await page.route("**/api/downloads", async (route) => {
@@ -316,7 +381,7 @@ test("checks an X post again after a source error and keeps polling while anothe
                 "This X link is unavailable to Movo. Use a public link that opens without signing in, or try again later.",
             },
           }
-        : { json: { url: sourceUrl, title: job.title, durationSeconds: null } },
+        : { json: { url: sourceUrl, title: job.title, durationSeconds: null, saved: [] } },
     );
   });
   await page.goto("/");
@@ -361,7 +426,12 @@ test("scrolls only the link list, keeps the options in view and keeps links past
       route.request().postDataJSON(),
     ).url;
     return route.fulfill({
-      json: { url: previewUrl, title: `Video ${previewUrl.slice(-11)}`, durationSeconds: 60 },
+      json: {
+        url: previewUrl,
+        title: `Video ${previewUrl.slice(-11)}`,
+        durationSeconds: 60,
+        saved: [],
+      },
     });
   });
   await page.route("**/api/downloads", (route) => route.fulfill({ json: [] }));

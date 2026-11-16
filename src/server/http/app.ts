@@ -225,8 +225,12 @@ export function createApp(
         202,
       ),
     )
+    .delete("/downloads", async (context) => context.json(await runMedia(downloads.clear())))
     .get("/downloads/:id", async (context) =>
       context.json(await runMedia(downloads.get(context.req.param("id")))),
+    )
+    .delete("/downloads/:id", async (context) =>
+      context.json(await runMedia(downloads.remove(context.req.param("id")))),
     )
     .post("/downloads/:id/cancel", async (context) =>
       context.json(await runMedia(downloads.cancel(context.req.param("id")))),

@@ -6,6 +6,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { and, eq, getTableColumns, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { Effect, Result, Schema } from "effect";
+import type { DownloadPreset } from "../../shared/contracts/downloads.ts";
 import {
   librarySort,
   type LibraryItem,
@@ -41,6 +42,8 @@ import {
   setSearchTitle,
   syncSearchIndex,
 } from "./search.ts";
+
+type MediaSource = { url: string; preset: DownloadPreset };
 
 const extensions: Record<MediaItem["contentType"], string> = {
   "video/mp4": "mp4",
@@ -227,7 +230,7 @@ export function createMediaLibrary(
     path: string,
     originalName: string,
     title: string,
-    sourceUrl: string | null,
+    source: MediaSource | null,
     byteSize: number,
     id: string,
     transcribe = false,
@@ -241,7 +244,7 @@ export function createMediaLibrary(
             id,
             originalName,
             title,
-            sourceUrl,
+            sourceUrl: source?.url ?? null,
             fileRemovedAt: null,
             byteSize,
             importedAt: Date.now(),
@@ -263,7 +266,10 @@ export function createMediaLibrary(
         yield* Effect.try({
           try: () => {
             database.transaction((transaction) => {
-              transaction.insert(mediaItems).values(item).run();
+              transaction
+                .insert(mediaItems)
+                .values({ ...item, sourcePreset: source?.preset ?? null })
+                .run();
               addSearchEntry(transaction, item);
               if (transcribe) queueTranscription(transaction, item.id);
             });
@@ -433,7 +439,7 @@ export function createMediaLibrary(
         },
         catch: storageError,
       }),
-    adoptDownload: (path: string, title: string, sourceUrl: string, id: string) =>
+    adoptDownload: (path: string, title: string, source: MediaSource, id: string) =>
       Effect.gen(function* () {
         yield* Effect.try({
           try: () => Schema.decodeUnknownSync(MediaId)(id),
@@ -442,8 +448,8 @@ export function createMediaLibrary(
         const stored = yield* Effect.tryPromise({
           try: async () => {
             const root = await realpath(join(dataDirectory, "downloads", id));
-            const source = await realpath(path);
-            const within = relative(root, source);
+            const resolved = await realpath(path);
+            const within = relative(root, resolved);
             const file = await lstat(path);
             if (
               !within ||
@@ -462,7 +468,7 @@ export function createMediaLibrary(
           },
           catch: storageError,
         });
-        return yield* save(path, basename(path), title, sourceUrl, stored.size, id);
+        return yield* save(path, basename(path), title, source, stored.size, id);
       }),
     syncSearchIndex: () =>
       Effect.try({ try: () => syncSearchIndex(database), catch: storageError }),

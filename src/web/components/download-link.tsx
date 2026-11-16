@@ -279,7 +279,7 @@ export function DownloadLink() {
   };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" />}>
+      <DialogTrigger render={<Button variant="outline" />} data-download-link-trigger="">
         <HugeiconsIcon icon={Link01Icon} data-icon="inline-start" aria-hidden="true" />
         Download from link
       </DialogTrigger>

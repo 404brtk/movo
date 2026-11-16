@@ -1,8 +1,10 @@
 import { type QueryClient, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { DownloadPreview } from "../../shared/contracts/downloads.ts";
 import type { LibraryList } from "../../shared/contracts/library.ts";
 import type { MediaDeletion, MediaItem } from "../../shared/contracts/media.ts";
 import {
   deleteMedia,
+  downloadPreviewKey,
   downloadsOptions,
   mediaItemOptions,
   mediaListKey,
@@ -15,6 +17,11 @@ export function forgetDeletedRecording(queryClient: QueryClient, id: string) {
   queryClient.setQueriesData<LibraryList>(
     { queryKey: mediaListKey },
     (current) => current && { ...current, items: current.items.filter((entry) => entry.id !== id) },
+  );
+  queryClient.setQueriesData<DownloadPreview>(
+    { queryKey: downloadPreviewKey },
+    (current) =>
+      current && { ...current, saved: current.saved.filter((saved) => saved.mediaId !== id) },
   );
 }
 

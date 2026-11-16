@@ -10,7 +10,7 @@ import {
   FileRemoveIcon,
   RefreshIcon,
 } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import type { MediaDeletion, MediaItem } from "../../shared/contracts/media.ts";
 import { mediaFileUrl, transcriptionOptions } from "../lib/api.ts";
@@ -22,6 +22,7 @@ import {
   type TranscriptionActionMutation,
 } from "../lib/transcription-actions.ts";
 import { CleanupNotice, ConfirmDialog, ReplaceEditsDialog } from "./confirm-dialog.tsx";
+import { MenuIcon } from "./menu-icon.tsx";
 import { Spinner } from "./spinner.tsx";
 import { TranscriptExportItems } from "./transcript-actions.tsx";
 import {
@@ -38,10 +39,6 @@ type RecordingDialog = "retranscribe" | "remove-file" | "delete";
 type LibraryActions = {
   onSelect: () => void;
 };
-
-function MenuIcon({ icon }: { icon: IconSvgElement }) {
-  return <HugeiconsIcon icon={icon} aria-hidden="true" className="text-muted-foreground" />;
-}
 
 function KeyHint({ children }: { children: string }) {
   return (

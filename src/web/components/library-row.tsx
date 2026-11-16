@@ -12,6 +12,7 @@ import { canStartTranscription, describeMedia } from "../lib/library-view.ts";
 import { useRenameRecording } from "../lib/recording-mutations.ts";
 import { copyFailureMessage } from "../lib/transcript-sharing.ts";
 import { useTranscriptionAction } from "../lib/transcription-actions.ts";
+import { rowMenuNeighbourClassName, rowMenuTriggerClassName } from "../lib/row-menu.ts";
 import { cn } from "../lib/utils.ts";
 import { focusRecordingRow, useLibraryManagement } from "./library-management.tsx";
 import { MediaRow } from "./media-row.tsx";
@@ -265,7 +266,7 @@ export function LibraryRow({
               }
               status={
                 <>
-                  <span className="flex transition-transform duration-150 ease-out motion-reduce:transition-none pointer-fine:not-group-hover:not-group-has-focus-visible:not-group-data-selected:not-group-data-popup-open:not-group-has-data-popup-open:translate-x-7">
+                  <span className={rowMenuNeighbourClassName}>
                     {offerTranscribeButton ? (
                       <Button
                         variant="outline"
@@ -288,7 +289,7 @@ export function LibraryRow({
                       render={<Button variant="ghost" size="icon-sm" />}
                       aria-label={`More actions for ${item.title}`}
                       disabled={actions.busy}
-                      className="-mr-1.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-has-[a:focus-visible]:opacity-100 group-data-popup-open:opacity-100 group-data-selected:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100 pointer-coarse:opacity-100"
+                      className={rowMenuTriggerClassName}
                     >
                       <HugeiconsIcon icon={MoreHorizontalIcon} aria-hidden="true" />
                     </DropdownMenuTrigger>

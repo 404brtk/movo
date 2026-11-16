@@ -50,10 +50,16 @@ export const DownloadRequest = Schema.Struct({
   transcribe: Schema.optional(Schema.Boolean),
 });
 export type DownloadRequest = typeof DownloadRequest.Type;
-export const DownloadPreview = Schema.Struct({
+export const DownloadSourceDetails = Schema.Struct({
   url: Schema.String,
   title: DownloadTitle,
   durationSeconds: Schema.NullOr(Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))),
+});
+export type DownloadSourceDetails = typeof DownloadSourceDetails.Type;
+export const SavedDownload = Schema.Struct({ preset: DownloadPreset, mediaId: MediaId });
+export const DownloadPreview = Schema.Struct({
+  ...DownloadSourceDetails.fields,
+  saved: Schema.Array(SavedDownload),
 });
 export type DownloadPreview = typeof DownloadPreview.Type;
 export const DownloadJob = Schema.Struct({
