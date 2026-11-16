@@ -32,7 +32,7 @@ export const formatSourceHost = (url: string) =>
   URL.parse(url)?.hostname.replace(/^www\./u, "") ?? null;
 
 export const formatToolVersion = (version: string) =>
-  /^\d+(?:\.\d+)+/u.exec(version)?.[0] ?? "dev build";
+  /^n?(\d+(?:\.\d+)+)/u.exec(version)?.[1] ?? "dev build";
 
 const backendNames: Record<string, string> = {
   cpu: "CPU",

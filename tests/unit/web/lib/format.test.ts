@@ -37,6 +37,7 @@ describe("media display formatting", () => {
     ["7.1-essentials_build", "7.1"],
     ["7.1.1-full_build-www.gyan.dev", "7.1.1"],
     ["2026.10.26", "2026.10.26"],
+    ["n9.0.2-39-g7adfbe40dc-20261031", "9.0.2"],
     ["N-118500-g1a2b3c4d5e-20250101", "dev build"],
     ["2025-01-01-git-1a2b3c4d5e-full_build-www.gyan.dev", "dev build"],
   ] as const)("formats tool version %s", (version, expected) => {
