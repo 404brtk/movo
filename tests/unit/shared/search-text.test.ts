@@ -46,4 +46,17 @@ describe("search text", () => {
     expect(containsEveryTerm(["Zbudżetowany plan."], ["budz"])).toBe(false);
     expect(containsEveryTerm(["Cokolwiek"], [])).toBe(true);
   });
+
+  it("splits words with non-Latin combining marks like the query and the search index", () => {
+    const text = "मुझे हिंदी पसंद है";
+    const terms = searchTerms("हिंदी");
+    expect(terms).toEqual(["ह", "द"]);
+    expect(containsEveryTerm([text], terms)).toBe(true);
+    expect(containsEveryTerm(["Budget", "हिंदी"], terms)).toBe(true);
+    expect(containsEveryTerm(["मुझे"], terms)).toBe(false);
+    expect(matchedRanges(text, ["द"]).map((range) => text.slice(range.start, range.end))).toEqual([
+      "हिंदी",
+      "पसंद",
+    ]);
+  });
 });

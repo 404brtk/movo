@@ -20,20 +20,25 @@ export function foldSearchText(text: string) {
     .replace(lettersWithoutDecomposition, (letter) => plainLetters[letter] ?? letter);
 }
 
+const searchTokens = (text: string) => foldSearchText(text).match(searchToken) ?? [];
+
+const startsWithTerm = (tokens: readonly string[], term: string) =>
+  tokens.some((token) => token.startsWith(term));
+
 export function searchTerms(query: string) {
-  return [...new Set(foldSearchText(query).match(searchToken))];
+  return [...new Set(searchTokens(query))];
 }
 
-const foldedWords = (text: string) =>
-  Array.from(text.matchAll(displayedWord), (word) => ({ word, folded: foldSearchText(word[0]) }));
-
 export function matchedRanges(text: string, terms: readonly string[]) {
-  return foldedWords(text)
-    .filter(({ folded }) => terms.some((term) => folded.startsWith(term)))
-    .map(({ word }) => ({ start: word.index, end: word.index + word[0].length }));
+  return Array.from(text.matchAll(displayedWord))
+    .filter((word) => {
+      const tokens = searchTokens(word[0]);
+      return terms.some((term) => startsWithTerm(tokens, term));
+    })
+    .map((word) => ({ start: word.index, end: word.index + word[0].length }));
 }
 
 export function containsEveryTerm(texts: readonly string[], terms: readonly string[]) {
-  const words = texts.flatMap((text) => foldedWords(text).map(({ folded }) => folded));
-  return terms.every((term) => words.some((word) => word.startsWith(term)));
+  const tokens = texts.flatMap(searchTokens);
+  return terms.every((term) => startsWithTerm(tokens, term));
 }
