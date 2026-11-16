@@ -25,7 +25,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
       if (attempts === 1)
         return route.fulfill({
           status: 503,
-          json: { error: "Download Parakeet Ultra from Models before transcribing a recording." },
+          json: { error: "Download Parakeet Ultra from Settings before transcribing a recording." },
         });
       job = {
         mediaId: media.id,
