@@ -4,10 +4,10 @@ Ask answers questions about transcripts with a language model the user connects.
 
 ## Connecting models
 
-Connections are managed under **Ask** on the **Models** page.
+Connections are managed under **Ask** on the **Settings** page.
 
 - **API keys** for Anthropic, OpenAI and OpenRouter (**Add key**). Connecting reads the provider's model list (for OpenRouter also its key details, because its model list is public), which verifies the key without generating text. A rejected key is reported, stays in the field and nothing is saved. **…** on a connected provider replaces or removes the key.
-- **Servers** that speak the OpenAI-compatible API, such as Ollama, LM Studio, Jan or llama-server. Movo checks Ollama (port 11434), LM Studio (1234), Jan (1337) and llama-server (8080, recognised by `owned_by: "llamacpp"` in its model list) on `127.0.0.1` only while the Models page, the "Connect a model" panel or the model picker is open, about every 30 seconds. There is no background check and no network scan. Any other server is added with **Add address**.
+- **Servers** that speak the OpenAI-compatible API, such as Ollama, LM Studio, Jan or llama-server. Movo checks Ollama (port 11434), LM Studio (1234), Jan (1337) and llama-server (8080, recognised by `owned_by: "llamacpp"` in its model list) on `127.0.0.1` only while the Settings page, the "Connect a model" panel or the model picker is open, about every 30 seconds. There is no background check and no network scan. Any other server is added with **Add address**.
 - Server addresses must be on this computer (loopback) or the home network (`10/8`, `172.16/12`, `192.168/16`, IPv6 unique-local addresses, `.local` names). The form says which one an address is while it is typed and warns that plain http crosses the network unencrypted. Internet addresses are rejected; use an API key instead. A key is optional for servers that require one. Ollama on another computer must listen on the network, for example with `OLLAMA_HOST=0.0.0.0:11434`.
 
 Keys are stored in plain text in `app.sqlite` inside the data directory. On Linux and macOS Movo sets the data directory to mode `0700` at startup, so only the user's account can read it; on Windows the default location is inside the user's profile. The API returns only the last four characters of a key. Removing a connection deletes its key; chats that used it keep their history and ask for another model.

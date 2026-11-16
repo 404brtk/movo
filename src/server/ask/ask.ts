@@ -484,7 +484,7 @@ export function createAsk(
       if (!row)
         throw new MediaError(
           "notFound",
-          "This connection was removed. Connect it again in Models.",
+          "This connection was removed. Connect it again in Settings.",
         );
       return row;
     });
@@ -797,7 +797,7 @@ export function createAsk(
         const choice = yield* storage(() => database.select().from(askSettings).get());
         if (!choice)
           return yield* Effect.fail(
-            new MediaError("conflict", "Connect a model and choose it in Models first."),
+            new MediaError("conflict", "Connect a model and choose it in Settings first."),
           );
         const now = Date.now();
         const row = {

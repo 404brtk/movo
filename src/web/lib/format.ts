@@ -31,6 +31,9 @@ export function formatByteProgress(bytes: number, totalBytes: number) {
 export const formatSourceHost = (url: string) =>
   URL.parse(url)?.hostname.replace(/^www\./u, "") ?? null;
 
+export const formatToolVersion = (version: string) =>
+  /^\d+(?:\.\d+)+/u.exec(version)?.[0] ?? "dev build";
+
 const backendNames: Record<string, string> = {
   cpu: "CPU",
   cuda: "CUDA",

@@ -104,7 +104,7 @@ function DefaultModelField() {
   const { groups } = useModelGroups();
   const setDefault = useSetDefaultModel();
   return (
-    <ul>
+    <ul className="mt-2">
       <Row
         icon={BubbleChatIcon}
         title="New chats answer with"
@@ -148,7 +148,10 @@ function RowMenu({
 }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label={label}>
+      <DropdownMenuTrigger
+        render={<Button variant="ghost" size="icon-sm" className="-mr-1.5" />}
+        aria-label={label}
+      >
         <HugeiconsIcon icon={MoreHorizontalIcon} aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[180px]">
@@ -523,14 +526,10 @@ function WhatIsSent() {
 }
 
 export function AskSettings() {
-  const headingId = useId();
   const { connections } = useModelGroups({ enabled: true });
   const all = connections.data ?? [];
   return (
-    <section aria-labelledby={headingId} className="mt-12">
-      <h2 id={headingId} className="text-[17px]/6 font-semibold tracking-[-0.01em]">
-        Ask
-      </h2>
+    <>
       {connections.isError ? (
         <p role="alert" className="mt-3 text-xs text-destructive">
           {connections.error.message}
@@ -553,6 +552,6 @@ export function AskSettings() {
         })}
       </ul>
       <WhatIsSent />
-    </section>
+    </>
   );
 }

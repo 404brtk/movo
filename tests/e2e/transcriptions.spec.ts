@@ -63,7 +63,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("alert")).toContainText("Download Parakeet Ultra");
   await expect(
-    panel.getByRole("link", { name: "Download Parakeet Ultra in Models", exact: true }),
+    panel.getByRole("link", { name: "Download Parakeet Ultra in Settings", exact: true }),
   ).toBeVisible();
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Transcribing");

@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { ArrowUpRight01Icon, RefreshIcon } from "@hugeicons/core-free-icons";
+import { RefreshIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -12,8 +12,8 @@ import {
   downloadTitle,
   isActiveDownload,
 } from "../lib/download-view.ts";
-import { formatSourceHost } from "../lib/format.ts";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
+import { SourceSite } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
 import { StatusIndicator } from "./status-indicator.tsx";
 import { Button, buttonVariants } from "./ui/button.tsx";
@@ -75,7 +75,6 @@ export function DownloadJobRow({ job }: { job: DownloadJob }) {
   const title = downloadTitle(job);
   const state = describeDownload(job);
   const progress = downloadProgress(job);
-  const host = formatSourceHost(job.url);
   const active = isActiveDownload(job);
   const error = job.status === "failed" ? job.error : null;
   const cleanupError = job.cleanupError !== job.error ? job.cleanupError : null;
@@ -94,10 +93,9 @@ export function DownloadJobRow({ job }: { job: DownloadJob }) {
             href={job.url}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-[3px] rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            {host ?? "Source"}
-            <HugeiconsIcon icon={ArrowUpRight01Icon} size={12} aria-hidden="true" />
+            <SourceSite url={job.url} />
           </a>
         </p>
         <div className="mt-2 flex leading-[normal]">
@@ -120,7 +118,7 @@ export function DownloadJobRow({ job }: { job: DownloadJob }) {
           <p className="mt-1 text-[12.5px]/[19px] wrap-anywhere text-warning">{cleanupError}</p>
         ) : null}
       </div>
-      <div className="shrink-0 self-center">
+      <div className="mt-[5px] shrink-0">
         <DownloadJobAction job={job} describedBy={titleId} />
       </div>
     </li>

@@ -19,7 +19,7 @@ export const downloadTitle = (job: DownloadJob) =>
 
 export function describePreset(job: DownloadJob) {
   const preset = getDownloadPreset(job.preset);
-  return `${preset.kind === "audio" ? "Audio" : "Video"} · ${preset.label.toLowerCase()}`;
+  return `${preset.kind === "audio" ? "Audio" : "Video"} · ${preset.label}`;
 }
 
 export function downloadProgress(job: DownloadJob) {

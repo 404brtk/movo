@@ -4,6 +4,7 @@ import {
   formatDay,
   formatDevice,
   formatDuration,
+  formatToolVersion,
 } from "../../../../src/web/lib/format.ts";
 
 describe("media display formatting", () => {
@@ -31,6 +32,15 @@ describe("media display formatting", () => {
     [{ backend: "future", name: "Accelerator" }, "Accelerator · future"],
   ] as const)("formats transcription device %o", (device, expected) => {
     expect(formatDevice(device)).toBe(expected);
+  });
+  it.each([
+    ["7.1-essentials_build", "7.1"],
+    ["7.1.1-full_build-www.gyan.dev", "7.1.1"],
+    ["2026.10.26", "2026.10.26"],
+    ["N-118500-g1a2b3c4d5e-20250101", "dev build"],
+    ["2025-01-01-git-1a2b3c4d5e-full_build-www.gyan.dev", "dev build"],
+  ] as const)("formats tool version %s", (version, expected) => {
+    expect(formatToolVersion(version)).toBe(expected);
   });
 });
 

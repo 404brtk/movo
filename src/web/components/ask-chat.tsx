@@ -496,7 +496,7 @@ export function AskComposer({
         label: failureActions[failure.errorKind],
         onClick:
           failure.errorKind === "key"
-            ? () => void navigate({ to: "/models" })
+            ? () => void navigate({ to: "/settings" })
             : failure.errorKind === "tools" || failure.errorKind === "model"
               ? () => setPickerOpen(true)
               : retry,

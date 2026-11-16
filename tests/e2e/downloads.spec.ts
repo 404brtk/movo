@@ -67,11 +67,42 @@ test("keeps saved media available when temporary download cleanup fails", async 
   await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
 });
 
+test("opens downloads from the header slot, which counts failed downloads", async ({ page }) => {
+  let jobs: DownloadJob[] = [];
+  await page.route("**/api/downloads", (route) => route.fulfill({ json: jobs }));
+  await page.goto("/");
+  const main = page.getByRole("navigation", { name: "Main" });
+  await expect(main.getByRole("link")).toHaveText(["Library", "Ask", "Settings"]);
+  await page.getByRole("link", { name: "Downloads", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Downloads", exact: true })).toBeVisible();
+  await expect(main.getByRole("link", { name: "Library", exact: true })).toHaveAttribute(
+    "data-pressed",
+    "",
+  );
+  await expect(page.getByRole("link", { name: "Downloads", exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "Back to library", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Downloads", exact: true }).click();
+  jobs = [
+    {
+      ...jobFixture(),
+      status: "failed",
+      phase: "finished",
+      error: "This post has no video. Use a post with exactly one video.",
+    },
+  ];
+  await page.goto("/settings");
+  const failed = page.getByRole("link", { name: "Downloads, 1 failed download", exact: true });
+  await expect(failed).toHaveText("1 failed");
+  await failed.click();
+  await expect(page.getByRole("list", { name: "Recent" })).toContainText("Download failed");
+});
+
 for (const choice of [
-  { preset: "video-480p", option: "480p", label: "Video · up to 480p" },
-  { preset: "video-720p", option: "720p", label: "Video · up to 720p" },
-  { preset: "video-best", option: "Best", label: "Video · best available" },
-  { preset: "audio", option: "Audio", label: "Audio · best available" },
+  { preset: "video-480p", option: "480p", label: "Video · Up to 480p" },
+  { preset: "video-720p", option: "720p", label: "Video · Up to 720p" },
+  { preset: "video-best", option: "Best", label: "Video · Best available" },
+  { preset: "audio", option: "Audio", label: "Audio · Best available" },
 ] as const) {
   test(`queues ${choice.preset} and shows the selected option after reload`, async ({ page }) => {
     let queued = false;
@@ -127,6 +158,10 @@ for (const choice of [
     await page.getByRole("button", { name: "View downloads", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Downloads", exact: true })).toBeVisible();
     await expect(page.getByText(choice.label)).toBeVisible();
+    await expect(page.getByRole("link", { name: "YouTube", exact: true })).toHaveAttribute(
+      "href",
+      url,
+    );
     await page.reload();
     await expect(page.getByText(choice.label)).toBeVisible();
   });
@@ -286,7 +321,7 @@ test("checks an X post again after a source error and keeps polling while anothe
   await expect(page.getByRole("button", { name: "Download", exact: true })).toBeDisabled();
   await list.getByRole("button", { name: "Check again", exact: true }).click();
   await expect(list.getByText(job.title ?? "", { exact: true })).toBeVisible();
-  await expect(list).toContainText("x.com");
+  await expect(list.getByText("X", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Download", exact: true }).click();
   await page.getByRole("button", { name: "View downloads", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Downloads", exact: true })).toBeVisible();

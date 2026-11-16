@@ -30,7 +30,8 @@ import {
   linkTitle,
   type SaveKind,
 } from "../lib/download-links.ts";
-import { formatDuration, formatSourceHost } from "../lib/format.ts";
+import { formatDuration } from "../lib/format.ts";
+import { sourceSite } from "../lib/source-sites.ts";
 import { cn } from "../lib/utils.ts";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
 import { SegmentedChoice } from "./segmented-choice.tsx";
@@ -91,7 +92,7 @@ function LinkDetails({ view }: { view: LinkView }) {
     return (
       <span className="truncate tabular-nums">
         {[
-          formatSourceHost(preview.data.url),
+          sourceSite(preview.data.url).name,
           preview.data.durationSeconds === null
             ? null
             : formatDuration(preview.data.durationSeconds),

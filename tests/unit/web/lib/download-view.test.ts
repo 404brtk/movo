@@ -29,7 +29,7 @@ const job: DownloadJob = {
 describe("download view", () => {
   it("describes a running download with its share of the expected size", () => {
     expect(downloadTitle(job)).toBe("youtube.com/watch?v=aaaaaaaaaaa");
-    expect(describePreset(job)).toBe("Video · up to 720p");
+    expect(describePreset(job)).toBe("Video · Up to 720p");
     expect(describeDownload(job)).toEqual({
       tone: "active",
       label: `Downloading · ${(48).toLocaleString()} of ${(64).toLocaleString()} MiB`,

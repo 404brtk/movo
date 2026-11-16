@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import type { DownloadJob } from "../../shared/contracts/downloads.ts";
 import { AccentIcon } from "../components/accent-icon.tsx";
+import { BackToLibrary } from "../components/back-to-library.tsx";
 import { DownloadJobRow } from "../components/download-job-row.tsx";
 import { DownloadLink } from "../components/download-link.tsx";
 import { ListSkeleton } from "../components/list-skeleton.tsx";
@@ -41,7 +42,10 @@ function DownloadSection({ title, jobs }: { title: string; jobs: readonly Downlo
 function Downloads() {
   const jobs = useQuery(downloadsOptions);
   return (
-    <main className="mx-auto max-w-[800px] px-5 pt-9 pb-16">
+    <main className="mx-auto max-w-[800px] px-5 pt-5 pb-16">
+      <div className="mb-3 -ml-2.5">
+        <BackToLibrary />
+      </div>
       <PageHeader
         title="Downloads"
         description="Downloads keep running while you browse. Keep Movo open until they finish."
