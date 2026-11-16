@@ -1,6 +1,6 @@
 import { ArrowDown01Icon, ArrowUp01Icon, Edit02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Fragment, memo, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import type { Transcript } from "../../shared/contracts/transcriptions.ts";
 import {
@@ -12,13 +12,15 @@ import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { formatDuration } from "../lib/format.ts";
 import { marksByPassage, type PassageMark, type TranscriptMatches } from "../lib/passage-marks.ts";
 import { pinnedHeight, useTranscriptFollow } from "../lib/transcript-follow.ts";
+import type { PassageHit, TranscriptFound } from "../lib/transcript-search.ts";
 import { cn } from "../lib/utils.ts";
+import { HighlightedText } from "./highlighted-text.tsx";
 import { PassageEditor } from "./passage-editor.tsx";
 import { PassageSpeakerMenu, SpeakerHeading, type SpeakerEditing } from "./speaker-controls.tsx";
 import { Button } from "./ui/button.tsx";
 
 const revealElement = (element: HTMLElement | null) => element?.scrollIntoView({ block: "center" });
-const revealIfHidden = (element: HTMLElement | null) => {
+const revealIfHidden = (element: Element | null | undefined) => {
   const bounds = element?.getBoundingClientRect();
   if (bounds && (bounds.top < pinnedHeight() || bounds.bottom > window.innerHeight - 120))
     element?.scrollIntoView({ block: "center" });
@@ -91,6 +93,9 @@ const Passage = memo(function Passage({
   speakerHeading,
   speakerEditing,
   speakerSpacing,
+  hit,
+  searchCurrent,
+  markCurrentWord,
 }: {
   passage: TranscriptPassage;
   currentWord: number;
@@ -105,11 +110,19 @@ const Passage = memo(function Passage({
   speakerHeading: string | null;
   speakerEditing: SpeakerEditing | undefined;
   speakerSpacing: "turn" | "continued" | undefined;
+  hit: PassageHit | undefined;
+  searchCurrent: boolean;
+  markCurrentWord: boolean;
 }) {
   const time = formatDuration(passage.startMs / 1000);
   const current = currentWord >= 0;
   const wordMarks =
-    marks ?? (current ? [{ start: currentWord, end: currentWord + 1, current: false }] : undefined);
+    marks ??
+    hit?.marks ??
+    (current && markCurrentWord
+      ? [{ start: currentWord, end: currentWord + 1, current: false }]
+      : undefined);
+  const speakerNote = speakerHeading === null ? hit?.speaker : undefined;
   const editorOpen = Boolean(editing && edited?.open);
   const timeClassName = cn(
     "mb-1 block text-xs/4 tabular-nums",
@@ -131,26 +144,42 @@ const Passage = memo(function Passage({
         editorOpen && "my-1 rounded-[14px] bg-background pb-3.5 shadow-editor",
         speakerSpacing === "turn" && "mt-4",
         speakerSpacing === "continued" && !editorOpen && "py-2",
+        searchCurrent && !editorOpen && "-mx-3.5 rounded-xl bg-tint px-3.5",
       )}
     >
       {speakerHeading !== null && passage.speaker !== undefined ? (
-        <SpeakerHeading speaker={passage.speaker} editing={speakerEditing} label={speakerHeading} />
+        <SpeakerHeading
+          speaker={passage.speaker}
+          editing={speakerEditing}
+          label={speakerHeading}
+          ranges={hit?.speaker?.ranges}
+        />
       ) : null}
-      {onSeek && !editorOpen ? (
-        <button
-          type="button"
-          aria-label={`Go to ${time}`}
-          className={cn(
-            timeClassName,
-            "cursor-pointer rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-          )}
-          onClick={() => onSeek(passage.startMs)}
-        >
-          {time}
-        </button>
-      ) : (
-        <span className={timeClassName}>{time}</span>
-      )}
+      <div className={cn(speakerNote && "flex items-baseline gap-1.5")}>
+        {onSeek && !editorOpen ? (
+          <button
+            type="button"
+            aria-label={`Go to ${time}`}
+            className={cn(
+              timeClassName,
+              "cursor-pointer rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+            )}
+            onClick={() => onSeek(passage.startMs)}
+          >
+            {time}
+          </button>
+        ) : (
+          <span className={timeClassName}>{time}</span>
+        )}
+        {speakerNote ? (
+          <span className="text-xs/4 font-medium">
+            <span aria-hidden="true" className="text-muted-foreground">
+              ·{" "}
+            </span>
+            <HighlightedText text={speakerNote.name} ranges={speakerNote.ranges} />
+          </span>
+        ) : null}
+      </div>
       {editing && edited?.open ? (
         <PassageEditor
           mediaId={editing.mediaId}
@@ -211,6 +240,7 @@ export function TranscriptReader({
   editing,
   searching = false,
   matches,
+  found,
 }: {
   transcript: Transcript;
   playback?: TranscriptPlayback | undefined;
@@ -218,6 +248,7 @@ export function TranscriptReader({
   editing?: TranscriptEditing | undefined;
   searching?: boolean;
   matches?: TranscriptMatches | undefined;
+  found?: TranscriptFound | undefined;
 }) {
   const [edited, setEdited] = useState<EditedPassage | null>(null);
   const [openingMs, setOpeningMs] = useState(revealMs);
@@ -239,6 +270,12 @@ export function TranscriptReader({
   const openingWord = currentWordIndex(transcript.words, revealMs ?? 0);
   const openingPassage = passages.find((passage) => contains(passage, openingWord));
   const suspended = searching || Boolean(edited?.open);
+  useEffect(() => {
+    if (found?.current === undefined) return undefined;
+    const index = passages.findIndex((passage) => passage.firstWord === found.current);
+    const frame = requestAnimationFrame(() => revealIfHidden(list.current?.children[index]));
+    return () => cancelAnimationFrame(frame);
+  }, [found, passages]);
   const { currentAbove } = useTranscriptFollow({
     list,
     passage: currentPassage?.firstWord,
@@ -256,7 +293,7 @@ export function TranscriptReader({
             key={passage.firstWord}
             passage={passage}
             currentWord={contains(passage, currentWord) ? currentWord - passage.firstWord : -1}
-            dimmed={(Boolean(playback) && !matches) || Boolean(edited?.open)}
+            dimmed={(Boolean(playback) && !matches && !found) || Boolean(edited?.open)}
             revealed={contains(passage, revealedWord)}
             scrollsIntoView={!playback || revealMs === openingMs}
             marks={marks.get(passage.firstWord)}
@@ -279,6 +316,9 @@ export function TranscriptReader({
                     ? "turn"
                     : undefined
             }
+            hit={found?.hits.get(passage.firstWord)}
+            searchCurrent={found?.current === passage.firstWord}
+            markCurrentWord={!searching}
           />
         ))}
       </ol>

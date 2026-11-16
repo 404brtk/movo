@@ -171,6 +171,43 @@ test("keeps the find form pinned below the video while it reveals a match furthe
   await expect(form.getByText(`1 of ${passageCount}`)).toBeVisible();
 });
 
+test("reveals the current search match below the pinned video whenever the search changes", async ({
+  page,
+  request,
+}) => {
+  const { player, passages, seek } = await openTranscribedVideo(page, request);
+  await expect(passages).toHaveCount(passageCount);
+  await seek(0.06);
+  await expect(passages.nth(0).locator("mark")).toHaveCount(1);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  const search = page.getByRole("search", { name: "Search this transcript" });
+  const field = search.getByRole("searchbox", { name: "Search this transcript" });
+  await expect(passages.nth(0).locator("mark")).toHaveCount(0);
+
+  await field.fill("step 20");
+  await expect(search.getByText("1 of 1")).toBeVisible();
+  const match = passages.nth(passageCount - 1);
+  const expectBelowSearch = () =>
+    expect(async () => {
+      const playerBounds = await player.boundingBox();
+      const searchBounds = await search.boundingBox();
+      const matchBounds = await match.boundingBox();
+      if (!playerBounds || !searchBounds || !matchBounds) throw new Error("Expected boxes.");
+      expect(searchBounds.y).toBeGreaterThanOrEqual(playerBounds.y + playerBounds.height);
+      expect(matchBounds.y).toBeGreaterThanOrEqual(searchBounds.y + searchBounds.height);
+      expect(matchBounds.y + matchBounds.height).toBeLessThanOrEqual(
+        page.viewportSize()?.height ?? 0,
+      );
+    }).toPass();
+  await expectBelowSearch();
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(match).not.toBeInViewport();
+  await field.pressSequentially(" of");
+  await expect(search.getByText("1 of 1")).toBeVisible();
+  await expectBelowSearch();
+});
+
 test("offers the way back after editing elsewhere and keeps following after editing the spoken passage", async ({
   page,
   request,

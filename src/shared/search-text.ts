@@ -24,11 +24,16 @@ export function searchTerms(query: string) {
   return [...new Set(foldSearchText(query).match(searchToken))];
 }
 
+const foldedWords = (text: string) =>
+  Array.from(text.matchAll(displayedWord), (word) => ({ word, folded: foldSearchText(word[0]) }));
+
 export function matchedRanges(text: string, terms: readonly string[]) {
-  return Array.from(text.matchAll(displayedWord))
-    .filter((word) => {
-      const folded = foldSearchText(word[0]);
-      return terms.some((term) => folded.startsWith(term));
-    })
-    .map((word) => ({ start: word.index, end: word.index + word[0].length }));
+  return foldedWords(text)
+    .filter(({ folded }) => terms.some((term) => folded.startsWith(term)))
+    .map(({ word }) => ({ start: word.index, end: word.index + word[0].length }));
+}
+
+export function containsEveryTerm(texts: readonly string[], terms: readonly string[]) {
+  const words = texts.flatMap((text) => foldedWords(text).map(({ folded }) => folded));
+  return terms.every((term) => words.some((word) => word.startsWith(term)));
 }

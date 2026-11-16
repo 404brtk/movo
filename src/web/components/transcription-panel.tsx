@@ -1,5 +1,5 @@
 import { type ReactNode, useMemo, useState } from "react";
-import { SearchReplaceIcon } from "@hugeicons/core-free-icons";
+import { Search01Icon, SearchReplaceIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import type { Transcript, TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
@@ -15,6 +15,7 @@ import { ChangeHistory } from "./change-history.tsx";
 import { ReplaceEditsDialog } from "./confirm-dialog.tsx";
 import { FindAndReplace, useFindAndReplace } from "./find-and-replace.tsx";
 import { TranscriptActions } from "./transcript-actions.tsx";
+import { TranscriptSearch, useTranscriptSearch } from "./transcript-search.tsx";
 import {
   TranscriptReader,
   type TranscriptEditing,
@@ -45,7 +46,15 @@ function TranscriptView({
   revealMs: number | undefined;
   toolbarAction: ReactNode;
 }) {
-  const [findOpen, setFindOpen] = useState(false);
+  const search = useTranscriptSearch(transcript);
+  const [tool, setTool] = useState<"search" | "find" | null>(
+    search.query === undefined ? null : "search",
+  );
+  const [seenQuery, setSeenQuery] = useState(search.query);
+  if (search.query !== seenQuery) {
+    setSeenQuery(search.query);
+    if (search.query !== undefined) setTool("search");
+  }
   const find = useFindAndReplace(transcript);
   const { revision, resultRevision } = job;
   const edited = hasEdits(job);
@@ -55,27 +64,47 @@ function TranscriptView({
     [editable, mediaId, revision],
   );
   const hasWords = transcript.words.length > 0;
-  const showFind = findOpen && editable && hasWords;
+  const showFind = tool === "find" && editable && hasWords;
+  const showSearch = tool === "search" && hasWords;
+  const closeSearch = () => {
+    search.clear();
+    setTool(null);
+  };
+  const toggle = (opened: "search" | "find") => {
+    if (tool === "search") search.clear();
+    setTool(tool === opened ? null : opened);
+  };
   return (
     <>
       <div
         className={cn(
           "mt-[18px] flex flex-wrap items-center gap-1.5",
-          !showFind && "border-b pb-[18px]",
+          !showFind && !showSearch && "border-b pb-[18px]",
         )}
       >
         <span className="mr-1.5 text-xs text-muted-foreground max-sm:mb-1 max-sm:basis-full">
           {modelName}
           {edited ? " · edited" : ""}
         </span>
-        {editable && (hasWords || edited) ? (
-          <div className="flex items-center gap-1.5">
+        {hasWords || (editable && edited) ? (
+          <div className="flex flex-wrap items-center gap-1.5">
             {hasWords ? (
               <Button
                 variant="toggle"
                 size="sm"
+                aria-expanded={showSearch}
+                onClick={() => toggle("search")}
+              >
+                <HugeiconsIcon icon={Search01Icon} data-icon="inline-start" aria-hidden="true" />
+                Search
+              </Button>
+            ) : null}
+            {editable && hasWords ? (
+              <Button
+                variant="toggle"
+                size="sm"
                 aria-expanded={showFind}
-                onClick={() => setFindOpen(!findOpen)}
+                onClick={() => toggle("find")}
               >
                 <HugeiconsIcon
                   icon={SearchReplaceIcon}
@@ -85,12 +114,14 @@ function TranscriptView({
                 Find and replace
               </Button>
             ) : null}
-            <ChangeHistory
-              mediaId={mediaId}
-              revision={revision}
-              resultRevision={resultRevision}
-              modelName={job.device ? `${modelName} · ${formatDevice(job.device)}` : modelName}
-            />
+            {editable ? (
+              <ChangeHistory
+                mediaId={mediaId}
+                revision={revision}
+                resultRevision={resultRevision}
+                modelName={job.device ? `${modelName} · ${formatDevice(job.device)}` : modelName}
+              />
+            ) : null}
           </div>
         ) : null}
         <div className="ml-auto flex items-center gap-1.5">
@@ -103,17 +134,19 @@ function TranscriptView({
           mediaId={mediaId}
           revision={revision}
           state={find}
-          onClose={() => setFindOpen(false)}
+          onClose={() => setTool(null)}
         />
       ) : null}
+      {showSearch ? <TranscriptSearch state={search} onClose={closeSearch} /> : null}
       {hasWords ? (
         <TranscriptReader
           transcript={transcript}
           playback={playback}
           revealMs={revealMs}
           editing={editing}
-          searching={showFind}
+          searching={showFind || showSearch}
           matches={showFind ? find.matches : undefined}
+          found={showSearch ? search.found : undefined}
         />
       ) : (
         <p className="mt-6 text-[15px]/6 text-muted-foreground">

@@ -42,8 +42,16 @@ const test = base.extend<{ library: { origin: string; meeting: MediaItem } }>({
                 Effect.succeed({
                   language: "pl",
                   words: [
-                    ...timedWords(0, 900, "Źródło budżetu jest jasne."),
-                    ...timedWords(1000, 1900, "Plan spotkania na jutro."),
+                    ...timedWords(0, 900, "Źródło budżetu jest jasne.").map((word) => ({
+                      ...word,
+                      speaker: 1,
+                    })),
+                    ...[
+                      ...timedWords(1000, 1900, "Plan spotkania na jutro."),
+                      ...timedWords(2000, 2300, "Zadania na jutro."),
+                      ...timedWords(2350, 2650, "Jutro wracamy."),
+                      ...timedWords(2700, 2950, "Do zobaczenia."),
+                    ].map((word) => ({ ...word, speaker: 2 })),
                   ],
                 }),
             });
@@ -115,6 +123,64 @@ test("searches transcripts, opens a matching passage and restores the search on 
   await expect(results.getByRole("link", { name: "Open Łódź meeting" }).locator("mark")).toHaveText(
     "Łódź",
   );
+});
+
+test("finds passages by a speaker's name and shows who is speaking", async ({
+  page,
+  request,
+  library,
+}) => {
+  const rename = await request.post(
+    `${library.origin}/api/media/${library.meeting.id}/transcription/speakers/rename`,
+    { data: { speaker: 2, name: "Łucja Nowak" } },
+  );
+  expect(rename.status()).toBe(200);
+  await page.goto(`${library.origin}/?q=lucja`);
+  const matches = page.getByRole("list", { name: "Matches in Łódź meeting" });
+  const passage = matches.getByRole("link", {
+    name: /^0:01 ?Łucja Nowak: Plan spotkania na jutro\.$/u,
+  });
+  await expect(passage.locator("mark")).toHaveText("Łucja");
+  await page.getByRole("searchbox", { name: "Search" }).fill("speaker");
+  await expect(page.getByRole("heading", { name: "No recordings match “speaker”" })).toBeVisible();
+});
+
+test("continues a library search inside the recording", async ({ page, request, library }) => {
+  const rename = await request.post(
+    `${library.origin}/api/media/${library.meeting.id}/transcription/speakers/rename`,
+    { data: { speaker: 2, name: "Łucja Nowak" } },
+  );
+  expect(rename.status()).toBe(200);
+  await page.goto(`${library.origin}/?q=lucja`);
+  await page.getByRole("link", { name: "Search in this recording" }).click();
+  await expect(page).toHaveURL(`${library.origin}/media/${library.meeting.id}?q=lucja`);
+  const search = page.getByRole("search", { name: "Search this transcript" });
+  const field = search.getByRole("searchbox", { name: "Search this transcript" });
+  await expect(field).toHaveValue("lucja");
+  await expect(search.getByText("1 of 4")).toBeVisible();
+  const passages = page.getByRole("list", { name: "Timestamped passages" }).getByRole("listitem");
+  await expect(passages.nth(1).locator("mark")).toHaveText(["Łucja"]);
+
+  await field.fill("lucja jutr");
+  await expect(page).toHaveURL(/\?q=lucja(\+|%20)jutr$/u);
+  await expect(search.getByText("1 of 3")).toBeVisible();
+  await expect(passages.nth(2)).toContainText("· Łucja Nowak");
+  await expect(passages.nth(2).locator("mark")).toHaveText(["Łucja", "jutro."]);
+  await search.getByRole("button", { name: "Next match" }).click();
+  await expect(search.getByText("2 of 3")).toBeVisible();
+
+  await page.reload();
+  await expect(field).toHaveValue("lucja jutr");
+  await expect(search.getByText("1 of 3")).toBeVisible();
+  await search.getByRole("button", { name: "Close" }).click();
+  await expect(search).toHaveCount(0);
+  await expect(page).toHaveURL(`${library.origin}/media/${library.meeting.id}`);
+  await expect(passages.locator("mark", { hasText: "Łucja" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(field).toBeFocused();
+  await field.fill("budzet");
+  await expect(search.getByText("1 of 1")).toBeVisible();
+  await expect(passages.nth(0).locator("mark")).toHaveText(["budżetu"]);
 });
 
 test("keeps filters and order in the URL and recovers from an empty result", async ({

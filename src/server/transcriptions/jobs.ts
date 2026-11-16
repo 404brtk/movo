@@ -439,11 +439,14 @@ export function createTranscriptions(
             words: transcript.words,
             ...(named.length > 0 ? { speakers: named } : {}),
           });
-          database
-            .update(transcriptionJobs)
-            .set({ transcript: renamed, updatedAt: Date.now() })
-            .where(eq(transcriptionJobs.mediaId, id))
-            .run();
+          database.transaction((transaction) => {
+            transaction
+              .update(transcriptionJobs)
+              .set({ transcript: renamed, updatedAt: Date.now() })
+              .where(eq(transcriptionJobs.mediaId, id))
+              .run();
+            setSearchTranscript(transaction, id, renamed);
+          });
         });
         return yield* read(id);
       }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),

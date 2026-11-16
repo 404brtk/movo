@@ -4,6 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useLocation } from "@tanstack/react-router";
 import { Schema } from "effect";
+import { maxSearchLength } from "../../shared/contracts/library.ts";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import { AskButton, AskPanel, useAskPanelOpen } from "../components/ask-panel.tsx";
 import { MediaPlayer } from "../components/media-player.tsx";
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/media/$mediaId")({
       startMs: Schema.optional(
         Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
       ),
+      q: Schema.optional(Schema.String.check(Schema.isMaxLength(maxSearchLength))),
     }),
   ),
   remountDeps: ({ params }) => params.mediaId,

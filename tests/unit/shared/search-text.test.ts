@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { foldSearchText, matchedRanges, searchTerms } from "../../../src/shared/search-text.ts";
+import {
+  containsEveryTerm,
+  foldSearchText,
+  matchedRanges,
+  searchTerms,
+} from "../../../src/shared/search-text.ts";
 
 describe("search text", () => {
   it("folds case, Latin diacritics and letters without a decomposition", () => {
@@ -32,5 +37,13 @@ describe("search text", () => {
       "Łódź",
     ]);
     expect(matchedRanges(text, ["absent"])).toEqual([]);
+  });
+
+  it("requires every term to start a word in one of the texts", () => {
+    const terms = searchTerms("lucja budz");
+    expect(containsEveryTerm(["Budżet jest gotowy.", "Łucja Nowak"], terms)).toBe(true);
+    expect(containsEveryTerm(["Budżet jest gotowy."], terms)).toBe(false);
+    expect(containsEveryTerm(["Zbudżetowany plan."], ["budz"])).toBe(false);
+    expect(containsEveryTerm(["Cokolwiek"], [])).toBe(true);
   });
 });
