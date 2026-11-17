@@ -143,6 +143,16 @@ test("asks before discarding changes, links clashes to their entry and removes a
   await search.fill("Codex");
   await search.press("Enter");
   const alsoReplace = dialog(page).getByRole("textbox", { name: "Add to Also replace" });
+  await alsoReplace.fill("kodex");
+  await alsoReplace.press("Enter");
+  await dialog(page).getByLabel("Spelled").fill("Kodex");
+  await expect(dialog(page).getByRole("alert")).toHaveText(
+    "“kodex” is the spelling itself. Remove it from Also replace.",
+  );
+  await expect(dialog(page).getByRole("button", { name: "Add", exact: true })).toBeDisabled();
+  await dialog(page).getByRole("button", { name: "Remove “kodex”" }).click();
+  await expect(dialog(page).getByRole("alert")).toHaveCount(0);
+  await dialog(page).getByLabel("Spelled").fill("Codex");
   await alsoReplace.fill("MO VO");
   await alsoReplace.press("Enter");
   await expect(dialog(page).getByRole("alert")).toHaveText(

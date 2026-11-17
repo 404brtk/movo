@@ -48,8 +48,13 @@ export function TermListField({
     setPending("");
     setError(null);
   };
+  const shown = error ?? problemWith([...terms]);
   return (
-    <fieldset aria-labelledby={labelId} aria-describedby={hintId} className="min-w-0">
+    <fieldset
+      aria-labelledby={labelId}
+      aria-describedby={shown ? `${hintId} ${errorId}` : hintId}
+      className="min-w-0"
+    >
       <div className="mb-1.5 flex items-baseline justify-between gap-3 text-xs/4">
         <span id={labelId} className="font-medium">
           {label}
@@ -101,8 +106,8 @@ export function TermListField({
           </li>
         ) : null}
       </ul>
-      {error ? (
-        <DictionaryProblemMessage id={errorId} problem={error} onOpenEntry={onOpenEntry} />
+      {shown ? (
+        <DictionaryProblemMessage id={errorId} problem={shown} onOpenEntry={onOpenEntry} />
       ) : null}
     </fieldset>
   );
