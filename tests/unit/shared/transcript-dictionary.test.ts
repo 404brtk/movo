@@ -91,6 +91,16 @@ describe("dictionary matching", () => {
     );
   });
 
+  it("lets a listed phrase include another entry's spelling, unlike a similar spelling", () => {
+    const cloud = entry("Cloud");
+    expect(
+      fixed("Cloud code and Cloud", [entry("Claude Code", { alsoReplace: ["cloud code"] }), cloud]),
+    ).toBe("Claude Code and Cloud");
+    expect(fixed("Cloud code and Cloud", [entry("Claude Code", { similar: true }), cloud])).toBe(
+      "Cloud code and Cloud",
+    );
+  });
+
   it("prefers exact matches, then longer phrases, then closer spellings", () => {
     expect(
       fixed("claude code and Kodex", [entry("Claude Code"), entry("Claude"), entry("Codex")]),
