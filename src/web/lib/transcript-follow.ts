@@ -13,16 +13,28 @@ const scrollsPage = (event: KeyboardEvent) =>
 export const pinnedHeight = () =>
   Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
 
-export const pinHeight = (property: `--${string}`) => (element: HTMLElement | null) => {
+export const pinTranscriptBelow = (element: HTMLElement | null) => {
   if (!element) return undefined;
   const root = document.documentElement;
-  const observer = new ResizeObserver(() => {
-    root.style.setProperty(property, `${element.offsetHeight}px`);
-  });
+  const stuckTop = () => Number.parseFloat(getComputedStyle(element).top) || 0;
+  const markCovering = () =>
+    element.toggleAttribute(
+      "data-covering",
+      window.scrollY > 0 && element.getBoundingClientRect().top <= stuckTop() + 0.5,
+    );
+  const update = () => {
+    root.style.setProperty("--pinned-transcript", `${stuckTop() + element.offsetHeight}px`);
+    markCovering();
+  };
+  const observer = new ResizeObserver(update);
   observer.observe(element);
+  window.addEventListener("resize", update);
+  window.addEventListener("scroll", markCovering, { passive: true });
   return () => {
     observer.disconnect();
-    root.style.removeProperty(property);
+    window.removeEventListener("resize", update);
+    window.removeEventListener("scroll", markCovering);
+    root.style.removeProperty("--pinned-transcript");
   };
 };
 
@@ -34,7 +46,7 @@ const isOffscreen = (element: Element | null) => {
   return !bounds || bounds.bottom < pinnedHeight() || bounds.top > window.innerHeight;
 };
 
-const scrollBehavior = (): ScrollBehavior =>
+export const scrollBehavior = (): ScrollBehavior =>
   matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 
 export function useTranscriptFollow({

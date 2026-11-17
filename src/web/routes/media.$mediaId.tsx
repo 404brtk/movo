@@ -6,20 +6,25 @@ import { createFileRoute, useLocation } from "@tanstack/react-router";
 import { Schema } from "effect";
 import { maxSearchLength } from "../../shared/contracts/library.ts";
 import type { MediaItem } from "../../shared/contracts/media.ts";
+import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
 import { AskButton, AskPanel, useAskPanelOpen } from "../components/ask-panel.tsx";
 import { BackToLibrary } from "../components/back-to-library.tsx";
 import { MediaPlayer } from "../components/media-player.tsx";
 import { NotFound } from "../components/not-found.tsx";
 import { RecordingMenu } from "../components/recording-menu.tsx";
+import { SourceLink } from "../components/source-site.tsx";
 import { TranscriptionPanel } from "../components/transcription-panel.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Skeleton } from "../components/ui/skeleton.tsx";
 import { ApiError, mediaItemOptions, transcriptionOptions } from "../lib/api.ts";
 import { formatBytes, formatDuration } from "../lib/format.ts";
+import { useMediaQuery } from "../lib/media-query.ts";
 import { cn } from "../lib/utils.ts";
 import { searchParams } from "../lib/search-params.ts";
 import {
+  hasEdits,
   type TranscriptionActionMutation,
+  useModelName,
   useTranscriptionAction,
 } from "../lib/transcription-actions.ts";
 
@@ -36,20 +41,39 @@ export const Route = createFileRoute("/media/$mediaId")({
   component: MediaDetail,
 });
 
-function describeRecording(item: MediaItem) {
-  return [
+const splitView = "(width >= 64rem)";
+const splitViewBesideAsk = "(width >= 78rem)";
+
+function RecordingDetails({ item }: { item: MediaItem }) {
+  const facts = [
     item.kind === "video" ? "Video" : "Audio",
     formatDuration(item.durationSeconds),
     item.fileRemovedAt === null ? formatBytes(item.byteSize) : null,
-    item.originalName,
+    item.sourceUrl === null ? item.originalName : null,
   ]
     .filter(Boolean)
     .join(" · ");
+  return (
+    <p className="mt-1.5 text-[13px]/[normal] wrap-anywhere text-muted-foreground tabular-nums">
+      {facts}
+      {item.sourceUrl === null ? null : (
+        <>
+          {" · "}
+          <SourceLink url={item.sourceUrl} />
+        </>
+      )}
+    </p>
+  );
 }
 
-function SavedCopyRemoved() {
+function SavedCopyRemoved({ className }: { className?: string | undefined }) {
   return (
-    <p className="mt-5 flex items-start gap-3 rounded-xl bg-subtle px-4 py-3.5 text-[13px]/5 text-muted-foreground shadow-[inset_0_0_0_1px_var(--color-border)]">
+    <p
+      className={cn(
+        "flex items-start gap-3 rounded-xl bg-subtle px-4 py-3.5 text-[13px]/5 text-muted-foreground shadow-[inset_0_0_0_1px_var(--color-border)]",
+        className,
+      )}
+    >
       <HugeiconsIcon
         icon={InformationCircleIcon}
         aria-hidden="true"
@@ -66,19 +90,55 @@ function SavedCopyRemoved() {
   );
 }
 
-function PlaybackWithTranscript({
+function BackRow({ split, actions }: { split: boolean; actions?: ReactNode }) {
+  return (
+    <div
+      className={
+        split
+          ? "mb-5"
+          : "sticky top-(--app-header) z-20 -mx-5 flex h-12 items-center bg-background px-5"
+      }
+    >
+      <div className="-mr-1.5 -ml-2.5 flex flex-1 items-center justify-between">
+        <BackToLibrary />
+        {actions ? <div className="flex items-center gap-1.5">{actions}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function RecordingHeading({
   item,
-  transcribe,
-  startMs,
-  moment,
-  toolbarAction,
+  split,
+  job,
 }: {
   item: MediaItem;
-  transcribe: TranscriptionActionMutation;
-  startMs: number | undefined;
-  moment: number | undefined;
-  toolbarAction: ReactNode;
+  split: boolean;
+  job: TranscriptionJob | null | undefined;
 }) {
+  const modelName = useModelName(job?.modelId);
+  return (
+    <div className={split ? "order-1 mt-5" : "mt-1"}>
+      <h1
+        className={cn(
+          "font-semibold text-balance wrap-anywhere",
+          split ? "text-xl/[26px] tracking-[-0.015em]" : "text-[28px]/[34px] tracking-[-0.025em]",
+        )}
+      >
+        {item.title}
+      </h1>
+      <RecordingDetails item={item} />
+      {job?.transcript ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {modelName}
+          {hasEdits(job) ? " · edited" : ""}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function usePlaybackSync(startMs: number | undefined, moment: number | undefined) {
   const player = useRef<HTMLMediaElement | null>(null);
   const [positionMs, setPositionMs] = useState(startMs ?? 0);
   const [following, setFollowing] = useState(true);
@@ -99,7 +159,6 @@ function PlaybackWithTranscript({
     if (player.current && request.startMs !== undefined)
       player.current.currentTime = request.startMs / 1000;
   }, [request]);
-  const transcription = useQuery(transcriptionOptions(item.id));
   const playerRef = useCallback((element: HTMLMediaElement | null) => {
     player.current = element;
   }, []);
@@ -107,31 +166,100 @@ function PlaybackWithTranscript({
     if (player.current) player.current.currentTime = milliseconds / 1000;
   }, []);
   const resumeFollowing = useCallback(() => setFollowing(true), []);
+  const stopFollowing = useCallback(() => setFollowing(false), []);
+  return {
+    playerRef,
+    positionMs,
+    setPositionMs,
+    following,
+    setFollowing,
+    jumps,
+    seek,
+    resumeFollowing,
+    stopFollowing,
+  };
+}
+
+function RecordingWorkspace({
+  item,
+  split,
+  transcribe,
+  askButton,
+  startMs,
+  moment,
+}: {
+  item: MediaItem;
+  split: boolean;
+  transcribe: TranscriptionActionMutation;
+  askButton: ReactNode;
+  startMs: number | undefined;
+  moment: number | undefined;
+}) {
+  const sync = usePlaybackSync(startMs, moment);
+  const transcription = useQuery(transcriptionOptions(item.id));
+  const job = transcription.data;
+  const fileAvailable = item.fileRemovedAt === null;
+  const floatingPlayer = fileAvailable && item.kind === "audio" && !split;
+  const compactPlayer = fileAvailable && item.kind === "video" && !split;
   return (
-    <>
-      <MediaPlayer
-        item={item}
-        transcript={transcription.data?.transcript}
-        playerRef={playerRef}
-        startMs={startMs}
-        onPositionChange={setPositionMs}
-        onSeeking={resumeFollowing}
-      />
-      <TranscriptionPanel
-        mediaId={item.id}
-        action={transcribe}
-        toolbarAction={toolbarAction}
-        playback={{
-          positionMs,
-          onSeek: seek,
-          mediaKind: item.kind,
-          following,
-          jumps,
-          onFollowingChange: setFollowing,
-        }}
-        revealMs={startMs}
-      />
-    </>
+    <main
+      className={cn(
+        "mx-auto",
+        split
+          ? "grid max-w-[1192px] grid-cols-[minmax(17rem,1fr)_minmax(27.5rem,42.5rem)] items-start gap-x-12 px-6 [--tools-top:var(--app-header)]"
+          : "max-w-[720px] px-5 pt-2.5",
+        !split &&
+          (compactPlayer
+            ? "[--tools-top:calc(var(--app-header)+7.5rem)]"
+            : "[--tools-top:calc(var(--app-header)+3rem)]"),
+        floatingPlayer ? "pb-32" : "pb-16",
+      )}
+    >
+      <div
+        className={
+          split ? "sticky top-[calc(var(--app-header)+1.25rem)] mt-5 flex flex-col" : "contents"
+        }
+      >
+        <BackRow split={split} actions={<RecordingMenu item={item} transcribe={transcribe} />} />
+        <RecordingHeading item={item} split={split} job={job} />
+        {fileAvailable ? (
+          <MediaPlayer
+            item={item}
+            transcript={job?.transcript}
+            layout={split ? "split" : "single"}
+            className={split ? undefined : "mt-5"}
+            playerRef={sync.playerRef}
+            startMs={startMs}
+            onPositionChange={sync.setPositionMs}
+            onSeeking={sync.resumeFollowing}
+            onShowVideo={sync.stopFollowing}
+          />
+        ) : (
+          <SavedCopyRemoved className={split ? undefined : "mt-5"} />
+        )}
+      </div>
+      <div className={split ? "min-w-0" : "contents"}>
+        <TranscriptionPanel
+          key={fileAvailable ? undefined : moment}
+          mediaId={item.id}
+          action={transcribe}
+          toolbarAction={askButton}
+          revealMs={startMs}
+          playback={
+            fileAvailable
+              ? {
+                  positionMs: sync.positionMs,
+                  onSeek: sync.seek,
+                  floatingPlayer,
+                  following: sync.following,
+                  jumps: sync.jumps,
+                  onFollowingChange: sync.setFollowing,
+                }
+              : undefined
+          }
+        />
+      </div>
+    </main>
   );
 }
 
@@ -142,12 +270,8 @@ function MediaDetail() {
   const media = useQuery(mediaItemOptions(mediaId));
   const transcribe = useTranscriptionAction(mediaId);
   const [askOpen, setAskOpen] = useAskPanelOpen();
-  const transcription = useQuery({
-    ...transcriptionOptions(mediaId),
-    enabled: media.isSuccess,
-  });
+  const split = useMediaQuery(askOpen ? splitViewBesideAsk : splitView);
   const askButton = <AskButton open={askOpen} onToggle={() => setAskOpen(!askOpen)} />;
-  const transcriptShown = Boolean(transcription.data?.transcript);
   const item = media.data;
   if (media.isError && media.error instanceof ApiError && media.error.status === 404)
     return (
@@ -156,69 +280,39 @@ function MediaDetail() {
   return (
     <div
       className={cn(
-        "transition-[padding] duration-260 ease-move motion-reduce:transition-none",
-        askOpen && item && "min-[1100px]:pr-[clamp(0px,1568px_-_100%,424px)]",
+        "transition-[padding] duration-260 ease-move [--app-header:0px] motion-reduce:transition-none sm:[--app-header:3.5rem]",
+        askOpen && item && "min-[60rem]:pr-[clamp(0px,2040px_-_100%,424px)]",
       )}
     >
-      <main
-        className={`mx-auto max-w-[720px] px-5 pt-5 ${item?.kind === "audio" && item.fileRemovedAt === null ? "pb-32" : "pb-16"}`}
-      >
-        <div className="-mr-1.5 -ml-2.5 flex items-center justify-between">
-          <BackToLibrary />
-          {item ? (
-            <div className="flex items-center gap-1.5">
-              {transcriptShown ? null : askButton}
-              <RecordingMenu item={item} transcribe={transcribe} />
+      {item ? (
+        <RecordingWorkspace
+          item={item}
+          split={split}
+          transcribe={transcribe}
+          askButton={askButton}
+          startMs={startMs}
+          moment={moment}
+        />
+      ) : (
+        <main className="mx-auto max-w-[720px] px-5 pt-2.5 pb-16">
+          <BackRow split={false} />
+          {media.isPending ? (
+            <output aria-label="Loading recording" className="mt-1 grid gap-3 opacity-50">
+              <Skeleton className="h-7 w-2/3 rounded-full" />
+              <Skeleton className="h-3 w-1/3 rounded-full" />
+            </output>
+          ) : null}
+          {media.isError ? (
+            <div role="alert" className="mt-3 space-y-4 rounded-lg border p-6">
+              <h1 className="text-lg font-semibold">Could not load this recording</h1>
+              <p className="text-sm text-muted-foreground">{media.error.message}</p>
+              <Button variant="outline" onClick={() => void media.refetch()}>
+                Try again
+              </Button>
             </div>
           ) : null}
-        </div>
-        {media.isPending ? (
-          <output aria-label="Loading recording" className="mt-4 grid gap-3 opacity-50">
-            <Skeleton className="h-7 w-2/3 rounded-full" />
-            <Skeleton className="h-3 w-1/3 rounded-full" />
-          </output>
-        ) : null}
-        {media.isError ? (
-          <div role="alert" className="mt-6 space-y-4 rounded-lg border p-6">
-            <h1 className="text-lg font-semibold">Could not load this recording</h1>
-            <p className="text-sm text-muted-foreground">{media.error.message}</p>
-            <Button variant="outline" onClick={() => void media.refetch()}>
-              Try again
-            </Button>
-          </div>
-        ) : null}
-        {item ? (
-          <>
-            <h1 className="mt-3.5 text-[28px]/[34px] font-semibold tracking-[-0.025em] text-balance wrap-anywhere">
-              {item.title}
-            </h1>
-            <p className="mt-1.5 text-[13px]/[normal] wrap-anywhere text-muted-foreground tabular-nums">
-              {describeRecording(item)}
-            </p>
-            {item.fileRemovedAt === null ? (
-              <PlaybackWithTranscript
-                key={item.id}
-                item={item}
-                transcribe={transcribe}
-                startMs={startMs}
-                moment={moment}
-                toolbarAction={askButton}
-              />
-            ) : (
-              <>
-                <SavedCopyRemoved />
-                <TranscriptionPanel
-                  key={moment}
-                  mediaId={item.id}
-                  action={transcribe}
-                  revealMs={startMs}
-                  toolbarAction={askButton}
-                />
-              </>
-            )}
-          </>
-        ) : null}
-      </main>
+        </main>
+      )}
       {item ? (
         <AskPanel item={item} open={askOpen} onOpenChange={setAskOpen} transcribe={transcribe} />
       ) : null}

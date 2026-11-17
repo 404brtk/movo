@@ -64,6 +64,8 @@ async function openTranscribedVideo(
   const passages = page.getByRole("list", { name: "Timestamped passages" }).getByRole("listitem");
   return {
     player: page.getByRole("region", { name: "Video player", exact: true }),
+    toolbar: page.getByRole("toolbar", { name: "Transcript" }),
+    header: page.getByRole("banner"),
     video,
     passages,
     backToCurrent: page.getByRole("button", { name: /^Back to current/u }),
@@ -88,28 +90,32 @@ async function openTranscribedVideo(
   };
 }
 
-test("keeps the video pinned, follows the spoken passage and pauses when scrolled by hand", async ({
+test("keeps the video beside the transcript, follows the spoken passage and pauses when scrolled by hand", async ({
   page,
   request,
 }) => {
-  const { player, video, passages, backToCurrent, seek } = await openTranscribedVideo(
-    page,
-    request,
-  );
+  const { player, toolbar, header, video, passages, backToCurrent, seek } =
+    await openTranscribedVideo(page, request);
   await expect(passages).toHaveCount(passageCount);
   const scrollPosition = () => page.evaluate(() => window.scrollY);
-  const gapBelowPlayer = async (index: number) => {
-    const playerBounds = await player.boundingBox();
+  const top = async (locator: typeof player) => (await locator.boundingBox())?.y ?? Number.NaN;
+  const gapBelowToolbar = async (index: number) => {
+    const toolbarBounds = await toolbar.boundingBox();
     const passageBounds = await passages.nth(index).boundingBox();
-    if (!playerBounds || !passageBounds) throw new Error("Expected the player and passage.");
-    return passageBounds.y - (playerBounds.y + playerBounds.height);
+    if (!toolbarBounds || !passageBounds) throw new Error("Expected the toolbar and passage.");
+    return passageBounds.y - (toolbarBounds.y + toolbarBounds.height);
   };
   await expect(backToCurrent).toHaveCount(0);
+  const playerTop = await top(player);
+  const toolbarTop = await top(toolbar);
 
-  await seek(1.4);
-  await expect(passages.nth(14)).toHaveAttribute("aria-current", "time");
-  await expect.poll(() => gapBelowPlayer(14)).toBeCloseTo(56, -1);
-  await expect.poll(async () => (await player.boundingBox())?.y).toBeCloseTo(20, 0);
+  await seek(0.76);
+  await expect(passages.nth(7)).toHaveAttribute("aria-current", "time");
+  await expect.poll(() => gapBelowToolbar(7)).toBeCloseTo(72, 0);
+  expect(await scrollPosition()).toBeGreaterThan(0);
+  expect(await top(player)).toBe(playerTop);
+  expect(await top(toolbar)).toBe(toolbarTop);
+  expect(await top(header)).toBe(0);
   const followedPosition = await scrollPosition();
 
   await page.mouse.move(640, 600);
@@ -138,7 +144,7 @@ test("keeps an open, empty find form in place and offers the way back after clos
 }) => {
   const { passages, backToCurrent, seek } = await openTranscribedVideo(page, request);
   await expect(passages).toHaveCount(passageCount);
-  await page.getByRole("button", { name: "Find and replace", exact: true }).click();
+  await page.getByRole("button", { name: "Replace", exact: true }).click();
   await expect(page.getByLabel("Find", { exact: true })).toBeFocused();
 
   await seek(1.4);
@@ -155,13 +161,13 @@ test("keeps an open, empty find form in place and offers the way back after clos
   await expect(passages.nth(14)).toBeInViewport();
 });
 
-test("keeps the find form pinned below the video while it reveals a match further down", async ({
+test("keeps the find form pinned above the transcript while it reveals a match further down", async ({
   page,
   request,
 }) => {
-  const { player, passages } = await openTranscribedVideo(page, request);
+  const { header, passages } = await openTranscribedVideo(page, request);
   await expect(passages).toHaveCount(passageCount);
-  await page.getByRole("button", { name: "Find and replace", exact: true }).click();
+  await page.getByRole("button", { name: "Replace", exact: true }).click();
   const form = page.getByRole("form", { name: "Find and replace" });
 
   await page.getByLabel("Find", { exact: true }).fill("20");
@@ -170,11 +176,11 @@ test("keeps the find form pinned below the video while it reveals a match furthe
   await expect(match).toBeInViewport();
   await expect(form).toBeInViewport();
   await expect(async () => {
-    const playerBounds = await player.boundingBox();
+    const headerBounds = await header.boundingBox();
     const formBounds = await form.boundingBox();
     const matchBounds = await match.boundingBox();
-    if (!playerBounds || !formBounds || !matchBounds) throw new Error("Expected boxes.");
-    expect(formBounds.y).toBeGreaterThanOrEqual(playerBounds.y + playerBounds.height);
+    if (!headerBounds || !formBounds || !matchBounds) throw new Error("Expected boxes.");
+    expect(formBounds.y).toBeGreaterThanOrEqual(headerBounds.y + headerBounds.height);
     expect(matchBounds.y).toBeGreaterThanOrEqual(formBounds.y + formBounds.height);
   }).toPass();
 
@@ -186,11 +192,11 @@ test("keeps the find form pinned below the video while it reveals a match furthe
   await expect(form.getByText(`1 of ${passageCount}`)).toBeVisible();
 });
 
-test("reveals the current search match below the pinned video when the search or match changes", async ({
+test("reveals the current search match below the pinned search when the search or match changes", async ({
   page,
   request,
 }) => {
-  const { player, passages, seek, serveSpeakerNames } = await openTranscribedVideo(page, request);
+  const { header, passages, seek, serveSpeakerNames } = await openTranscribedVideo(page, request);
   await expect(passages).toHaveCount(passageCount);
   await seek(0.06);
   await expect(passages.nth(0).locator("mark")).toHaveCount(1);
@@ -204,11 +210,11 @@ test("reveals the current search match below the pinned video when the search or
   const match = passages.nth(passageCount - 1);
   const expectBelowSearch = () =>
     expect(async () => {
-      const playerBounds = await player.boundingBox();
+      const headerBounds = await header.boundingBox();
       const searchBounds = await search.boundingBox();
       const matchBounds = await match.boundingBox();
-      if (!playerBounds || !searchBounds || !matchBounds) throw new Error("Expected boxes.");
-      expect(searchBounds.y).toBeGreaterThanOrEqual(playerBounds.y + playerBounds.height);
+      if (!headerBounds || !searchBounds || !matchBounds) throw new Error("Expected boxes.");
+      expect(searchBounds.y).toBeGreaterThanOrEqual(headerBounds.y + headerBounds.height);
       expect(matchBounds.y).toBeGreaterThanOrEqual(searchBounds.y + searchBounds.height);
       expect(matchBounds.y + matchBounds.height).toBeLessThanOrEqual(
         page.viewportSize()?.height ?? 0,
@@ -286,18 +292,82 @@ test("brings the spoken passage into view when the transcript arrives after play
 });
 
 test("keeps a passage opened from search where it was revealed", async ({ page, request }) => {
-  const { player, passages, backToCurrent } = await openTranscribedVideo(page, request, {
+  const { player, toolbar, passages, backToCurrent } = await openTranscribedVideo(page, request, {
     startMs: 1400,
   });
   await expect(passages).toHaveCount(passageCount);
   await expect(passages.nth(14)).toHaveAttribute("aria-current", "time");
   await expect(passages.nth(14)).toBeInViewport();
+  await expect(player).toBeInViewport();
   const revealedPosition = await page.evaluate(() => window.scrollY);
-  await expect.poll(async () => (await player.boundingBox())?.y).toBeCloseTo(20, 0);
-  const playerBounds = await player.boundingBox();
+  const toolbarBounds = await toolbar.boundingBox();
   const passageBounds = await passages.nth(14).boundingBox();
-  if (!playerBounds || !passageBounds) throw new Error("Expected the player and passage.");
-  expect(passageBounds.y - (playerBounds.y + playerBounds.height)).toBeGreaterThan(100);
+  if (!toolbarBounds || !passageBounds) throw new Error("Expected the toolbar and passage.");
+  expect(passageBounds.y - (toolbarBounds.y + toolbarBounds.height)).toBeGreaterThan(100);
   expect(await page.evaluate(() => window.scrollY)).toBe(revealedPosition);
   await expect(backToCurrent).toHaveCount(0);
+});
+
+test("folds the video into a compact player on a narrow screen and brings it back", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  const { player, passages, backToCurrent, seek } = await openTranscribedVideo(page, request);
+  await expect(passages).toHaveCount(passageCount);
+  const compact = page.getByRole("region", { name: "Player", exact: true });
+  await expect(compact).toHaveCount(0);
+
+  await seek(1.4);
+  await expect(passages.nth(14)).toHaveAttribute("aria-current", "time");
+  await expect(passages.nth(14)).toBeInViewport();
+  await expect(player).not.toBeInViewport();
+  await expect(compact).toBeVisible();
+  await expect(compact).toContainText("0:01 of 0:02");
+
+  await compact.getByRole("button", { name: "Show the video" }).click();
+  await expect(player).toBeInViewport({ ratio: 1 });
+  await expect(compact).toHaveCount(0);
+  await expect(backToCurrent).toBeVisible();
+  await backToCurrent.click();
+  await expect(passages.nth(14)).toBeInViewport();
+  await expect(compact).toBeVisible();
+});
+
+test("opens search and replace from the keyboard and returns focus after closing", async ({
+  page,
+  request,
+}) => {
+  const { passages } = await openTranscribedVideo(page, request);
+  await expect(passages).toHaveCount(passageCount);
+  const searchButton = page.getByRole("button", { name: "Search", exact: true });
+  await expect(searchButton).toHaveAttribute("aria-keyshortcuts", "Control+F");
+  await expect(searchButton).toContainText("Ctrl+F");
+
+  await page.keyboard.press("Control+F");
+  const search = page.getByRole("search", { name: "Search this transcript" });
+  const field = search.getByRole("searchbox", { name: "Search this transcript" });
+  await expect(field).toBeFocused();
+  await field.fill("step 20");
+  await expect(search.getByText("1 of 1")).toBeVisible();
+
+  await page.keyboard.press("Control+H");
+  const form = page.getByRole("form", { name: "Find and replace" });
+  const find = form.getByLabel("Find", { exact: true });
+  await expect(find).toHaveValue("step 20");
+  await expect(find).toBeFocused();
+  await expect(page).not.toHaveURL(/q=/u);
+
+  const modes = form.getByRole("group", { name: "Search or replace" });
+  await expect(modes.getByRole("button", { name: "Replace", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await modes.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(field).toHaveValue("step 20");
+  await expect(field).toBeFocused();
+  await field.press("Escape");
+  await expect(search).toHaveCount(0);
+  await expect(searchButton).toBeFocused();
+  await expect(page).not.toHaveURL(/q=/u);
 });

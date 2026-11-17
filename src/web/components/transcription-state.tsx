@@ -56,7 +56,7 @@ export function NoTranscriptCard({
   return (
     <section
       aria-labelledby="transcription-state"
-      className="mt-7 flex items-start gap-[18px] rounded-2xl bg-linear-to-b from-tint to-background to-70% p-7 shadow-[inset_0_0_0_1px_oklch(0.62_0.195_257/0.12)] max-sm:flex-col max-sm:p-5"
+      className="flex items-start gap-[18px] rounded-2xl bg-linear-to-b from-tint to-background to-70% p-7 shadow-[inset_0_0_0_1px_oklch(0.62_0.195_257/0.12)] max-sm:flex-col max-sm:p-5"
     >
       <span className="mt-px shrink-0">
         <AccentIcon icon={CpuIcon} size={30} />
@@ -125,7 +125,7 @@ export function TranscribingCard({
   return (
     <section
       aria-labelledby="transcription-state"
-      className="mt-7 rounded-2xl px-7 py-6 shadow-card max-sm:px-5"
+      className="rounded-2xl px-7 py-6 shadow-card max-sm:px-5"
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -203,7 +203,7 @@ export function FailedTranscriptionCard({
     <section
       role="alert"
       aria-labelledby="transcription-state"
-      className="mt-7 flex gap-4 rounded-2xl bg-linear-to-b from-destructive-subtle to-background to-75% px-7 py-6 shadow-[inset_0_0_0_1px_oklch(0.62_0.25_25/0.2)] max-sm:flex-col max-sm:px-5"
+      className="flex gap-4 rounded-2xl bg-linear-to-b from-destructive-subtle to-background to-75% px-7 py-6 shadow-[inset_0_0_0_1px_oklch(0.62_0.25_25/0.2)] max-sm:flex-col max-sm:px-5"
     >
       <span className="mt-px shrink-0">
         <AccentIcon icon={Alert02Icon} size={24} tone="danger" />

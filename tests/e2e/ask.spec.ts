@@ -319,7 +319,7 @@ test("asks about a recording in the side panel, streams the answer and applies a
   await expect.poll(() => noHorizontalScroll(page)).toBe(true);
 });
 
-test("wraps the transcript toolbar in groups and keeps Ask with its actions at the right edge", async ({
+test("keeps the transcript toolbar on one row with Ask and its actions at the right edge", async ({
   page,
   request,
 }) => {
@@ -341,10 +341,9 @@ test("wraps the transcript toolbar in groups and keeps Ask with its actions at t
   };
   await expect(async () => {
     const heading = await page.getByRole("heading", { level: 1 }).boundingBox();
-    expect(await top("Find and replace")).toBe(await top("History"));
     const ask = await top("Ask");
-    expect(await top("Copy transcript")).toBe(ask);
-    expect(await top("Export transcript")).toBe(ask);
+    for (const name of ["Search", "Replace", "History", "Copy transcript", "Export transcript"])
+      expect(await top(name)).toBe(ask);
     const exportIcon = await page
       .getByRole("button", { name: "Export transcript" })
       .locator("svg")
@@ -356,15 +355,23 @@ test("wraps the transcript toolbar in groups and keeps Ask with its actions at t
   await expect.poll(() => noHorizontalScroll(page)).toBe(true);
 });
 
-test("moves the recording only as far as the open panel needs", async ({ page, request }) => {
+test("keeps the recording in view and moves it only as far as the open panel needs", async ({
+  page,
+  request,
+}) => {
   const uploaded = await request.post("/api/media", {
     data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
     headers: { "x-file-name": `${randomUUID()}.webm` },
   });
   const media: { id: string } = await uploaded.json();
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
   await connectedModel(page);
   await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [] }));
   const title = page.getByRole("heading", { level: 1 });
+  const player = page.getByRole("region", { name: "Video player", exact: true });
+  const transcript = page.getByRole("list", { name: "Timestamped passages" });
   const panel = page.getByRole("complementary", { name: "Ask about this recording" });
   const box = async (locator: typeof title) => {
     const found = await locator.boundingBox();
@@ -372,8 +379,9 @@ test("moves the recording only as far as the open panel needs", async ({ page, r
     return found;
   };
 
-  await page.setViewportSize({ width: 1830, height: 900 });
+  await page.setViewportSize({ width: 2100, height: 900 });
   await page.goto(`/media/${media.id}`);
+  await expect(transcript).toBeVisible();
   const closedLeft = (await box(title)).x;
   await page.keyboard.press("/");
   await expect(panel).toBeVisible();
@@ -382,10 +390,17 @@ test("moves the recording only as far as the open panel needs", async ({ page, r
   await page.setViewportSize({ width: 1400, height: 900 });
   await expect
     .poll(async () => {
-      const heading = await box(title);
-      return (await box(panel)).x - (heading.x + heading.width);
+      const list = await box(transcript);
+      return (await box(panel)).x - (list.x + list.width);
     })
-    .toBe(36);
+    .toBe(40);
+  await expect(player).toBeInViewport();
+  expect((await box(player)).x + (await box(player)).width).toBeLessThan((await box(transcript)).x);
+
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect.poll(async () => (await box(player)).y).toBeGreaterThan((await box(title)).y);
+  expect((await box(transcript)).x).toBe((await box(title)).x);
+  await expect.poll(() => noHorizontalScroll(page)).toBe(true);
 });
 
 test("blocks questions about a transcript without words", async ({ page, request }) => {
@@ -943,7 +958,7 @@ test("moves the open recording to each chosen moment, again on a repeated choice
   await expect.poll(playerSeconds).toBeCloseTo(earlier / 1000, 0);
   expect(await player.evaluate((element) => element.dataset.probe)).toBe("kept");
 
-  await page.getByRole("button", { name: "Find and replace", exact: true }).click();
+  await page.getByRole("button", { name: "Replace", exact: true }).click();
   const form = page.getByRole("form", { name: "Find and replace" });
   await page.getByLabel("Find", { exact: true }).fill("worth");
   await panel.getByRole("link", { name: "3:20" }).click();

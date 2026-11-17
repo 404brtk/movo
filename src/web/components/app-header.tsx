@@ -8,11 +8,15 @@ const tabClassName = cn(toggleVariants({ variant: "segmented" }), "max-sm:px-2")
 
 export function AppHeader() {
   const matchRoute = useMatchRoute();
-  const insideLibrary = Boolean(
-    matchRoute({ to: "/media/$mediaId" }) || matchRoute({ to: "/downloads" }),
-  );
+  const onRecording = Boolean(matchRoute({ to: "/media/$mediaId" }));
+  const insideLibrary = onRecording || Boolean(matchRoute({ to: "/downloads" }));
   return (
-    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:grid sm:h-14 sm:grid-cols-[1fr_auto_1fr] sm:px-6 sm:py-0">
+    <header
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-background px-4 py-3 sm:grid sm:h-14 sm:grid-cols-[1fr_auto_1fr] sm:px-6 sm:py-0",
+        onRecording && "sm:sticky sm:top-0 sm:z-30",
+      )}
+    >
       <Link
         to="/"
         aria-label="movo home"

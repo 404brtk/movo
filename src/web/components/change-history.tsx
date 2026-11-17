@@ -184,18 +184,30 @@ function HistoryVersions({
   );
 }
 
-export function ChangeHistory(props: {
+export function ChangeHistory({
+  open,
+  onOpenChange,
+  withTrigger,
+  ...props
+}: {
   mediaId: string;
   revision: number;
   resultRevision: number;
   modelName: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  withTrigger: boolean;
 }) {
   return (
-    <Sheet>
-      <SheetTrigger render={<Button variant="toggle" size="sm" />}>
-        <HugeiconsIcon icon={Clock01Icon} data-icon="inline-start" aria-hidden="true" />
-        History
-      </SheetTrigger>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      {withTrigger ? (
+        <SheetTrigger
+          render={<Button variant="toggle" size="sm" className="max-sm:w-7 max-sm:px-0" />}
+        >
+          <HugeiconsIcon icon={Clock01Icon} data-icon="inline-start" aria-hidden="true" />
+          <span className="max-sm:sr-only">History</span>
+        </SheetTrigger>
+      ) : null}
       <SheetContent>
         <SheetHeader closeLabel="Close history">
           <SheetTitle>History</SheetTitle>

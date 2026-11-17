@@ -1,9 +1,10 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
 import {
   cancelTranscription,
   enqueueTranscription,
   mediaListKey,
+  modelsOptions,
   retryTranscription,
   transcriptionOptions,
 } from "./api.ts";
@@ -39,3 +40,8 @@ export function useTranscriptionAction(mediaId: string) {
 export type TranscriptionActionMutation = ReturnType<typeof useTranscriptionAction>;
 
 export const hasEdits = (job: TranscriptionJob) => job.revision > job.resultRevision;
+
+export function useModelName(modelId: TranscriptionJob["modelId"] | undefined) {
+  const models = useQuery(modelsOptions);
+  return models.data?.find((model) => model.id === modelId)?.name ?? "Parakeet Ultra";
+}

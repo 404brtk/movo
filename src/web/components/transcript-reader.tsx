@@ -1,7 +1,6 @@
 import { ArrowDown01Icon, ArrowUp01Icon, Edit02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
-import type { MediaItem } from "../../shared/contracts/media.ts";
 import type { Transcript } from "../../shared/contracts/transcriptions.ts";
 import {
   currentWordIndex,
@@ -10,6 +9,7 @@ import {
 } from "../../shared/transcript-passages.ts";
 import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { formatDuration } from "../lib/format.ts";
+import { focusOnMount } from "../lib/match-stepper.ts";
 import { marksByPassage, type PassageMark, type TranscriptMatches } from "../lib/passage-marks.ts";
 import { pinnedHeight, useTranscriptFollow } from "../lib/transcript-follow.ts";
 import type { PassageHit, TranscriptFound } from "../lib/transcript-search.ts";
@@ -25,14 +25,13 @@ const revealIfHidden = (element: Element | null | undefined) => {
   if (bounds && (bounds.top < pinnedHeight() || bounds.bottom > window.innerHeight - 120))
     element?.scrollIntoView({ block: "center" });
 };
-const focusElement = (element: HTMLElement | null) => element?.focus();
 const revealOnHover =
   "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/passage:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:data-popup-open:opacity-100";
 
 export interface TranscriptPlayback {
   positionMs: number;
   onSeek: (milliseconds: number) => void;
-  mediaKind: MediaItem["kind"];
+  floatingPlayer: boolean;
   following: boolean;
   jumps: number;
   onFollowingChange: (following: boolean) => void;
@@ -213,7 +212,7 @@ const Passage = memo(function Passage({
       ) : null}
       {editing && !edited?.open ? (
         <Button
-          ref={edited ? focusElement : undefined}
+          ref={edited ? focusOnMount : undefined}
           variant="ghost"
           size="icon-sm"
           aria-label={`Edit passage at ${time}`}
@@ -290,7 +289,7 @@ export function TranscriptReader({
   });
   return (
     <>
-      <ol ref={list} aria-label="Timestamped passages" className="mt-2">
+      <ol ref={list} aria-label="Timestamped passages">
         {passages.map((passage, index) => (
           <Passage
             key={passage.firstWord}
@@ -329,8 +328,8 @@ export function TranscriptReader({
         <Button
           variant="ghost"
           className={cn(
-            "fixed left-1/2 z-40 h-9 -translate-x-1/2 gap-2 rounded-full bg-background/82 pr-4 pl-3 text-foreground shadow-player backdrop-blur-[20px] backdrop-saturate-[1.8] hover:bg-background hover:text-foreground",
-            playback.mediaKind === "audio" ? "bottom-24" : "bottom-6",
+            "sticky z-30 mx-auto mt-4 flex h-9 w-fit gap-2 rounded-full bg-background/82 pr-4 pl-3 text-foreground shadow-player backdrop-blur-[20px] backdrop-saturate-[1.8] hover:bg-background hover:text-foreground",
+            playback.floatingPlayer ? "bottom-24" : "bottom-6",
           )}
           onClick={() => playback.onFollowingChange(true)}
         >

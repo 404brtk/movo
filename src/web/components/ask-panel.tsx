@@ -90,7 +90,7 @@ export function AskButton({ open, onToggle }: { open: boolean; onToggle: () => v
       <HugeiconsIcon icon={AiChat02Icon} data-icon="inline-start" aria-hidden="true" />
       Ask
       {open ? null : (
-        <Kbd aria-hidden="true" className="ml-0.5">
+        <Kbd aria-hidden="true" className="ml-0.5 max-sm:hidden">
           /
         </Kbd>
       )}
@@ -358,7 +358,7 @@ export function AskPanel({
           open ? via === "pointer" && "ask-panel-in" : "ask-panel-out pointer-events-none",
         )}
       >
-        <div className="flex h-12 shrink-0 items-center gap-0.5 border-b pr-2 pl-4">
+        <div className="relative z-10 flex h-12 shrink-0 items-center gap-0.5 rounded-t-[inherit] bg-background pr-2 pl-4 after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-4 after:bg-linear-to-b after:from-background after:to-transparent">
           <h2 className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">Ask</h2>
           {needsConnection ? null : (
             <>

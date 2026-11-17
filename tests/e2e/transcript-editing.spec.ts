@@ -104,7 +104,7 @@ test("edits a passage with the keyboard, keeps it after reload and finds the new
   await page.keyboard.press("Control+Enter");
   await expect(passages(page).first()).toContainText("We deploy Kubernetes clusters daily.");
   await expect(edit).toBeFocused();
-  await expect(transcription(page)).toContainText("Parakeet Ultra · edited");
+  await expect(page.getByRole("main")).toContainText("Parakeet Ultra · edited");
 
   await page.reload();
   await expect(passages(page).first()).toContainText("We deploy Kubernetes clusters daily.");
@@ -116,7 +116,7 @@ test("previews and applies find and replace, then undoes and restores versions",
   page,
 }) => {
   const panel = transcription(page);
-  await panel.getByRole("button", { name: "Find and replace" }).click();
+  await panel.getByRole("button", { name: "Replace", exact: true }).click();
   const form = panel.getByRole("form", { name: "Find and replace" });
   await expect(form.getByLabel("Find", { exact: true })).toBeFocused();
   await form.getByLabel("Find", { exact: true }).fill("KUBERNETIS");
@@ -220,7 +220,7 @@ test("asks before transcribing again replaces edits and then starts a new histor
   await page.getByRole("menuitem", { name: "Transcribe again…" }).click();
   await dialog.getByRole("button", { name: "Transcribe again" }).click();
   await expect(passages(page).first()).toContainText("We deploy kubernetis daily.");
-  await expect(panel).not.toContainText("· edited");
+  await expect(page.getByRole("main")).not.toContainText("· edited");
   await panel.getByRole("button", { name: "History" }).click();
   await expect(
     page.getByRole("list", { name: "Transcript versions" }).getByRole("listitem"),
