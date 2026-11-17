@@ -86,6 +86,7 @@ export function ModelRow({ model }: { model: ModelStatus }) {
   const retry = phase === "failed" || phase === "interrupted";
   const checking = models.isRefetching && !busy;
   const addOn = model.role === "speakers";
+  const title = addOn ? "Speaker labels" : model.name;
   const checkAgain = (
     <Button
       variant={model.state === "broken" ? "outline" : "ghost"}
@@ -104,7 +105,7 @@ export function ModelRow({ model }: { model: ModelStatus }) {
   return (
     <li
       aria-labelledby={headingId}
-      className={cn("py-3", addOn ? "pt-1 pl-11" : "border-t first:border-t-0")}
+      className={cn("py-3", addOn ? "ml-11 pt-1 pl-4" : "border-t first:border-t-0")}
     >
       <Collapsible>
         <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
@@ -113,12 +114,25 @@ export function ModelRow({ model }: { model: ModelStatus }) {
               <AccentIcon icon={CpuIcon} size={20} />
             </span>
           )}
-          <div className="min-w-[200px] flex-1">
-            <h3 id={headingId} className="text-[13.5px]/[normal] font-medium">
-              {model.name}
-            </h3>
-            <p className="mt-px text-xs/[18px] text-pretty text-muted-foreground">
-              {model.description}
+          <div
+            className={cn(
+              "min-w-[200px] flex-1",
+              addOn &&
+                "relative before:absolute before:-top-2.5 before:bottom-1/2 before:-left-4 before:w-2.5 before:rounded-bl-[7px] before:border-b-[1.5px] before:border-l-[1.5px] before:border-input",
+            )}
+          >
+            <div className="flex flex-wrap items-baseline gap-x-1.5">
+              <h3 id={headingId} className="text-[13.5px]/[normal] font-medium">
+                {title}
+              </h3>
+              {addOn ? (
+                <span className="text-[12.5px]/[normal] text-muted-foreground">
+                  {model.name} · optional
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-px text-xs/[18px] text-pretty text-muted-foreground tabular-nums">
+              {model.description} · {formatBytes(model.bytes)}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2 text-[12.5px]/[normal] tabular-nums">
@@ -159,7 +173,7 @@ export function ModelRow({ model }: { model: ModelStatus }) {
             ) : null}
             <CollapsibleTrigger
               render={<Button variant="ghost" size="icon-sm" className="group -mr-1.5" />}
-              aria-label={`${model.name} details`}
+              aria-label={`${title} details`}
             >
               <HugeiconsIcon
                 icon={ArrowDown01Icon}
@@ -173,7 +187,7 @@ export function ModelRow({ model }: { model: ModelStatus }) {
           {busy && phase !== "checking" ? (
             <>
               <Progress
-                aria-label={`${model.name} download`}
+                aria-label={`${title} download`}
                 value={downloadedBytes}
                 max={model.bytes}
                 className="mt-2.5 block"

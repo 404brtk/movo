@@ -13,7 +13,7 @@ The transcription model is **Parakeet Ultra Q8_0** (`parakeet-ultra-q8`).
 - SHA-256: `007a59761e9258779f189df396b50d12b83bb5b79e66df4b955c230d2f2a0a59`.
 - License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); retain attribution to the upstream model and conversion publishers.
 
-The optional speaker model is **Sortformer Speakers** (`sortformer-4spk-q8`). When it is installed, new transcripts label who speaks when, for up to four speakers; without it, transcription works as before.
+The optional speaker model is **Sortformer** (`sortformer-4spk-q8`), shown in Settings as **Speaker labels** under Parakeet Ultra. When it is installed, new transcripts label who speaks when, for up to four speakers; without it, transcription works as before.
 
 - Upstream model: [NVIDIA Streaming Sortformer Diarizer 4spk v2.1](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1), trained mainly on English speech, so speakers in other languages may be separated less reliably.
 - Converted weights: [Handy GGUF repository](https://huggingface.co/handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf/tree/60ebab3ef7cae9869be0abcde13360347e96ba03).

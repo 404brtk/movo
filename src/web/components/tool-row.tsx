@@ -25,7 +25,11 @@ function describeReadyTools(tools: Record<string, ToolAvailability>) {
     tool.state === "ready" ? [{ label, tool }] : [],
   );
   const versions = ready
-    .map(({ label, tool }) => `${label} ${formatToolVersion(tool.version)}`)
+    .map(({ label, tool }) =>
+      ready.length > 1
+        ? `${label} ${formatToolVersion(tool.version)}`
+        : formatToolVersion(tool.version),
+    )
     .join(" and ");
   const source = ready[0]?.tool.source;
   return source ? `${versions} · ${sourceLabels[source]}` : versions;
@@ -74,7 +78,7 @@ export function ToolRow<Status extends { installation: ToolInstallation }, Key e
           </p>
         ) : (
           <p className="mt-px text-xs/[normal] text-muted-foreground sm:truncate">
-            {ready ? describeReadyTools(tools) : description}
+            {ready ? `${description} · ${describeReadyTools(tools)}` : description}
           </p>
         )}
       </div>

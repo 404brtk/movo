@@ -25,7 +25,7 @@ test("opens the real model catalog without starting installation", async ({ page
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
   const transcription = page.getByRole("listitem", { name: "Parakeet Ultra", exact: true });
-  const speakers = page.getByRole("listitem", { name: "Sortformer Speakers", exact: true });
+  const speakers = page.getByRole("listitem", { name: "Speaker labels", exact: true });
   for (const card of [transcription, speakers]) {
     await expect(card.getByRole("button", { name: "Download model", exact: true })).toBeEnabled();
     await expect(card.getByText("Not installed", { exact: true })).toBeVisible();
@@ -34,7 +34,13 @@ test("opens the real model catalog without starting installation", async ({ page
   await expect(speakers).toContainText(
     "Optional. Download it to label who speaks in new transcripts.",
   );
-  await speakers.getByRole("button", { name: "Sortformer Speakers details", exact: true }).click();
+  await expect(speakers).toContainText("Sortformer · optional");
+  await expect(
+    page
+      .getByRole("listitem", { name: "Dictionary", exact: true })
+      .getByRole("button", { name: "Manage", exact: true }),
+  ).toBeDisabled();
+  await speakers.getByRole("button", { name: "Speaker labels details", exact: true }).click();
   await expect(speakers.getByText("English", { exact: true })).toBeVisible();
   expect(writes).toEqual([]);
 });
@@ -186,7 +192,7 @@ test("lists the media tools and opens yt-dlp setup from the settings page", asyn
   await page.goto("/settings");
   const tools = page.getByRole("region", { name: "Adding recordings" });
   await expect(tools.getByRole("listitem").first()).toContainText(
-    "FFprobe 7.1 and FFmpeg 7.1 · private copy",
+    "Reads files and prepares audio · FFprobe 7.1 and FFmpeg 7.1 · private copy",
   );
   await expect(tools.getByText("Ready", { exact: true })).toBeVisible();
   await expect(tools.getByRole("alert")).toHaveText("Could not check yt-dlp.");

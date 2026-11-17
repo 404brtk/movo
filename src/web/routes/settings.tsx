@@ -3,6 +3,7 @@ import { Link01Icon, Wrench01Icon } from "@hugeicons/core-free-icons";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { AskSettings } from "../components/ask-settings.tsx";
+import { DictionaryRow } from "../components/dictionary-row.tsx";
 import { ListSkeleton } from "../components/list-skeleton.tsx";
 import { MediaToolsSetup } from "../components/media-tools-setup.tsx";
 import { ModelRow } from "../components/model-row.tsx";
@@ -52,7 +53,7 @@ function Settings() {
             icon={Wrench01Icon}
             name="media tools"
             title="Media tools"
-            description="Reads imported files and prepares audio for transcription"
+            description="Reads files and prepares audio"
             options={mediaToolsOptions}
             tools={(status) => ({ FFprobe: status.ffprobe, FFmpeg: status.ffmpeg })}
             setup={MediaToolsSetup}
@@ -61,7 +62,7 @@ function Settings() {
             icon={Link01Icon}
             name="yt-dlp"
             title="yt-dlp"
-            description="Reads and downloads video and podcast links"
+            description="Downloads video and podcast links"
             options={ytdlpOptions}
             tools={(status) => ({ "yt-dlp": status.ytdlp })}
             setup={YtdlpSetup}
@@ -88,6 +89,9 @@ function Settings() {
             ))}
           </ul>
         ) : null}
+        <ul className="mt-3">
+          <DictionaryRow />
+        </ul>
       </SettingsSection>
       <SettingsSection
         title="Ask"
