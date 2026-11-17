@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, notInArray, type SQL, sql } from "drizzle-orm";
 import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
 import {
   defaultDownloadPreset,
@@ -380,10 +380,17 @@ export function createDownloads(
       ),
     );
 
-  const removeSettled = (ids: readonly string[]) =>
+  const removeSettled = (scope?: SQL) =>
     Effect.gen(function* () {
+      const settled = yield* databaseOperation(() =>
+        database
+          .select({ id: downloadJobs.id })
+          .from(downloadJobs)
+          .where(and(scope, notInArray(downloadJobs.status, unsettledStates)))
+          .all(),
+      );
       let failure: MediaError | undefined;
-      for (const id of ids) {
+      for (const { id } of settled) {
         const cleaned = yield* cleanupAndRecord(id);
         if (Result.isFailure(cleaned)) {
           failure ??= cleaned.failure;
@@ -427,19 +434,9 @@ export function createDownloads(
           return yield* Effect.fail(
             new MediaError("conflict", "Cancel this download before removing it from the list."),
           );
-        return yield* removeSettled([id]);
+        return yield* removeSettled(eq(downloadJobs.id, id));
       }),
-    clear: () =>
-      Effect.gen(function* () {
-        const settled = yield* databaseOperation(() =>
-          database
-            .select({ id: downloadJobs.id })
-            .from(downloadJobs)
-            .where(notInArray(downloadJobs.status, unsettledStates))
-            .all(),
-        );
-        return yield* removeSettled(settled.map(({ id }) => id));
-      }),
+    clear: () => removeSettled(),
     enqueue: (url: string, preset: DownloadPreset = defaultDownloadPreset, transcribe = false) =>
       databaseOperation(() =>
         database.transaction((transaction) => {
