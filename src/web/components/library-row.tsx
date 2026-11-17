@@ -163,13 +163,11 @@ export function LibraryRow({
   item,
   title,
   detailed,
-  offerTranscribe,
   className,
 }: {
   item: LibraryItem;
   title?: ReactNode;
   detailed: boolean;
-  offerTranscribe: boolean;
   className?: string;
 }) {
   const management = useLibraryManagement();
@@ -189,9 +187,13 @@ export function LibraryRow({
       if (deletion.cleanupError) management.reportCleanup(deletion.cleanupError);
       focusRecordingRow(next);
     },
-    library: { onSelect: () => management.select(item.id) },
+    library: {
+      onSelect: () => management.select(item.id),
+      onTranscribe: canStartTranscription(item)
+        ? () => transcribe.mutate(item.transcription === "stopped" ? "retry" : "start")
+        : undefined,
+    },
   });
-  const offerTranscribeButton = offerTranscribe && canStartTranscription(item);
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.target !== rowLink.current) return;
@@ -267,19 +269,11 @@ export function LibraryRow({
               status={
                 <>
                   <span className={rowMenuNeighbourClassName}>
-                    {offerTranscribeButton ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        aria-busy={transcribe.isPending}
-                        disabled={transcribe.isPending}
-                        onClick={() =>
-                          transcribe.mutate(item.transcription === "stopped" ? "retry" : "start")
-                        }
-                      >
-                        {transcribe.isPending ? <Spinner /> : null}
-                        {transcribe.isPending ? "Starting…" : "Transcribe"}
-                      </Button>
+                    {transcribe.isPending ? (
+                      <output className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-primary-strong">
+                        <Spinner />
+                        Starting…
+                      </output>
                     ) : (
                       <TranscriptionStatus transcription={item.transcription} />
                     )}

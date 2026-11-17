@@ -9,6 +9,7 @@ import {
   FileExportIcon,
   FileRemoveIcon,
   RefreshIcon,
+  SpeechToTextIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -38,6 +39,7 @@ type RecordingDialog = "retranscribe" | "remove-file" | "delete";
 
 type LibraryActions = {
   onSelect: () => void;
+  onTranscribe: (() => void) | undefined;
 };
 
 function KeyHint({ children }: { children: string }) {
@@ -94,6 +96,12 @@ export function useRecordingActions({
 
   const items = (
     <>
+      {library?.onTranscribe ? (
+        <DropdownMenuItem disabled={transcribe.isPending} onClick={library.onTranscribe}>
+          <MenuIcon icon={SpeechToTextIcon} />
+          Transcribe
+        </DropdownMenuItem>
+      ) : null}
       <DropdownMenuItem aria-keyshortcuts="F2" onClick={onRename}>
         <MenuIcon icon={Edit02Icon} />
         Rename recording

@@ -14,7 +14,6 @@ function SearchResult({ item }: { item: LibraryItem }) {
         item={item}
         title={<HighlightedText text={item.title} ranges={item.match?.title ?? []} />}
         detailed={false}
-        offerTranscribe={false}
         className="-mx-2.5 h-14"
       />
       {untranscribed ? (

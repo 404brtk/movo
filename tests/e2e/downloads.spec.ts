@@ -60,7 +60,7 @@ test("keeps saved media available when temporary download cleanup fails", async 
   await page.goto("/downloads");
   await expect(page.getByText("Saved to library", { exact: false })).toBeVisible();
   await expect(page.getByText(job.cleanupError ?? "", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: `Open ${job.title}`, exact: true })).toHaveAttribute(
     "href",
     `/media/${job.mediaId}`,
   );
@@ -148,17 +148,22 @@ test("removes one download from the list, keeps active ones and clears the rest"
   const recent = page.getByRole("list", { name: "Recent" });
   const row = (title: string) => page.getByRole("listitem").filter({ hasText: title });
 
+  await expect(page.getByRole("link", { name: "Open A saved talk", exact: true })).toHaveAttribute(
+    "href",
+    `/media/${saved.mediaId}`,
+  );
+  await expect(row("A saved talk").getByRole("button")).toHaveText([""]);
   await row("A saved talk").click({ button: "right", position: { x: 300, y: 10 } });
   await expect(page.getByRole("menuitem", { name: "Remove from list" })).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
 
-  await row("A queued video").hover();
   await page.getByRole("button", { name: "More actions for A queued video" }).click();
   await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Remove from list" })).toHaveCount(0);
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
 
-  await row("A broken post").hover();
   await page.getByRole("button", { name: "More actions for A broken post" }).click();
   await page.getByRole("menuitem", { name: "Remove from list" }).click();
   await expect(recent).not.toContainText("A broken post");
@@ -410,7 +415,7 @@ test("checks an X post again after a source error and keeps polling while anothe
   await expect(page.getByRole("link", { name: /^Downloading/u })).toHaveCount(0);
   await page.getByRole("link", { name: "Downloads", exact: true }).click();
   await expect(page.getByRole("list", { name: "Recent" })).toContainText("Saved to library");
-  await page.getByRole("link", { name: "Open", exact: true }).click();
+  await page.getByRole("link", { name: `Open ${job.title}`, exact: true }).click();
   await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
 });
 

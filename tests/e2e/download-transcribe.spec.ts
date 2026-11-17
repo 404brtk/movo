@@ -135,7 +135,7 @@ test("downloads and transcribes once, reports missing prerequisites and shows th
   await expect(
     page.getByText("Transcription was queued after the download.", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Open", exact: true }).click();
+  await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Cancel transcription", exact: true }),

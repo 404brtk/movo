@@ -147,6 +147,7 @@ test("opens the row menu with a right click, moves between rows with arrows and 
   await row(page, second.title).click({ button: "right" });
   const menu = page.getByRole("menu");
   await expect(menu.getByRole("menuitem")).toHaveText([
+    "Transcribe",
     /Rename recording/u,
     "Save a copy",
     "View original source",

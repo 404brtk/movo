@@ -24,13 +24,13 @@ import {
   downloadTitle,
   isActiveDownload,
 } from "../lib/download-view.ts";
-import { rowMenuNeighbourClassName, rowMenuTriggerClassName } from "../lib/row-menu.ts";
+import { cn } from "../lib/utils.ts";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
 import { MenuIcon } from "./menu-icon.tsx";
 import { SourceSite } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
 import { StatusIndicator } from "./status-indicator.tsx";
-import { Button, buttonVariants } from "./ui/button.tsx";
+import { Button } from "./ui/button.tsx";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx";
 import {
   DropdownMenu,
@@ -97,28 +97,16 @@ function useDownloadMenu(job: DownloadJob, row: RefObject<HTMLLIElement | null>)
 
 function DownloadJobAction({ job, describedBy }: { job: DownloadJob; describedBy: string }) {
   const queryClient = useQueryClient();
+  const cancelling = isActiveDownload(job);
   const action = useMutation({
-    mutationFn: () => (isActiveDownload(job) ? cancelDownload(job.id) : retryDownload(job.id)),
+    mutationFn: () => (cancelling ? cancelDownload(job.id) : retryDownload(job.id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: downloadsOptions.queryKey }),
   });
-  if (job.status === "completed")
-    return job.mediaId ? (
-      <Link
-        to="/media/$mediaId"
-        params={{ mediaId: job.mediaId }}
-        aria-describedby={describedBy}
-        className={buttonVariants({ variant: "outline", size: "sm" })}
-      >
-        Open
-      </Link>
-    ) : null;
-  const cancelling = isActiveDownload(job);
   return (
     <div className="flex flex-col items-end gap-1">
       <Button
-        variant={cancelling ? "ghost" : "outline"}
+        variant="outline"
         size="sm"
-        className={cancelling ? "-mr-2.5" : undefined}
         aria-describedby={describedBy}
         aria-busy={action.isPending}
         disabled={action.isPending || job.phase === "saving"}
@@ -154,6 +142,7 @@ export function DownloadJobRow({ job }: { job: DownloadJob }) {
   const active = isActiveDownload(job);
   const error = job.status === "failed" ? job.error : null;
   const cleanupError = job.cleanupError !== job.error ? job.cleanupError : null;
+  const recording = job.status === "completed" ? job.mediaId : null;
   const row = useRef<HTMLLIElement>(null);
   const menuItems = useDownloadMenu(job, row);
   return (
@@ -162,7 +151,11 @@ export function DownloadJobRow({ job }: { job: DownloadJob }) {
         render={
           <li
             ref={row}
-            className="group flex items-start gap-3.5 border-t py-3.5 first:border-t-0"
+            className={cn(
+              "group relative -mx-2.5 flex items-start gap-3.5 rounded-[10px] px-2.5 py-3 transition-colors has-data-popup-open:bg-subtle data-popup-open:bg-subtle",
+              recording &&
+                "hover:bg-subtle has-[[data-row-link]:focus-visible]:ring-2 has-[[data-row-link]:focus-visible]:ring-ring/50",
+            )}
           />
         }
       >
@@ -170,16 +163,29 @@ export function DownloadJobRow({ job }: { job: DownloadJob }) {
           <MediaThumbnail item={{ id: job.id, kind: getDownloadPreset(job.preset).kind }} />
         </span>
         <div className="min-w-0 flex-1">
-          <p id={titleId} className="text-sm/5 font-medium max-sm:line-clamp-2 sm:truncate">
-            {title}
-          </p>
+          {recording ? (
+            <Link
+              id={titleId}
+              to="/media/$mediaId"
+              params={{ mediaId: recording }}
+              aria-label={`Open ${title}`}
+              data-row-link=""
+              className="block text-sm/5 font-medium outline-none after:absolute after:inset-0 after:rounded-[10px] max-sm:line-clamp-2 sm:truncate"
+            >
+              {title}
+            </Link>
+          ) : (
+            <p id={titleId} className="text-sm/5 font-medium max-sm:line-clamp-2 sm:truncate">
+              {title}
+            </p>
+          )}
           <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground tabular-nums">
             <span>{describePreset(job)} ·</span>
             <a
               href={job.url}
               target="_blank"
               rel="noreferrer"
-              className="rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="relative rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               <SourceSite url={job.url} />
             </a>
@@ -204,13 +210,13 @@ export function DownloadJobRow({ job }: { job: DownloadJob }) {
             <p className="mt-1 text-[12.5px]/[19px] wrap-anywhere text-warning">{cleanupError}</p>
           ) : null}
         </div>
-        <div className="mt-[5px] flex shrink-0 items-start gap-1.5">
-          <div className={rowMenuNeighbourClassName}>
+        <div className="relative mt-[5px] flex shrink-0 items-start gap-1.5">
+          {job.status === "completed" ? null : (
             <DownloadJobAction job={job} describedBy={titleId} />
-          </div>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon-sm" className={rowMenuTriggerClassName} />}
+              render={<Button variant="ghost" size="icon-sm" className="-mr-1.5" />}
               aria-label={`More actions for ${title}`}
             >
               <HugeiconsIcon icon={MoreHorizontalIcon} aria-hidden="true" />
