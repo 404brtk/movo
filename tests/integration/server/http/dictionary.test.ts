@@ -89,7 +89,7 @@ it("stores, previews, updates and removes dictionary entries over HTTP", async (
 
             const oversized = await app.request(
               base,
-              json("POST", { draft, fix: [], padding: "x".repeat(300 * 1024) }),
+              json("POST", { draft, fix: [], padding: "x".repeat(1100 * 1024) }),
             );
             expect(oversized.status).toBe(413);
           });

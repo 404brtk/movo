@@ -113,9 +113,9 @@ const askLimit = bodyLimit({
 const modelChoiceMessage = "Choose a model from a connected service.";
 
 const dictionaryLimit = bodyLimit({
-  maxSize: 256 * 1024,
+  maxSize: 1024 * 1024,
   onError: (context) =>
-    context.json({ error: "Dictionary requests must be 256 KiB or smaller." }, 413),
+    context.json({ error: "Dictionary requests must be 1 MiB or smaller." }, 413),
 });
 
 const dictionaryDraftMessage = `Provide a spelling and lists of up to ${maxTermVariants} words or phrases of at most ${maxTermCharacters} characters each.`;

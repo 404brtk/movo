@@ -6,7 +6,6 @@ export const maxTermCharacters = 100;
 export const maxTermVariants = 50;
 export const maxDictionaryEntries = 500;
 export const maxPreviewHits = 200;
-export const maxFixedRecordings = 1000;
 
 const Count = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
 const Timestamp = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0));
@@ -88,7 +87,7 @@ export type DictionaryFix = typeof DictionaryFix.Type;
 
 export const DictionarySave = Schema.Struct({
   draft: DictionaryDraft,
-  fix: Schema.Array(DictionaryFix).check(Schema.isMaxLength(maxFixedRecordings)),
+  fix: Schema.Array(DictionaryFix),
 });
 export type DictionarySave = typeof DictionarySave.Type;
 
