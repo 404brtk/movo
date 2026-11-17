@@ -92,7 +92,7 @@ The dictionary holds names and words Movo spells your way. It is managed from **
 - **Also replace**: words or phrases the model hears differently, such as `cloud code` for “Claude Code”, matched exactly ignoring case.
 - **Never change**: words or phrases the entry leaves as heard. The entry changes no word inside them, even when a single word of a phrase would match.
 
-When entries compete for the same words, exact matches win over similar ones, then the longer phrase, then the closer spelling. A word that is itself an entry's spelling is never changed into another entry, and each word is changed at most once, so one fix never triggers another. A spelling or phrase can belong to only one entry; Movo rejects a clash and names the entry that already has it.
+When entries compete for the same words, exact matches win over similar ones, then the longer phrase, then the closer spelling, then the spelling that comes first alphabetically, so the preview and the fix always pick the same entry. A word that is itself an entry's spelling is never changed into another entry, and each word is changed at most once, so one fix never triggers another. A spelling or phrase can belong to only one entry; Movo rejects a clash and names the entry that already has it.
 
 Every completed transcription, including **Transcribe again**, applies the dictionary in the same database update that saves the result. The fixes form their own version, “Dictionary fixed …”, after the transcription result, so **Restore** brings back the model's words. Each entry counts the words it has fixed.
 

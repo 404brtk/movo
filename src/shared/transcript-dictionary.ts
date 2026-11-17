@@ -12,6 +12,7 @@ export interface DictionaryMatch extends WordRange {
 }
 
 interface Candidate extends DictionaryMatch {
+  order: string;
   exactness: number;
   distance: number;
 }
@@ -157,6 +158,7 @@ function findDictionaryMatches(
 
   const candidates: Candidate[] = entries.flatMap((entry, index) => {
     const replacement = wordTokens(entry.spelling);
+    const order = phraseKey(entry.spelling);
     const kept = new Uint8Array(words.length);
     for (const exception of entry.neverChange) {
       const pattern = wordTokens(exception).map(matchKey);
@@ -172,6 +174,7 @@ function findDictionaryMatches(
         if (joined(firstWord, pattern.length))
           found.push({
             entry: index,
+            order,
             firstWord,
             wordCount: pattern.length,
             similar: false,
@@ -182,7 +185,6 @@ function findDictionaryMatches(
     const limit = entry.similar ? allowedDistance(entry.spelling) : 0;
     if (limit > 0) {
       const target = letters(entry.spelling);
-      const spellingKey = phraseKey(entry.spelling);
       const sizes = [replacement.length - 1, replacement.length, replacement.length + 1].filter(
         (size) => size > 0,
       );
@@ -196,9 +198,10 @@ function findDictionaryMatches(
           );
           if (distance > limit) continue;
           const key = windowKey(firstWord, wordCount);
-          if (key === spellingKey || spellings.has(key)) continue;
+          if (spellings.has(key)) continue;
           found.push({
             entry: index,
+            order,
             firstWord,
             wordCount,
             similar: true,
@@ -224,7 +227,7 @@ function findDictionaryMatches(
         second.wordCount - first.wordCount ||
         first.distance - second.distance ||
         first.firstWord - second.firstWord ||
-        first.entry - second.entry,
+        (first.order < second.order ? -1 : first.order > second.order ? 1 : 0),
     )
     .filter((candidate) => {
       const range = taken.subarray(candidate.firstWord, candidate.firstWord + candidate.wordCount);

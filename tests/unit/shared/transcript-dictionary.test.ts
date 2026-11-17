@@ -98,6 +98,13 @@ describe("dictionary matching", () => {
     expect(fixed("Parakeat", [entry("Parakeet"), entry("Parakeets")])).toBe("Parakeet");
   });
 
+  it("settles equally close spellings the same way whatever the entry order", () => {
+    const codex = entry("Codex");
+    const codec = entry("Codec");
+    expect(fixed("codec Codek.", [codex, codec])).toBe("Codec Codec.");
+    expect(fixed("codec Codek.", [codec, codex])).toBe("Codec Codec.");
+  });
+
   it("applies each fix once, so one fix cannot trigger another", () => {
     expect(
       fixed("alpha", [entry("Alphabet", { alsoReplace: ["alpha"] }), entry("Alphabets")]),
