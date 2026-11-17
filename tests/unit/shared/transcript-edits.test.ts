@@ -146,6 +146,14 @@ describe("find and replace", () => {
     ]);
   });
 
+  it("does not repeat punctuation the replacement already has", () => {
+    const dotted = timedWords(0, 3000, "(.NET) .NET, C.P.A. net");
+    const patch = replaceWords(dotted, "net", ".NET");
+    expect(patch.map((change) => change.firstWord)).toEqual([3]);
+    expect(texts(checkedRoundTrip(dotted, patch))).toBe("(.NET) .NET, C.P.A. .NET");
+    expect(replaceWords(dotted, "c.p.a", "C.P.A.")).toEqual([]);
+  });
+
   it("deletes matches when the replacement is empty", () => {
     const filler = timedWords(0, 3000, "so um we um ship");
     expect(texts(checkedRoundTrip(filler, replaceWords(filler, "um", "")))).toBe("so we ship");

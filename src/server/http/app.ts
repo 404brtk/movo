@@ -14,6 +14,13 @@ import {
   NewChat,
   ScopeChange,
 } from "../../shared/contracts/ask.ts";
+import {
+  DictionaryEntryId,
+  DictionaryPreviewRequest,
+  DictionarySave,
+  maxTermCharacters,
+  maxTermVariants,
+} from "../../shared/contracts/dictionary.ts";
 import { DownloadPreviewRequest, DownloadRequest } from "../../shared/contracts/downloads.ts";
 import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
 import { ImportMediaQuery, RenameMediaRequest } from "../../shared/contracts/media.ts";
@@ -47,6 +54,7 @@ import { createYtdlp, type Ytdlp } from "../media-tools/ytdlp.ts";
 import { createModels, type Models } from "../models/models.ts";
 import { createTranscriptions, type Transcriptions } from "../transcriptions/jobs.ts";
 import { createTranscriptionEngine } from "../transcriptions/engine.ts";
+import { createDictionary } from "../transcriptions/dictionary.ts";
 import type { McpHandler } from "../mcp/server.ts";
 import { createAsk, type Ask, type LiveAnswerEvent } from "../ask/ask.ts";
 import { attachmentDisposition } from "./attachment.ts";
@@ -91,12 +99,26 @@ const readDownloadRequest = <S extends Schema.ConstraintDecoder<unknown>>(
     "Provide a valid JSON object with at least one video URL and supported download options.",
   );
 
+function readDictionaryId(id: string) {
+  if (!Schema.is(DictionaryEntryId)(id))
+    throw new MediaError("notFound", "This dictionary entry no longer exists.");
+  return id;
+}
+
 const askLimit = bodyLimit({
   maxSize: 64 * 1024,
   onError: (context) => context.json({ error: "Ask requests must be 64 KiB or smaller." }, 413),
 });
 
 const modelChoiceMessage = "Choose a model from a connected service.";
+
+const dictionaryLimit = bodyLimit({
+  maxSize: 1024 * 1024,
+  onError: (context) =>
+    context.json({ error: "Dictionary requests must be 1 MiB or smaller." }, 413),
+});
+
+const dictionaryDraftMessage = `Provide a spelling and lists of up to ${maxTermVariants} words or phrases of at most ${maxTermCharacters} characters each.`;
 
 const transcriptChangeLimit = bodyLimit({
   maxSize: 64 * 1024,
@@ -140,6 +162,7 @@ export function createApp(
     tools.resolve("ffprobe"),
   );
   const ask = askService ?? createAsk(database, { library, downloads, transcriptions });
+  const dictionary = createDictionary(database, transcriptions);
   const app = new Hono();
   app.use("*", async (context, next) => {
     const requestUrl = new URL(context.req.url);
@@ -377,6 +400,31 @@ export function createApp(
         await runMedia(transcriptions.renameSpeaker(context.req.param("id"), request)),
       );
     })
+    .get("/dictionary", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(dictionary.list()));
+    })
+    .post("/dictionary/preview", dictionaryLimit, async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        DictionaryPreviewRequest,
+        dictionaryDraftMessage,
+      );
+      return context.json(await runMedia(dictionary.preview(request), context.req.raw.signal));
+    })
+    .post("/dictionary", dictionaryLimit, async (context) => {
+      const request = await readJson(context.req.json(), DictionarySave, dictionaryDraftMessage);
+      return context.json(await runMedia(dictionary.save(null, request)), 201);
+    })
+    .put("/dictionary/:id", dictionaryLimit, async (context) => {
+      const request = await readJson(context.req.json(), DictionarySave, dictionaryDraftMessage);
+      return context.json(
+        await runMedia(dictionary.save(readDictionaryId(context.req.param("id")), request)),
+      );
+    })
+    .delete("/dictionary/:id", async (context) =>
+      context.json(await runMedia(dictionary.remove(readDictionaryId(context.req.param("id"))))),
+    )
     .post("/media/:id/transcription", async (context) =>
       context.json(await runMedia(transcriptions.enqueue(context.req.param("id"))), 202),
     )

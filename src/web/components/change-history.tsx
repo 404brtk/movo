@@ -28,6 +28,10 @@ function describeEdit(change: TranscriptEdit) {
     return change.after
       ? `Replaced ${quoted(change.before)} with ${quoted(change.after)}`
       : `Removed ${quoted(change.before)}`;
+  if (change.kind === "dictionary")
+    return change.replacementCount === 1
+      ? `Dictionary fixed ${quoted(change.after)}`
+      : `Dictionary fixed ${change.replacementCount} words`;
   const at = change.startMs === null ? "" : ` at ${formatDuration(change.startMs / 1000)}`;
   if (change.kind === "speaker")
     return change.replacementCount > 1

@@ -22,12 +22,12 @@ const wordOrder = (first: TranscriptWord, second: TranscriptWord) =>
 
 const spokenBy = (speaker: number | undefined) => (speaker === undefined ? {} : { speaker });
 
-function edges(text: string) {
+export function edges(text: string) {
   const [, leading = "", core = "", trailing = ""] = edgePunctuation.exec(text) ?? [];
   return { leading, core, trailing };
 }
 
-const matchKey = (text: string) => (edges(text).core || text).toLowerCase();
+export const matchKey = (text: string) => (edges(text).core || text).toLowerCase();
 
 function retimedReplacement(
   words: readonly TranscriptWord[],
@@ -96,8 +96,16 @@ export function editWords(
 }
 
 function keepEdgePunctuation(texts: readonly string[], matched: readonly TranscriptWord[]) {
-  const leading = edges(matched[0]?.text ?? "").leading;
-  const trailing = edges(matched.at(-1)?.text ?? "").trailing;
+  const matchedLeading = edges(matched[0]?.text ?? "").leading;
+  const matchedTrailing = edges(matched.at(-1)?.text ?? "").trailing;
+  const ownLeading = edges(texts[0] ?? "").leading;
+  const ownTrailing = edges(texts.at(-1) ?? "").trailing;
+  const leading = matchedLeading.endsWith(ownLeading)
+    ? matchedLeading.slice(0, matchedLeading.length - ownLeading.length)
+    : matchedLeading;
+  const trailing = matchedTrailing.startsWith(ownTrailing)
+    ? matchedTrailing.slice(ownTrailing.length)
+    : matchedTrailing;
   return texts.map(
     (text, index) =>
       (index === 0 ? leading : "") + text + (index === texts.length - 1 ? trailing : ""),
@@ -121,19 +129,43 @@ export function findWords(words: readonly TranscriptWord[], find: string) {
   return ranges;
 }
 
+export interface WordRange {
+  firstWord: number;
+  wordCount: number;
+}
+
+export function replacedTexts(
+  words: readonly TranscriptWord[],
+  { firstWord, wordCount }: WordRange,
+  replacement: readonly string[],
+) {
+  const matched = words.slice(firstWord, firstWord + wordCount);
+  const texts = keepEdgePunctuation(replacement, matched);
+  return texts.length === matched.length && texts.every((text, at) => text === matched[at]?.text)
+    ? null
+    : texts;
+}
+
+export function replaceRanges(
+  words: readonly TranscriptWord[],
+  ranges: readonly (WordRange & { replacement: readonly string[] })[],
+): TranscriptPatch {
+  return ranges.flatMap((range) => {
+    const texts = replacedTexts(words, range, range.replacement);
+    return texts ? [retimedReplacement(words, range.firstWord, range.wordCount, texts)] : [];
+  });
+}
+
 export function replaceWords(
   words: readonly TranscriptWord[],
   find: string,
   replacement: string,
 ): TranscriptPatch {
   const replacementTexts = wordTokens(replacement);
-  return findWords(words, find).flatMap(({ firstWord, wordCount }) => {
-    const matched = words.slice(firstWord, firstWord + wordCount);
-    const texts = keepEdgePunctuation(replacementTexts, matched);
-    return texts.length === matched.length && texts.every((text, at) => text === matched[at]?.text)
-      ? []
-      : [retimedReplacement(words, firstWord, wordCount, texts)];
-  });
+  return replaceRanges(
+    words,
+    findWords(words, find).map((range) => ({ ...range, replacement: replacementTexts })),
+  );
 }
 
 function respeak(

@@ -164,7 +164,13 @@ export const SpeakerRename = Schema.Struct({
   ),
 });
 export type SpeakerRename = typeof SpeakerRename.Type;
-export const transcriptChangeKinds = ["edit", "replace", "speaker", "restore"] as const;
+export const transcriptChangeKinds = [
+  "edit",
+  "replace",
+  "speaker",
+  "dictionary",
+  "restore",
+] as const;
 export const transcriptChangeSources = ["app", "mcp", "chat"] as const;
 export type TranscriptChangeSource = (typeof transcriptChangeSources)[number];
 const ChangeVersion = {
@@ -173,7 +179,7 @@ const ChangeVersion = {
   createdAt: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
 };
 export const TranscriptEdit = Schema.Struct({
-  kind: Schema.Literals(["edit", "replace", "speaker"]),
+  kind: Schema.Literals(["edit", "replace", "speaker", "dictionary"]),
   replacementCount: Count,
   startMs: Schema.NullOr(Milliseconds),
   before: Schema.String,

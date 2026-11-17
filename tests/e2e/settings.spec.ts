@@ -39,7 +39,7 @@ test("opens the real model catalog without starting installation", async ({ page
     page
       .getByRole("listitem", { name: "Dictionary", exact: true })
       .getByRole("button", { name: "Manage", exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await speakers.getByRole("button", { name: "Speaker labels details", exact: true }).click();
   await expect(speakers.getByText("English", { exact: true })).toBeVisible();
   expect(writes).toEqual([]);
