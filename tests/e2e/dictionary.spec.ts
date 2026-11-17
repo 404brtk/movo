@@ -96,7 +96,10 @@ test("adds an entry, fixes only the ticked matches and records them in History",
   await search.press("Enter");
   await expect(dialog(page).getByRole("heading", { name: "New entry" })).toBeVisible();
   await expect(dialog(page).getByLabel("Spelled")).toHaveValue("Kubernetes");
-  await expect(dialog(page).getByRole("switch", { name: "Similar spellings" })).toBeChecked();
+  const similar = dialog(page).getByRole("switch", { name: "Similar spellings" });
+  await expect(similar).not.toBeChecked();
+  await expect(dialog(page)).toContainText("Nothing to fix yet. New transcripts will use it.");
+  await similar.click();
   const matches = dialog(page).getByRole("list", { name: "Matches in your library" });
   await expect(matches.getByRole("listitem")).toHaveCount(2);
   await expect(dialog(page)).toContainText("Already in your library2 in 1 recording");

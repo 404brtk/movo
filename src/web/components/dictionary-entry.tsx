@@ -138,7 +138,7 @@ export function DictionaryEntryEditor({
   const spellingInput = useRef<HTMLInputElement>(null);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const [spelling, setSpelling] = useState(entry?.spelling ?? initialSpelling);
-  const [similar, setSimilar] = useState(entry?.similar ?? true);
+  const [similar, setSimilar] = useState(entry?.similar ?? false);
   const [alsoReplace, setAlsoReplace] = useState<readonly string[]>(entry?.alsoReplace ?? []);
   const [neverChange, setNeverChange] = useState<readonly string[]>(entry?.neverChange ?? []);
   const [pendingAlsoReplace, setPendingAlsoReplace] = useState("");
