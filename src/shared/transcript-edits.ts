@@ -96,8 +96,16 @@ export function editWords(
 }
 
 function keepEdgePunctuation(texts: readonly string[], matched: readonly TranscriptWord[]) {
-  const leading = edges(matched[0]?.text ?? "").leading;
-  const trailing = edges(matched.at(-1)?.text ?? "").trailing;
+  const matchedLeading = edges(matched[0]?.text ?? "").leading;
+  const matchedTrailing = edges(matched.at(-1)?.text ?? "").trailing;
+  const ownLeading = edges(texts[0] ?? "").leading;
+  const ownTrailing = edges(texts.at(-1) ?? "").trailing;
+  const leading = matchedLeading.endsWith(ownLeading)
+    ? matchedLeading.slice(0, matchedLeading.length - ownLeading.length)
+    : matchedLeading;
+  const trailing = matchedTrailing.startsWith(ownTrailing)
+    ? matchedTrailing.slice(ownTrailing.length)
+    : matchedTrailing;
   return texts.map(
     (text, index) =>
       (index === 0 ? leading : "") + text + (index === texts.length - 1 ? trailing : ""),

@@ -99,6 +99,14 @@ describe("dictionary matching", () => {
     expect(dictionaryFixes(words, [entry("Movo")])).toEqual([]);
   });
 
+  it("leaves spellings with their own punctuation alone once they are right", () => {
+    const words = timedWords(0, 3000, "we ship .NET and (.NET), ask the C.P.A.");
+    expect(dictionaryFixes(words, [entry(".NET"), entry("C.P.A.")])).toEqual([]);
+    expect(
+      fixed("we ship net, ask the cpa", [entry(".NET"), entry("C.P.A.", { alsoReplace: ["cpa"] })]),
+    ).toBe("we ship .NET, ask the C.P.A.");
+  });
+
   it("keeps the timestamps of replaced words", () => {
     const words = timedWords(0, 4000, "the para keet model");
     const [fix] = dictionaryFixes(words, [entry("Parakeet")]);
