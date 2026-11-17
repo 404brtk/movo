@@ -103,7 +103,23 @@ test("adds an entry, fixes only the ticked matches and records them in History",
   await expect(dialog(page)).toContainText("Also fixes “kubernetis” and “Kubernetis”");
   await matches.getByRole("checkbox").nth(1).uncheck();
   await expect(dialog(page)).toContainText("2 in 1 recording · 1 left as heard");
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((open) => {
+    release = open;
+  });
+  await page.route(
+    "**/api/dictionary",
+    async (route) => {
+      await held;
+      await route.continue();
+    },
+    { times: 1 },
+  );
   await dialog(page).getByRole("button", { name: "Add and fix 1 recording" }).click();
+  await expect(dialog(page).getByRole("button", { name: "Fixing…" })).toBeVisible();
+  await expect(dialog(page).getByRole("textbox", { name: "Add to Also replace" })).toBeDisabled();
+  await expect(dialog(page).getByRole("textbox", { name: "Add to Never change" })).toBeDisabled();
+  release?.();
 
   await expect(page.getByText("Fixed 1 word in 1 recording")).toBeVisible();
   await expect(dialog(page).getByRole("heading", { name: "Dictionary" })).toBeVisible();

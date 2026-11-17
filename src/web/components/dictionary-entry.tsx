@@ -328,6 +328,7 @@ export function DictionaryEntryEditor({
               return found?.field === "alsoReplace" ? found : undefined;
             }}
             onOpenEntry={onOpenEntry}
+            disabled={busy}
           />
           <TermListField
             label="Never change"
@@ -341,6 +342,7 @@ export function DictionaryEntryEditor({
               return found?.field === "neverChange" ? found : undefined;
             }}
             onOpenEntry={onOpenEntry}
+            disabled={busy}
           />
           <section
             aria-labelledby={previewHeadingId}

@@ -20,6 +20,7 @@ export function TermListField({
   onPendingChange,
   problemWith,
   onOpenEntry,
+  disabled,
 }: {
   label: string;
   hint: string;
@@ -29,6 +30,7 @@ export function TermListField({
   onPendingChange: (pending: string) => void;
   problemWith: (terms: string[]) => DictionaryProblem<DictionaryEntry> | undefined;
   onOpenEntry: (entry: DictionaryEntry) => void;
+  disabled: boolean;
 }) {
   const labelId = useId();
   const hintId = useId();
@@ -78,6 +80,7 @@ export function TermListField({
               size="icon-xs"
               className="ml-0.5 text-muted-foreground"
               aria-label={`Remove “${term}”`}
+              disabled={disabled}
               onClick={() => onChange(terms.filter((each) => each !== term))}
             >
               <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" className="size-3" />
@@ -88,6 +91,7 @@ export function TermListField({
           <li>
             <Input
               aria-label={`Add to ${label}`}
+              disabled={disabled}
               aria-invalid={error ? true : undefined}
               aria-describedby={error ? errorId : undefined}
               placeholder="Add…"
