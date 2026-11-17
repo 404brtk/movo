@@ -78,6 +78,7 @@ describe("dictionary matching", () => {
   it("never changes any word inside a listed exception phrase", () => {
     const parakeet = entry("Parakeet", { neverChange: ["parakit bird"] });
     expect(fixed("a parakit bird and a parakit", [parakeet])).toBe("a parakit bird and a Parakeet");
+    expect(fixed("a parakit. Bird", [parakeet])).toBe("a Parakeet. Bird");
     expect(
       fixed("open cloud code tools", [
         entry("Claude Code", { alsoReplace: ["cloud code"], neverChange: ["code tools"] }),

@@ -170,7 +170,7 @@ function findDictionaryMatches(
     for (const exception of entry.neverChange) {
       const pattern = wordTokens(exception).map(matchKey);
       for (const firstWord of occurrences(pattern))
-        kept.fill(1, firstWord, firstWord + pattern.length);
+        if (joined(firstWord, pattern.length)) kept.fill(1, firstWord, firstWord + pattern.length);
     }
     const found: Candidate[] = [];
     const exactPhrases = [entry.spelling, ...entry.alsoReplace].map((phrase) =>
