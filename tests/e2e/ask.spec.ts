@@ -403,6 +403,49 @@ test("keeps the recording in view and moves it only as far as the open panel nee
   await expect.poll(() => noHorizontalScroll(page)).toBe(true);
 });
 
+test("keeps every audio control within reach beside the transcript and beside Ask", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.wav` },
+  });
+  const media: { id: string } = await uploaded.json();
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [] }));
+  const player = page.getByRole("region", { name: "Player", exact: true });
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const audio = page.locator("audio");
+
+  await page.setViewportSize({ width: 1280, height: 700 });
+  await page.goto(`/media/${media.id}`);
+  await expect(page.getByRole("list", { name: "Timestamped passages" })).toBeVisible();
+  await player.getByRole("button", { name: "Forward 10 seconds" }).click();
+  await expect
+    .poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime))
+    .toBe(await audio.evaluate((element: HTMLAudioElement) => element.duration));
+  await player.getByRole("button", { name: "Back 10 seconds" }).click();
+  await expect
+    .poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime))
+    .toBe(0);
+
+  await page.setViewportSize({ width: 1200, height: 700 });
+  await page.keyboard.press("/");
+  await expect(panel).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [bar, side] = await Promise.all([player.boundingBox(), panel.boundingBox()]);
+      return bar && side ? side.x - (bar.x + bar.width) : null;
+    })
+    .toBeGreaterThanOrEqual(16);
+  await player.getByRole("button", { name: "Playback speed 1×" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "1.5×" })).toBeVisible();
+});
+
 test("blocks questions about a transcript without words", async ({ page, request }) => {
   const uploaded = await request.post("/api/media", {
     data: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),

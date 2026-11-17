@@ -511,29 +511,14 @@ test("keeps Ask in the transcript toolbar and starts the transcript area level w
   expect(askBox.y + askBox.height / 2).toBe(backBox.y + backBox.height / 2);
 });
 
-test("shows where a downloaded recording came from instead of its stored file name", async ({
-  page,
-  request,
-}) => {
+test("names an imported recording's file in its details", async ({ page, request }) => {
   const uploaded = await request.post("/api/media", {
     data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
     headers: { "x-file-name": "media.webm" },
   });
   const media: { id: string } = await uploaded.json();
-  const source = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
-  const stored = await (await request.get(`/api/media/${media.id}`)).json();
-  await page.route(`**/api/media/${media.id}`, (route) =>
-    route.request().method() === "GET"
-      ? route.fulfill({ json: { ...stored, sourceUrl: source } })
-      : route.continue(),
-  );
   await page.goto(`/media/${media.id}`);
   const details = page.getByRole("main").getByText(/^Video · /u);
-  await expect(details.getByRole("link", { name: "YouTube" })).toHaveAttribute("href", source);
-  await expect(details.getByRole("link", { name: "YouTube" })).toHaveAttribute("target", "_blank");
-  await expect(details).not.toContainText("media.webm");
-
-  await page.unroute(`**/api/media/${media.id}`);
-  await page.reload();
-  await expect(page.getByRole("main").getByText(/^Video · /u)).toContainText("media.webm");
+  await expect(details).toContainText("media.webm");
+  await expect(details.getByRole("link")).toHaveCount(0);
 });

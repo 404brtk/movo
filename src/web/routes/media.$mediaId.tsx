@@ -96,7 +96,7 @@ function BackRow({ split, actions }: { split: boolean; actions?: ReactNode }) {
       className={
         split
           ? "mb-5"
-          : "sticky top-(--app-header) z-20 -mx-5 flex h-12 items-center bg-background px-5"
+          : "sticky top-(--app-header) z-20 -mx-5 flex h-(--back-row) items-center bg-background px-5"
       }
     >
       <div className="-mr-1.5 -ml-2.5 flex flex-1 items-center justify-between">
@@ -210,8 +210,8 @@ function RecordingWorkspace({
           : "max-w-[720px] px-5 pt-2.5",
         !split &&
           (compactPlayer
-            ? "[--tools-top:calc(var(--app-header)+7.5rem)]"
-            : "[--tools-top:calc(var(--app-header)+3rem)]"),
+            ? "[--tools-top:calc(var(--app-header)+var(--back-row)+var(--compact-player))]"
+            : "[--tools-top:calc(var(--app-header)+var(--back-row))]"),
         floatingPlayer ? "pb-32" : "pb-16",
       )}
     >
@@ -280,8 +280,8 @@ function MediaDetail() {
   return (
     <div
       className={cn(
-        "transition-[padding] duration-260 ease-move [--app-header:0px] motion-reduce:transition-none sm:[--app-header:3.5rem]",
-        askOpen && item && "min-[60rem]:pr-[clamp(0px,2040px_-_100%,424px)]",
+        "pr-(--ask-inset) transition-[padding] duration-260 ease-move [--app-header:0px] [--ask-inset:0px] [--back-row:3rem] [--compact-player:4.5rem] motion-reduce:transition-none sm:[--app-header:3.5rem]",
+        askOpen && item && "min-[60rem]:[--ask-inset:clamp(0px,2040px_-_100%,424px)]",
       )}
     >
       {item ? (

@@ -30,24 +30,30 @@ export function AudioPlayerBar({
     return (
       <section
         aria-label="Player"
-        className={cn("flex items-center gap-3 p-2", dockedSurfaceClassName, className)}
+        className={cn("grid gap-2 px-4 pt-4 pb-2", dockedSurfaceClassName, className)}
       >
-        <PlayButton playback={playback} className={playClassName} />
-        <div className="grid min-w-0 flex-1 gap-1.5">
+        <div className="grid gap-1.5">
           <SeekSlider playback={playback} />
           <p className="flex justify-between text-[11.5px]/[normal] text-muted-foreground tabular-nums">
             <span>{formatDuration(currentTime)}</span>
             <span>{formatDuration(duration)}</span>
           </p>
         </div>
-        <SpeedMenu playback={playback} />
+        <div className="-mx-2 grid grid-cols-[1fr_auto_1fr] items-center">
+          <div className="col-start-2 flex items-center gap-2">
+            <SkipButton playback={playback} seconds={-10} />
+            <PlayButton playback={playback} className={playClassName} />
+            <SkipButton playback={playback} seconds={10} />
+          </div>
+          <SpeedMenu playback={playback} className="justify-self-end" />
+        </div>
       </section>
     );
   return (
     <section
       aria-label="Player"
       className={cn(
-        "fixed bottom-6 left-1/2 z-40 flex w-[680px] max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 py-2 pr-4 pl-2",
+        "fixed bottom-6 left-[calc((100%-var(--ask-inset,0px))/2)] z-40 flex w-[680px] max-w-[calc(100%-var(--ask-inset,0px)-2rem)] -translate-x-1/2 items-center gap-3 py-2 pr-4 pl-2 transition-[left,max-width] duration-260 ease-move motion-reduce:transition-none",
         floatingSurfaceClassName,
         className,
       )}

@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useEffectEvent, useMemo, useRef, useState } 
 import { Search01Icon, SearchReplaceIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
+import { maxSearchLength } from "../../shared/contracts/library.ts";
 import type { Transcript, TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
 import { transcriptionOptions } from "../lib/api.ts";
 import { formatDevice } from "../lib/format.ts";
@@ -82,14 +83,17 @@ function TranscriptView({
 }) {
   const search = useTranscriptSearch(transcript);
   const [tool, setTool] = useState<FindTool | null>(search.query === undefined ? null : "search");
+  const [returnFocus, setReturnFocus] = useState(tool);
   const [seenQuery, setSeenQuery] = useState(search.query);
   if (search.query !== seenQuery) {
     setSeenQuery(search.query);
-    if (search.query !== undefined) setTool("search");
+    if (search.query !== undefined) {
+      if (tool === null) setReturnFocus("search");
+      setTool("search");
+    }
   }
   const find = useFindAndReplace(transcript);
   const field = useRef<HTMLInputElement>(null);
-  const [returnFocus, setReturnFocus] = useState<FindTool | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const { revision, resultRevision } = job;
   const edited = hasEdits(job);
@@ -106,13 +110,13 @@ function TranscriptView({
       find.setFind(search.draft);
       search.clear();
     }
-    if (next === "search" && shown === "replace") search.setDraft(find.find);
-    setReturnFocus(null);
+    if (next === "search" && shown === "replace")
+      search.setDraft(find.find.slice(0, maxSearchLength));
+    if (shown === null) setReturnFocus(next);
     setTool(next);
   };
   const close = () => {
     if (shown === "search") search.clear();
-    setReturnFocus(shown);
     setTool(null);
   };
   const handleKey = useEffectEvent((event: KeyboardEvent) => {
@@ -126,10 +130,10 @@ function TranscriptView({
     const wantsSearch = hasWords && searchShortcut.matches(event);
     if (!wantsReplace && !wantsSearch) return;
     if (insideDialog(event.target)) return;
-    if (wantsSearch && shown !== null && document.activeElement === field.current) return;
+    if (wantsSearch && shown === "search" && document.activeElement === field.current) return;
     event.preventDefault();
     if (wantsReplace && shown !== "replace") open("replace");
-    else if (wantsSearch && shown === null) open("search");
+    else if (wantsSearch && shown !== "search") open("search");
     else field.current?.focus();
   });
   useEffect(() => {

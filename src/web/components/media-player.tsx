@@ -107,6 +107,7 @@ function CompactPlayer({
     const video = frame.current;
     if (!video) return;
     onShowVideo();
+    video.focus({ preventScroll: true });
     const margin = Number.parseFloat(getComputedStyle(video).scrollMarginTop) || 0;
     window.scrollTo({
       top: window.scrollY + video.getBoundingClientRect().top - margin,
@@ -118,7 +119,7 @@ function CompactPlayer({
       ref={followFrame}
       aria-hidden={!shown || undefined}
       className={cn(
-        "sticky top-[calc(var(--app-header)+3rem)] z-30 -mx-5 -mt-18 flex h-18 items-center bg-background px-5 transition-[opacity,visibility] duration-150 ease-out motion-reduce:transition-none",
+        "sticky top-[calc(var(--app-header)+var(--back-row))] z-30 -mx-5 -mt-(--compact-player) flex h-(--compact-player) items-center bg-background px-5 transition-[opacity,visibility] duration-150 ease-out motion-reduce:transition-none",
         shown ? "visible opacity-100" : "invisible opacity-0",
       )}
     >
@@ -235,9 +236,10 @@ export function MediaPlayer({
       <section
         ref={frame}
         aria-label="Video player"
+        tabIndex={-1}
         data-playing={playback.state.playing || undefined}
         className={cn(
-          "@container relative scroll-mt-[calc(var(--app-header)+3rem)] overflow-hidden rounded-[14px] bg-black shadow-[0_0_0_1px_oklch(0.2_0.01_262/0.06),0_8px_24px_-10px_oklch(0.2_0.01_262/0.25)] [&:fullscreen]:rounded-none",
+          "@container relative scroll-mt-[calc(var(--app-header)+var(--back-row))] overflow-hidden rounded-[14px] bg-black shadow-[0_0_0_1px_oklch(0.2_0.01_262/0.06),0_8px_24px_-10px_oklch(0.2_0.01_262/0.25)] outline-none [&:fullscreen]:rounded-none",
           className,
         )}
       >

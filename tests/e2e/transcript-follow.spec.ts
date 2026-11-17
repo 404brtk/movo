@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
+import { maxSearchLength } from "../../src/shared/contracts/library.ts";
 import type { TranscriptionJob } from "../../src/shared/contracts/transcriptions.ts";
 import { timedWords } from "../helpers/timed-words.ts";
 
@@ -325,8 +326,9 @@ test("folds the video into a compact player on a narrow screen and brings it bac
   await expect(compact).toBeVisible();
   await expect(compact).toContainText("0:01 of 0:02");
 
-  await compact.getByRole("button", { name: "Show the video" }).click();
+  await compact.getByRole("button", { name: "Show the video" }).press("Enter");
   await expect(player).toBeInViewport({ ratio: 1 });
+  await expect(player).toBeFocused();
   await expect(compact).toHaveCount(0);
   await expect(backToCurrent).toBeVisible();
   await backToCurrent.click();
@@ -363,9 +365,29 @@ test("opens search and replace from the keyboard and returns focus after closing
     "aria-pressed",
     "true",
   );
-  await modes.getByRole("button", { name: "Search", exact: true }).click();
+  await form.getByLabel("Replace with", { exact: true }).press("Control+F");
   await expect(field).toHaveValue("step 20");
   await expect(field).toBeFocused();
+
+  await search
+    .getByRole("group", { name: "Search or replace" })
+    .getByRole("button", { name: "Replace", exact: true })
+    .click();
+  await expect(find).toHaveValue("step 20");
+  await find.press("Control+F");
+  await expect(field).toBeFocused();
+  await field.press("Control+H");
+  await form.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(form).toHaveCount(0);
+  await expect(searchButton).toBeFocused();
+
+  await page.getByRole("button", { name: "Replace", exact: true }).click();
+  await find.fill("a".repeat(maxSearchLength + 39));
+  await modes.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(field).toHaveValue("a".repeat(maxSearchLength));
+  await expect(page).toHaveURL(/q=a+/u);
+  await page.reload();
+  await expect(field).toHaveValue("a".repeat(maxSearchLength));
   await field.press("Escape");
   await expect(search).toHaveCount(0);
   await expect(searchButton).toBeFocused();
