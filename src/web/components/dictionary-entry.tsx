@@ -141,6 +141,8 @@ export function DictionaryEntryEditor({
   const [similar, setSimilar] = useState(entry?.similar ?? true);
   const [alsoReplace, setAlsoReplace] = useState<readonly string[]>(entry?.alsoReplace ?? []);
   const [neverChange, setNeverChange] = useState<readonly string[]>(entry?.neverChange ?? []);
+  const [pendingAlsoReplace, setPendingAlsoReplace] = useState("");
+  const [pendingNeverChange, setPendingNeverChange] = useState("");
   const [unticked, setUnticked] = useState<ReadonlySet<string>>(new Set());
   const [showAll, setShowAll] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -156,7 +158,11 @@ export function DictionaryEntryEditor({
   );
   const draftKey = JSON.stringify(draft);
   const [initialKey] = useState(draftKey);
-  const dirty = draftKey !== initialKey || unticked.size > 0;
+  const dirty =
+    draftKey !== initialKey ||
+    unticked.size > 0 ||
+    pendingAlsoReplace.trim() !== "" ||
+    pendingNeverChange.trim() !== "";
   useLayoutEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
   useEffect(() => spellingInput.current?.focus(), []);
 
@@ -315,6 +321,8 @@ export function DictionaryEntryEditor({
             hint="what the model hears differently"
             terms={alsoReplace}
             onChange={setAlsoReplace}
+            pending={pendingAlsoReplace}
+            onPendingChange={setPendingAlsoReplace}
             problemWith={(terms) => {
               const found = problemWith({ ...draft, alsoReplace: terms });
               return found?.field === "alsoReplace" ? found : undefined;
@@ -326,6 +334,8 @@ export function DictionaryEntryEditor({
             hint="left as heard"
             terms={neverChange}
             onChange={setNeverChange}
+            pending={pendingNeverChange}
+            onPendingChange={setPendingNeverChange}
             problemWith={(terms) => {
               const found = problemWith({ ...draft, neverChange: terms });
               return found?.field === "neverChange" ? found : undefined;

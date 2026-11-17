@@ -179,6 +179,12 @@ test("asks before discarding changes, links clashes to their entry and removes a
   await dialog(page)
     .getByRole("button", { name: /^Movo Exact spelling/u })
     .click();
+  const neverChange = dialog(page).getByRole("textbox", { name: "Add to Never change" });
+  await neverChange.fill("movo bird");
+  await page.keyboard.press("Escape");
+  await expect(dialog(page)).toContainText("Discard your changes?");
+  await dialog(page).getByRole("button", { name: "Keep editing" }).click();
+  await dialog(page).getByRole("button", { name: "Remove “movo bird”" }).click();
   await dialog(page).getByRole("button", { name: "Movo actions" }).click();
   await page.getByRole("menuitem", { name: "Remove from dictionary…" }).click();
   const confirm = page.getByRole("alertdialog");

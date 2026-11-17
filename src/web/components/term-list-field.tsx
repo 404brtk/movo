@@ -16,6 +16,8 @@ export function TermListField({
   hint,
   terms,
   onChange,
+  pending,
+  onPendingChange,
   problemWith,
   onOpenEntry,
 }: {
@@ -23,18 +25,19 @@ export function TermListField({
   hint: string;
   terms: readonly string[];
   onChange: (terms: string[]) => void;
+  pending: string;
+  onPendingChange: (pending: string) => void;
   problemWith: (terms: string[]) => DictionaryProblem<DictionaryEntry> | undefined;
   onOpenEntry: (entry: DictionaryEntry) => void;
 }) {
   const labelId = useId();
   const hintId = useId();
   const errorId = useId();
-  const [pending, setPending] = useState("");
   const [error, setError] = useState<DictionaryProblem<DictionaryEntry> | null>(null);
   const add = () => {
     const term = pending.trim().replace(/\s+/gu, " ");
     if (!term) {
-      setPending("");
+      onPendingChange("");
       setError(null);
       return;
     }
@@ -45,7 +48,7 @@ export function TermListField({
       return;
     }
     onChange(next);
-    setPending("");
+    onPendingChange("");
     setError(null);
   };
   const shown = error ?? problemWith([...terms]);
@@ -92,7 +95,7 @@ export function TermListField({
               autoComplete="off"
               value={pending}
               onChange={(event) => {
-                setPending(event.currentTarget.value);
+                onPendingChange(event.currentTarget.value);
                 setError(null);
               }}
               onKeyDown={(event) => {
