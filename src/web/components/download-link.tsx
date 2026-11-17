@@ -31,10 +31,10 @@ import {
   type SaveKind,
 } from "../lib/download-links.ts";
 import { formatDuration } from "../lib/format.ts";
-import { sourceSite } from "../lib/source-sites.ts";
 import { cn } from "../lib/utils.ts";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
 import { SegmentedChoice } from "./segmented-choice.tsx";
+import { SourceSite } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
 import { StatusIndicator } from "./status-indicator.tsx";
 import { Button } from "./ui/button.tsx";
@@ -91,14 +91,10 @@ function LinkDetails({ view }: { view: LinkView }) {
   if (preview?.data)
     return (
       <span className="truncate tabular-nums">
-        {[
-          sourceSite(preview.data.url).name,
-          preview.data.durationSeconds === null
-            ? null
-            : formatDuration(preview.data.durationSeconds),
-        ]
-          .filter(Boolean)
-          .join(" · ")}
+        <SourceSite url={preview.data.url} />
+        {preview.data.durationSeconds === null
+          ? null
+          : ` · ${formatDuration(preview.data.durationSeconds)}`}
       </span>
     );
   if (preview?.isFetching)

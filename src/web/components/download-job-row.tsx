@@ -1,10 +1,5 @@
 import { type RefObject, useId, useRef } from "react";
-import {
-  Copy01Icon,
-  Delete02Icon,
-  MoreHorizontalIcon,
-  RefreshIcon,
-} from "@hugeicons/core-free-icons";
+import { Delete02Icon, MoreHorizontalIcon, RefreshIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Toast } from "@base-ui/react/toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -26,8 +21,7 @@ import {
 } from "../lib/download-view.ts";
 import { cn } from "../lib/utils.ts";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
-import { MenuIcon } from "./menu-icon.tsx";
-import { SourceSite } from "./source-site.tsx";
+import { SourceLink, SourceMenuItems } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
 import { StatusIndicator } from "./status-indicator.tsx";
 import { Button } from "./ui/button.tsx";
@@ -63,21 +57,9 @@ function useDownloadMenu(job: DownloadJob, row: RefObject<HTMLLIElement | null>)
     onError: (error) =>
       addToast({ title: "Could not remove the download", description: error.message }),
   });
-  const copyLink = () =>
-    navigator.clipboard.writeText(job.url).then(
-      () => addToast({ title: "Link copied" }),
-      () =>
-        addToast({
-          title: "Could not copy the link",
-          description: "Allow clipboard access for this page, then try again.",
-        }),
-    );
   return (
     <>
-      <DropdownMenuItem onClick={() => void copyLink()}>
-        <MenuIcon icon={Copy01Icon} />
-        Copy link
-      </DropdownMenuItem>
+      <SourceMenuItems url={job.url} />
       {isActiveDownload(job) ? null : (
         <>
           <DropdownMenuSeparator />
@@ -181,14 +163,7 @@ export function DownloadJobRow({ job }: { job: DownloadJob }) {
           )}
           <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground tabular-nums">
             <span>{describePreset(job)} ·</span>
-            <a
-              href={job.url}
-              target="_blank"
-              rel="noreferrer"
-              className="relative rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-            >
-              <SourceSite url={job.url} />
-            </a>
+            <SourceLink url={job.url} />
           </p>
           <div className="mt-2 flex leading-[normal]">
             <StatusIndicator tone={state.tone}>{state.label}</StatusIndicator>

@@ -22,7 +22,6 @@ import { ConfirmDialog } from "./confirm-dialog.tsx";
 import { focusRecordingRow, useLibraryManagement } from "./library-management.tsx";
 import { Spinner } from "./spinner.tsx";
 import { Button } from "./ui/button.tsx";
-import { Checkbox } from "./ui/checkbox.tsx";
 
 const failureMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Something went wrong.";
@@ -114,20 +113,24 @@ export function LibrarySelectionBar() {
     <div className="mt-3">
       <fieldset
         aria-label="Selected recordings"
-        className="m-0 flex h-7 min-w-0 animate-in items-center gap-1.5 border-0 p-0 pl-[13px] duration-150 fade-in-0 motion-reduce:animate-none"
+        className="m-0 flex h-7 min-w-0 animate-in items-center gap-1.5 border-0 p-0 duration-150 fade-in-0 motion-reduce:animate-none"
       >
-        <Checkbox
-          aria-label="Select all recordings"
-          checked={management.allSelected}
-          indeterminate={!management.allSelected}
-          onCheckedChange={(checked) => management.setAll(checked)}
-        />
         <output
           aria-live="polite"
-          className="mr-auto ml-2 text-[13px] font-medium whitespace-nowrap tabular-nums"
+          className="text-[13px] font-medium whitespace-nowrap tabular-nums"
         >
-          {management.selectedItems.length} selected
+          {management.selectedItems.length} of {management.total} selected
         </output>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mr-auto data-disabled:opacity-45"
+          disabled={management.allSelected}
+          focusableWhenDisabled
+          onClick={management.selectAll}
+        >
+          Select all
+        </Button>
         {transcribable.length > 0 ? (
           <Button
             variant="outline"
@@ -155,7 +158,7 @@ export function LibrarySelectionBar() {
         <Button
           variant="ghost"
           size="icon-sm"
-          className="-mr-1"
+          className="-mr-1.5"
           aria-label="Clear selection"
           onClick={management.clear}
         >

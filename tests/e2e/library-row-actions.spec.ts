@@ -151,6 +151,7 @@ test("opens the row menu with a right click, moves between rows with arrows and 
     /Rename recording/u,
     "Save a copy",
     "View original source",
+    "Copy link",
     "Select",
     /Delete recording…/u,
   ]);
@@ -254,7 +255,7 @@ test("selects a range, transcribes the eligible recordings and reports a partial
     .getByRole("checkbox", { name: `Select ${charlie?.title}` })
     .click({ modifiers: ["Shift"] });
   const bar = page.getByRole("group", { name: "Selected recordings" });
-  await expect(bar.getByRole("status")).toHaveText("3 selected");
+  await expect(bar.getByRole("status")).toHaveText("3 of 4 selected");
   await expect(page.getByRole("group", { name: "Type" })).toHaveCount(0);
   await expect(page.getByRole("checkbox", { name: `Select ${bravo?.title}` })).toBeChecked();
 
@@ -262,12 +263,15 @@ test("selects a range, transcribes the eligible recordings and reports a partial
   await expect
     .poll(() => started.toSorted())
     .toEqual([`${alpha?.id}:start`, `${bravo?.id}:retry`].toSorted());
-  await expect(bar.getByRole("status")).toHaveText("1 selected");
+  await expect(bar.getByRole("status")).toHaveText("1 of 4 selected");
   await expect(page.getByRole("checkbox", { name: `Select ${charlie?.title}` })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: `Select ${alpha?.title}` })).not.toBeChecked();
 
-  await bar.getByRole("checkbox", { name: "Select all recordings" }).click();
-  await expect(bar.getByRole("status")).toHaveText("4 selected");
+  const selectAll = bar.getByRole("button", { name: "Select all", exact: true });
+  await selectAll.click();
+  await expect(bar.getByRole("status")).toHaveText("4 of 4 selected");
+  await expect(selectAll).toBeFocused();
+  await expect(selectAll).toHaveAttribute("aria-disabled", "true");
   await bar.getByRole("button", { name: "Delete…" }).click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toContainText("Delete 4 recordings?");
@@ -279,7 +283,7 @@ test("selects a range, transcribes the eligible recordings and reports a partial
   expect(library.items.map((item) => item.title)).toEqual([delta?.title]);
   await dialog.getByRole("button", { name: "Keep recording" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(bar.getByRole("status")).toHaveText("1 selected");
+  await expect(bar.getByRole("status")).toHaveText("1 of 1 selected");
   await expect(bar.getByRole("button", { name: "Delete…" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(bar).toHaveCount(0);
@@ -287,7 +291,7 @@ test("selects a range, transcribes the eligible recordings and reports a partial
 
   await row(page, delta?.title ?? "").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Select" }).click();
-  await expect(bar.getByRole("status")).toHaveText("1 selected");
+  await expect(bar.getByRole("status")).toHaveText("1 of 1 selected");
   await expect(page.getByRole("checkbox", { name: `Select ${delta?.title}` })).toBeChecked();
 });
 
@@ -301,7 +305,7 @@ test("clears the selection when the search changes instead of restoring it later
   await row(page, morning.title).hover();
   await page.getByRole("checkbox", { name: `Select ${morning.title}` }).click();
   const bar = page.getByRole("group", { name: "Selected recordings" });
-  await expect(bar.getByRole("status")).toHaveText("1 selected");
+  await expect(bar.getByRole("status")).toHaveText("1 of 2 selected");
 
   const search = page.getByRole("searchbox", { name: "Search" });
   await search.fill("notes");

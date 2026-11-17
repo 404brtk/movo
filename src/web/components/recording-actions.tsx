@@ -1,6 +1,5 @@
 import { type RefObject, useState } from "react";
 import {
-  ArrowUpRight01Icon,
   CheckmarkSquare02Icon,
   Copy01Icon,
   Delete02Icon,
@@ -24,6 +23,7 @@ import {
 } from "../lib/transcription-actions.ts";
 import { CleanupNotice, ConfirmDialog, ReplaceEditsDialog } from "./confirm-dialog.tsx";
 import { MenuIcon } from "./menu-icon.tsx";
+import { SourceMenuItems } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
 import { TranscriptExportItems } from "./transcript-actions.tsx";
 import {
@@ -145,18 +145,7 @@ export function useRecordingActions({
           Save a copy
         </DropdownMenuItem>
       ) : null}
-      {item.sourceUrl ? (
-        <DropdownMenuItem
-          render={({ children, ...props }) => (
-            <a {...props} href={item.sourceUrl ?? undefined} target="_blank" rel="noreferrer">
-              {children}
-            </a>
-          )}
-        >
-          <MenuIcon icon={ArrowUpRight01Icon} />
-          View original source
-        </DropdownMenuItem>
-      ) : null}
+      {item.sourceUrl ? <SourceMenuItems url={item.sourceUrl} /> : null}
       {canReplaceTranscript ? (
         <DropdownMenuItem
           disabled={transcribe.isPending}

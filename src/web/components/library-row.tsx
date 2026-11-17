@@ -18,7 +18,7 @@ import { focusRecordingRow, useLibraryManagement } from "./library-management.ts
 import { MediaRow } from "./media-row.tsx";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
 import { useRecordingActions } from "./recording-actions.tsx";
-import { SourceSite } from "./source-site.tsx";
+import { SourceLink } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
 import { TranscriptionStatus } from "./transcription-status.tsx";
 import { Button } from "./ui/button.tsx";
@@ -230,7 +230,7 @@ export function LibraryRow({
       {detailed && item.sourceUrl ? (
         <>
           {" · "}
-          <SourceSite url={item.sourceUrl} />
+          <SourceLink url={item.sourceUrl} />
         </>
       ) : null}
     </>
