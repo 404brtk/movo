@@ -90,7 +90,7 @@ The dictionary holds names and words Movo spells your way. It is managed from **
 - **Spelled**: the form it should read. It always matches whole words or phrases ignoring case, so `movo` and `MOVO` become “Movo”. Punctuation around a match is kept, as in **Find and replace**.
 - **Similar spellings**: also matches spellings that differ by letters, compared without case or accents and also across two neighboring words joined (`para keet`). Words of 4 letters or fewer cannot use it, because one letter would already turn ordinary words into the entry; 5–7 letters allow one difference and 8 or more allow two (insertion, deletion, substitution or swapped neighbors). Words are never joined across punctuation.
 - **Also replace**: words or phrases the model hears differently, such as `cloud code` for “Claude Code”, matched exactly ignoring case.
-- **Never change**: words or phrases the entry leaves as heard.
+- **Never change**: words or phrases the entry leaves as heard. The entry changes no word inside them, even when a single word of a phrase would match.
 
 When entries compete for the same words, exact matches win over similar ones, then the longer phrase, then the closer spelling. A word that is itself an entry's spelling is never changed into another entry, and each word is changed at most once, so one fix never triggers another. A spelling or phrase can belong to only one entry; Movo rejects a clash and names the entry that already has it.
 

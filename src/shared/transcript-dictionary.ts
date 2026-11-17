@@ -147,19 +147,29 @@ function findDictionaryMatches(
     firstWord + wordCount <= words.length &&
     joinsNext.slice(firstWord, firstWord + wordCount - 1).every(Boolean);
 
+  const occurrences = (pattern: readonly string[]) =>
+    keys.flatMap((_, firstWord) =>
+      firstWord + pattern.length <= words.length &&
+      pattern.every((key, offset) => keys[firstWord + offset] === key)
+        ? [firstWord]
+        : [],
+    );
+
   const candidates: Candidate[] = entries.flatMap((entry, index) => {
     const replacement = wordTokens(entry.spelling);
-    const protectedKeys = new Set(entry.neverChange.map(phraseKey));
+    const kept = new Uint8Array(words.length);
+    for (const exception of entry.neverChange) {
+      const pattern = wordTokens(exception).map(matchKey);
+      for (const firstWord of occurrences(pattern))
+        kept.fill(1, firstWord, firstWord + pattern.length);
+    }
     const found: Candidate[] = [];
     const exactPhrases = [entry.spelling, ...entry.alsoReplace].map((phrase) =>
       wordTokens(phrase).map(matchKey),
     );
     for (const pattern of exactPhrases)
-      for (let firstWord = 0; firstWord + pattern.length <= words.length; firstWord++)
-        if (
-          joined(firstWord, pattern.length) &&
-          pattern.every((key, offset) => keys[firstWord + offset] === key)
-        )
+      for (const firstWord of occurrences(pattern))
+        if (joined(firstWord, pattern.length))
           found.push({
             entry: index,
             firstWord,
@@ -199,7 +209,10 @@ function findDictionaryMatches(
         }
     }
     return found.filter(
-      (candidate) => !protectedKeys.has(windowKey(candidate.firstWord, candidate.wordCount)),
+      (candidate) =>
+        !kept
+          .subarray(candidate.firstWord, candidate.firstWord + candidate.wordCount)
+          .some(Boolean),
     );
   });
 

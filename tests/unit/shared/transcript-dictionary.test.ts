@@ -75,6 +75,16 @@ describe("dictionary matching", () => {
     ).toBe("Parakeet sang with two parakeets.");
   });
 
+  it("never changes any word inside a listed exception phrase", () => {
+    const parakeet = entry("Parakeet", { neverChange: ["parakit bird"] });
+    expect(fixed("a parakit bird and a parakit", [parakeet])).toBe("a parakit bird and a Parakeet");
+    expect(
+      fixed("open cloud code tools", [
+        entry("Claude Code", { alsoReplace: ["cloud code"], neverChange: ["code tools"] }),
+      ]),
+    ).toBe("open cloud code tools");
+  });
+
   it("never turns one entry's spelling into another entry", () => {
     expect(fixed("Sortformer and Sortformers", [entry("Sortformers"), entry("Sortformer")])).toBe(
       "Sortformer and Sortformers",
