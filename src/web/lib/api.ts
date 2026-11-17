@@ -16,6 +16,13 @@ import {
   type ConnectRequest,
   type Passage,
 } from "../../shared/contracts/ask.ts";
+import {
+  DictionaryList,
+  DictionaryPreview,
+  DictionarySaveResult,
+  type DictionaryPreviewRequest,
+  type DictionarySave,
+} from "../../shared/contracts/dictionary.ts";
 import { LibraryList, type LibraryQuery } from "../../shared/contracts/library.ts";
 import {
   ApiErrorResponse,
@@ -334,6 +341,42 @@ export const renameSpeaker = (id: string, rename: SpeakerRename) =>
     ),
     TranscriptionJob,
   );
+
+export const dictionaryOptions = queryOptions({
+  queryKey: ["dictionary"],
+  queryFn: ({ signal }) =>
+    readResponse(client.api.dictionary.$get({}, { init: { signal } }), DictionaryList),
+  retry: false,
+});
+export const dictionaryPreviewOptions = (request: DictionaryPreviewRequest) =>
+  queryOptions({
+    queryKey: [...dictionaryOptions.queryKey, "preview", request],
+    queryFn: ({ signal }) =>
+      readResponse(
+        client.api.dictionary.preview.$post(
+          {},
+          {
+            init: {
+              signal,
+              body: JSON.stringify(request),
+              headers: { "content-type": "application/json" },
+            },
+          },
+        ),
+        DictionaryPreview,
+      ),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+export const saveDictionaryEntry = (id: string | null, save: DictionarySave) =>
+  readResponse(
+    id === null
+      ? client.api.dictionary.$post({}, jsonBody(save))
+      : client.api.dictionary[":id"].$put({ param: { id } }, jsonBody(save)),
+    DictionarySaveResult,
+  );
+export const removeDictionaryEntry = (id: string) =>
+  readResponse(client.api.dictionary[":id"].$delete({ param: { id } }), DictionaryList);
 
 const minute = 60_000;
 export const askKey = ["ask"] as const;

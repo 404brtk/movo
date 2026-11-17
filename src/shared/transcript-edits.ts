@@ -22,12 +22,12 @@ const wordOrder = (first: TranscriptWord, second: TranscriptWord) =>
 
 const spokenBy = (speaker: number | undefined) => (speaker === undefined ? {} : { speaker });
 
-function edges(text: string) {
+export function edges(text: string) {
   const [, leading = "", core = "", trailing = ""] = edgePunctuation.exec(text) ?? [];
   return { leading, core, trailing };
 }
 
-const matchKey = (text: string) => (edges(text).core || text).toLowerCase();
+export const matchKey = (text: string) => (edges(text).core || text).toLowerCase();
 
 function retimedReplacement(
   words: readonly TranscriptWord[],
@@ -121,19 +121,43 @@ export function findWords(words: readonly TranscriptWord[], find: string) {
   return ranges;
 }
 
+export interface WordRange {
+  firstWord: number;
+  wordCount: number;
+}
+
+export function replacedTexts(
+  words: readonly TranscriptWord[],
+  { firstWord, wordCount }: WordRange,
+  replacement: readonly string[],
+) {
+  const matched = words.slice(firstWord, firstWord + wordCount);
+  const texts = keepEdgePunctuation(replacement, matched);
+  return texts.length === matched.length && texts.every((text, at) => text === matched[at]?.text)
+    ? null
+    : texts;
+}
+
+export function replaceRanges(
+  words: readonly TranscriptWord[],
+  ranges: readonly (WordRange & { replacement: readonly string[] })[],
+): TranscriptPatch {
+  return ranges.flatMap((range) => {
+    const texts = replacedTexts(words, range, range.replacement);
+    return texts ? [retimedReplacement(words, range.firstWord, range.wordCount, texts)] : [];
+  });
+}
+
 export function replaceWords(
   words: readonly TranscriptWord[],
   find: string,
   replacement: string,
 ): TranscriptPatch {
   const replacementTexts = wordTokens(replacement);
-  return findWords(words, find).flatMap(({ firstWord, wordCount }) => {
-    const matched = words.slice(firstWord, firstWord + wordCount);
-    const texts = keepEdgePunctuation(replacementTexts, matched);
-    return texts.length === matched.length && texts.every((text, at) => text === matched[at]?.text)
-      ? []
-      : [retimedReplacement(words, firstWord, wordCount, texts)];
-  });
+  return replaceRanges(
+    words,
+    findWords(words, find).map((range) => ({ ...range, replacement: replacementTexts })),
+  );
 }
 
 function respeak(

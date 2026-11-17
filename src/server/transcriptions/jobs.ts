@@ -23,8 +23,11 @@ import {
   editWords,
   invertPatch,
   mergeSpeaker,
+  replaceRanges,
   replaceWords,
 } from "../../shared/transcript-edits.ts";
+import type { DictionaryEntry } from "../../shared/contracts/dictionary.ts";
+import { dictionaryFixes } from "../../shared/transcript-dictionary.ts";
 import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
 import type { AppDatabase } from "../db/database.ts";
@@ -41,6 +44,7 @@ import {
   removeChange,
   restartHistory,
 } from "./history.ts";
+import { addFixes, applyDictionary } from "./dictionary-store.ts";
 import { queueTranscription } from "./queue.ts";
 import { transcriptionJobs, type transcriptChanges } from "./transcriptions.schema.ts";
 
@@ -179,7 +183,11 @@ export function createTranscriptions(
               );
               if (completed.changes === 0) return;
               restartHistory(transaction, job.mediaId);
-              setSearchTranscript(transaction, job.mediaId, transcript);
+              setSearchTranscript(
+                transaction,
+                job.mediaId,
+                applyDictionary(transaction, job.mediaId, transcript),
+              );
             });
           });
         }),
@@ -346,6 +354,30 @@ export function createTranscriptions(
               patch: editWords(words, request.firstWord, request.wordCount, request.text),
             }),
       ),
+    fixDictionary: (
+      id: string,
+      revision: number,
+      entries: readonly DictionaryEntry[],
+      entry: number,
+      skip: ReadonlySet<number>,
+    ) =>
+      Effect.gen(function* () {
+        const fixes: ReturnType<typeof dictionaryFixes> = [];
+        const job = yield* change(id, revision, "app", ({ words }) => {
+          fixes.push(
+            ...dictionaryFixes(words, entries).filter(
+              (fix) => fix.entry === entry && !skip.has(fix.firstWord),
+            ),
+          );
+          return Effect.succeed({
+            kind: "dictionary",
+            restoredRevision: null,
+            patch: replaceRanges(words, fixes),
+          });
+        });
+        yield* storage(() => addFixes(database, entries, fixes));
+        return { job, fixed: fixes.length };
+      }),
     replace: (id: string, request: TranscriptReplace, source: TranscriptChangeSource) =>
       change(id, request.revision, source, ({ words }) =>
         Effect.succeed({
