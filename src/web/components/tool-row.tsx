@@ -7,6 +7,7 @@ import {
   type ToolAvailability,
   type ToolInstallation,
 } from "../../shared/contracts/media-tools.ts";
+import { formatToolVersion } from "../lib/format.ts";
 import { AccentIcon } from "./accent-icon.tsx";
 import { Spinner } from "./spinner.tsx";
 import { StatusIndicator } from "./status-indicator.tsx";
@@ -24,7 +25,7 @@ function describeReadyTools(tools: Record<string, ToolAvailability>) {
     tool.state === "ready" ? [{ label, tool }] : [],
   );
   const versions = ready
-    .map(({ label, tool }) => `${label} ${tool.version.split(/[\s-]/u)[0]}`)
+    .map(({ label, tool }) => `${label} ${formatToolVersion(tool.version)}`)
     .join(" and ");
   const source = ready[0]?.tool.source;
   return source ? `${versions} · ${sourceLabels[source]}` : versions;

@@ -255,3 +255,56 @@ it("validates HTTP input, queues independently of its request and exposes cancel
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 });
+
+it("removes settled downloads from the history over HTTP and refuses active ones", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "movo-download-removal-http-"));
+  try {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const database = yield* openDatabase(join(directory, "app.sqlite"));
+          const config = { dataDirectory: directory };
+          const tools = createMediaTools(config);
+          const downloads = createDownloads(database, config, tools, {
+            preview: (value) =>
+              Effect.succeed({ url: value, title: "A public recording", durationSeconds: null }),
+            download: () => Effect.never,
+          });
+          const app = createApp(database, config, undefined, { tools, downloads });
+          const remove = (path: string, headers: Record<string, string> = {}) =>
+            app.request(`${base}${path}`, { method: "DELETE", headers });
+          const queue = async (link: string) =>
+            oneJob(await (await app.request(base, json({ links: [{ url: link }] }))).json());
+          yield* Effect.promise(async () => {
+            const first = await queue(url);
+            const active = await remove(`/${first.id}`);
+            expect(active.status).toBe(409);
+            expect(await active.json()).toEqual({
+              error: "Cancel this download before removing it from the list.",
+            });
+            expect(
+              (await remove(`/${first.id}`, { origin: "https://foreign.example" })).status,
+            ).toBe(403);
+            await app.request(`${base}/${first.id}/cancel`, { method: "POST" });
+            const removed = await remove(`/${first.id}`);
+            expect(removed.status).toBe(200);
+            expect(Schema.decodeUnknownSync(DownloadJobList)(await removed.json())).toEqual([]);
+            expect((await remove(`/${first.id}`)).status).toBe(404);
+            expect((await remove("/invalid-id")).status).toBe(404);
+
+            const cancelled = await queue("https://youtu.be/bbbbbbbbbbb");
+            const waiting = await queue("https://youtu.be/ccccccccccc");
+            await app.request(`${base}/${cancelled.id}/cancel`, { method: "POST" });
+            const cleared = await remove("");
+            expect(cleared.status).toBe(200);
+            expect(
+              Schema.decodeUnknownSync(DownloadJobList)(await cleared.json()).map((job) => job.id),
+            ).toEqual([waiting.id]);
+          });
+        }),
+      ),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});

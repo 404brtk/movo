@@ -5,6 +5,7 @@ import {
   describePreset,
   downloadProgress,
   downloadTitle,
+  unseenRetries,
 } from "../../../../src/web/lib/download-view.ts";
 
 const MiB = 1024 * 1024;
@@ -29,7 +30,7 @@ const job: DownloadJob = {
 describe("download view", () => {
   it("describes a running download with its share of the expected size", () => {
     expect(downloadTitle(job)).toBe("youtube.com/watch?v=aaaaaaaaaaa");
-    expect(describePreset(job)).toBe("Video · up to 720p");
+    expect(describePreset(job)).toBe("Video · Up to 720p");
     expect(describeDownload(job)).toEqual({
       tone: "active",
       label: `Downloading · ${(48).toLocaleString()} of ${(64).toLocaleString()} MiB`,
@@ -55,5 +56,25 @@ describe("download view", () => {
       label: "Interrupted when Movo closed",
     });
     expect(downloadProgress({ ...job, status: "failed" })).toBeNull();
+  });
+
+  it("counts failed and interrupted downloads that changed since Downloads was last seen", () => {
+    const settled = (status: DownloadJob["status"], updatedAt: number): DownloadJob => ({
+      ...job,
+      status,
+      phase: "finished",
+      updatedAt,
+    });
+    const jobs = [
+      settled("failed", 20),
+      settled("interrupted", 30),
+      settled("failed", 5),
+      settled("cancelled", 40),
+      settled("completed", 40),
+      { ...job, updatedAt: 40 },
+    ];
+    expect(unseenRetries(jobs, 10)).toBe(2);
+    expect(unseenRetries(jobs, 30)).toBe(0);
+    expect(unseenRetries(jobs, 0)).toBe(3);
   });
 });

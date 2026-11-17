@@ -218,9 +218,11 @@ export const downloadsOptions = queryOptions({
   retry: false,
 });
 
+export const downloadPreviewKey = ["download-preview"] as const;
+
 export const previewOptions = (url: string) =>
   queryOptions({
-    queryKey: ["download-preview", url],
+    queryKey: [...downloadPreviewKey, url],
     queryFn: ({ signal }) =>
       readResponse(
         client.api.downloads.preview.$post(
@@ -246,6 +248,9 @@ export const cancelDownload = (id: string) =>
   readResponse(client.api.downloads[":id"].cancel.$post({ param: { id } }), DownloadJob);
 export const retryDownload = (id: string) =>
   readResponse(client.api.downloads[":id"].retry.$post({ param: { id } }), DownloadJob);
+export const removeDownload = (id: string) =>
+  readResponse(client.api.downloads[":id"].$delete({ param: { id } }), DownloadJobList);
+export const clearDownloads = () => readResponse(client.api.downloads.$delete(), DownloadJobList);
 
 export const transcriptionOptions = (id: string) =>
   queryOptions({

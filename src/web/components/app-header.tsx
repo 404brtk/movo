@@ -1,14 +1,16 @@
-import { Link, useMatch } from "@tanstack/react-router";
+import { Link, useMatchRoute } from "@tanstack/react-router";
 import { cn } from "../lib/utils.ts";
-import { DownloadActivity, useActiveDownloads } from "./download-activity.tsx";
+import { DownloadActivity } from "./download-activity.tsx";
 import { toggleVariants } from "./ui/toggle.tsx";
 import { toggleGroupVariants } from "./ui/toggle-group.tsx";
 
 const tabClassName = cn(toggleVariants({ variant: "segmented" }), "max-sm:px-2");
 
 export function AppHeader() {
-  const activeDownloads = useActiveDownloads().length;
-  const onRecording = Boolean(useMatch({ from: "/media/$mediaId", shouldThrow: false }));
+  const matchRoute = useMatchRoute();
+  const insideLibrary = Boolean(
+    matchRoute({ to: "/media/$mediaId" }) || matchRoute({ to: "/downloads" }),
+  );
   return (
     <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:grid sm:h-14 sm:grid-cols-[1fr_auto_1fr] sm:px-6 sm:py-0">
       <Link
@@ -28,7 +30,7 @@ export function AppHeader() {
         <Link
           to="/"
           activeOptions={{ exact: true, includeSearch: false }}
-          data-pressed={onRecording ? "" : undefined}
+          data-pressed={insideLibrary ? "" : undefined}
           className={tabClassName}
         >
           Library
@@ -36,26 +38,8 @@ export function AppHeader() {
         <Link to="/ask" search={{}} className={tabClassName}>
           Ask
         </Link>
-        <Link to="/downloads" className={tabClassName}>
-          {({ isActive }) => (
-            <>
-              Downloads
-              {isActive && activeDownloads > 0 ? (
-                <>
-                  <span
-                    aria-hidden="true"
-                    className="inline-grid h-4 min-w-4 place-items-center rounded-[5px] bg-linear-to-b from-primary-from to-primary-to px-1 text-[10.5px] font-semibold text-primary-foreground tabular-nums"
-                  >
-                    {activeDownloads}
-                  </span>
-                  <span className="sr-only">, {activeDownloads} in progress</span>
-                </>
-              ) : null}
-            </>
-          )}
-        </Link>
-        <Link to="/models" className={tabClassName}>
-          Models
+        <Link to="/settings" className={tabClassName}>
+          Settings
         </Link>
       </nav>
       <DownloadActivity />

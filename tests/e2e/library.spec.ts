@@ -380,7 +380,7 @@ const listedRecording = (id: string, title: string, transcription: "none" | "don
   transcription,
 });
 
-test("starts a transcription from its row button and opens the recording from its status", async ({
+test("starts a transcription from its row menu and opens the recording from its status", async ({
   page,
 }) => {
   const fresh = randomUUID();
@@ -403,7 +403,11 @@ test("starts a transcription from its row button and opens the recording from it
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Media library" }).getByText("Not yet", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "More actions for Fresh notes", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Transcribe", exact: true }).click();
   await expect.poll(() => queued).toEqual([fresh]);
   await expect(page).toHaveURL(/\/$/u);
   const status = await page

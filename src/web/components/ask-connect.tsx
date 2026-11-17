@@ -204,7 +204,7 @@ export function AskConnect() {
         <h3 className="text-[17px]/6 font-semibold tracking-[-0.01em]">Connect a model</h3>
         <p className="mt-1 text-[13px]/5 text-pretty text-muted-foreground">
           Ask needs a model to answer with. Pick one now — you can switch in any chat, or later in
-          Models.
+          Settings.
         </p>
       </div>
       {local.isPending ? (

@@ -1,5 +1,5 @@
 import type { LibraryItem, LibraryQuery, LibrarySort } from "../../shared/contracts/library.ts";
-import { formatBytes, formatDuration, formatSourceHost } from "./format.ts";
+import { formatBytes, formatDuration } from "./format.ts";
 
 const dayInMs = 86_400_000;
 const shortMonth = new Intl.DateTimeFormat("en-US", { month: "short" });
@@ -60,7 +60,6 @@ export const canStartTranscription = (item: LibraryItem) =>
   item.fileRemovedAt === null;
 
 export function describeMedia(item: LibraryItem, { detailed }: { detailed: boolean }) {
-  const source = item.sourceUrl ? formatSourceHost(item.sourceUrl) : null;
   return [
     formatDuration(item.durationSeconds),
     detailed
@@ -69,7 +68,6 @@ export function describeMedia(item: LibraryItem, { detailed }: { detailed: boole
         : "Saved copy removed"
       : null,
     formatImportDay(item.importedAt),
-    detailed ? source : null,
   ]
     .filter(Boolean)
     .join(" · ");

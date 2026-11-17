@@ -1,6 +1,5 @@
 import { type RefObject, useState } from "react";
 import {
-  ArrowUpRight01Icon,
   CheckmarkSquare02Icon,
   Copy01Icon,
   Delete02Icon,
@@ -9,8 +8,9 @@ import {
   FileExportIcon,
   FileRemoveIcon,
   RefreshIcon,
+  SpeechToTextIcon,
 } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import type { MediaDeletion, MediaItem } from "../../shared/contracts/media.ts";
 import { mediaFileUrl, transcriptionOptions } from "../lib/api.ts";
@@ -22,6 +22,8 @@ import {
   type TranscriptionActionMutation,
 } from "../lib/transcription-actions.ts";
 import { CleanupNotice, ConfirmDialog, ReplaceEditsDialog } from "./confirm-dialog.tsx";
+import { MenuIcon } from "./menu-icon.tsx";
+import { SourceMenuItems } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
 import { TranscriptExportItems } from "./transcript-actions.tsx";
 import {
@@ -37,11 +39,8 @@ type RecordingDialog = "retranscribe" | "remove-file" | "delete";
 
 type LibraryActions = {
   onSelect: () => void;
+  onTranscribe: (() => void) | undefined;
 };
-
-function MenuIcon({ icon }: { icon: IconSvgElement }) {
-  return <HugeiconsIcon icon={icon} aria-hidden="true" className="text-muted-foreground" />;
-}
 
 function KeyHint({ children }: { children: string }) {
   return (
@@ -97,6 +96,12 @@ export function useRecordingActions({
 
   const items = (
     <>
+      {library?.onTranscribe ? (
+        <DropdownMenuItem disabled={transcribe.isPending} onClick={library.onTranscribe}>
+          <MenuIcon icon={SpeechToTextIcon} />
+          Transcribe
+        </DropdownMenuItem>
+      ) : null}
       <DropdownMenuItem aria-keyshortcuts="F2" onClick={onRename}>
         <MenuIcon icon={Edit02Icon} />
         Rename recording
@@ -140,18 +145,7 @@ export function useRecordingActions({
           Save a copy
         </DropdownMenuItem>
       ) : null}
-      {item.sourceUrl ? (
-        <DropdownMenuItem
-          render={({ children, ...props }) => (
-            <a {...props} href={item.sourceUrl ?? undefined} target="_blank" rel="noreferrer">
-              {children}
-            </a>
-          )}
-        >
-          <MenuIcon icon={ArrowUpRight01Icon} />
-          View original source
-        </DropdownMenuItem>
-      ) : null}
+      {item.sourceUrl ? <SourceMenuItems url={item.sourceUrl} /> : null}
       {canReplaceTranscript ? (
         <DropdownMenuItem
           disabled={transcribe.isPending}

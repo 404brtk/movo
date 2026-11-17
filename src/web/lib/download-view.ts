@@ -14,12 +14,17 @@ const runningLabels = {
 export const isActiveDownload = (job: DownloadJob) =>
   job.status === "queued" || job.status === "running";
 
+export const unseenRetries = (jobs: readonly DownloadJob[], seenAt: number) =>
+  jobs.filter(
+    (job) => (job.status === "failed" || job.status === "interrupted") && job.updatedAt > seenAt,
+  ).length;
+
 export const downloadTitle = (job: DownloadJob) =>
   job.title ?? job.url.replace(/^https?:\/\/(www\.)?/u, "");
 
 export function describePreset(job: DownloadJob) {
   const preset = getDownloadPreset(job.preset);
-  return `${preset.kind === "audio" ? "Audio" : "Video"} · ${preset.label.toLowerCase()}`;
+  return `${preset.kind === "audio" ? "Audio" : "Video"} · ${preset.label}`;
 }
 
 export function downloadProgress(job: DownloadJob) {

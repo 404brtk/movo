@@ -126,7 +126,7 @@ const liveBody = (text: string) =>
 const noHorizontalScroll = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
-test("connects an API key on the Models page after a rejected key and picks the default model", async ({
+test("connects an API key on the Settings page after a rejected key and picks the default model", async ({
   page,
 }) => {
   let connected = false;
@@ -151,7 +151,7 @@ test("connects an API key on the Models page after a rejected key and picks the 
     return route.fulfill({ json: saved });
   });
 
-  await page.goto("/models");
+  await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "Transcription", exact: true })).toBeVisible();
   await expect(page.getByText("No model server found")).toBeVisible();
   const anthropic = page.getByRole("listitem").filter({ hasText: "Claude models from Anthropic" });
@@ -612,7 +612,7 @@ test("names the latest failure once, beside its fix, and keeps earlier failures 
   await expect(page.getByText(rejected)).toHaveCount(1);
   await expect(page.getByText(busy)).toHaveCount(1);
   await page.getByRole("button", { name: "Update key" }).click();
-  await expect(page).toHaveURL(/\/models$/u);
+  await expect(page).toHaveURL(/\/settings$/u);
 });
 
 test("sends a queued question once and returns it to the field when sending fails", async ({

@@ -12,7 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AskRouteImport } from './routes/ask'
 import { Route as DownloadsRouteImport } from './routes/downloads'
-import { Route as ModelsRouteImport } from './routes/models'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as MediaMediaIdRouteImport } from './routes/media.$mediaId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -30,9 +30,9 @@ const DownloadsRoute = DownloadsRouteImport.update({
   path: '/downloads',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ModelsRoute = ModelsRouteImport.update({
-  id: '/models',
-  path: '/models',
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MediaMediaIdRoute = MediaMediaIdRouteImport.update({
@@ -45,14 +45,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/downloads': typeof DownloadsRoute
-  '/models': typeof ModelsRoute
+  '/settings': typeof SettingsRoute
   '/media/$mediaId': typeof MediaMediaIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/downloads': typeof DownloadsRoute
-  '/models': typeof ModelsRoute
+  '/settings': typeof SettingsRoute
   '/media/$mediaId': typeof MediaMediaIdRoute
 }
 export interface FileRoutesById {
@@ -60,22 +60,22 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/downloads': typeof DownloadsRoute
-  '/models': typeof ModelsRoute
+  '/settings': typeof SettingsRoute
   '/media/$mediaId': typeof MediaMediaIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/ask' | '/downloads' | '/models' | '/media/$mediaId'
+  fullPaths: '/' | '/ask' | '/downloads' | '/settings' | '/media/$mediaId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/ask' | '/downloads' | '/models' | '/media/$mediaId'
-  id: '__root__' | '/' | '/ask' | '/downloads' | '/models' | '/media/$mediaId'
+  to: '/' | '/ask' | '/downloads' | '/settings' | '/media/$mediaId'
+  id: '__root__' | '/' | '/ask' | '/downloads' | '/settings' | '/media/$mediaId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AskRoute: typeof AskRoute
   DownloadsRoute: typeof DownloadsRoute
-  ModelsRoute: typeof ModelsRoute
+  SettingsRoute: typeof SettingsRoute
   MediaMediaIdRoute: typeof MediaMediaIdRoute
 }
 
@@ -102,11 +102,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DownloadsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/models': {
-      id: '/models'
-      path: '/models'
-      fullPath: '/models'
-      preLoaderRoute: typeof ModelsRouteImport
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/media/$mediaId': {
@@ -123,7 +123,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AskRoute: AskRoute,
   DownloadsRoute: DownloadsRoute,
-  ModelsRoute: ModelsRoute,
+  SettingsRoute: SettingsRoute,
   MediaMediaIdRoute: MediaMediaIdRoute,
 }
 export const routeTree = rootRouteImport

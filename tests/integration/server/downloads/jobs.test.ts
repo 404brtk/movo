@@ -243,6 +243,107 @@ describe("persistent download jobs", () => {
     );
   });
 
+  it("removes settled jobs with their staging files, keeps active ones and the history it cannot clean", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
+      Effect.gen(function* () {
+        let release: (() => Promise<void>) | undefined;
+        yield* Effect.acquireRelease(Effect.void, () =>
+          Effect.promise(async () => {
+            await release?.();
+          }),
+        );
+        const tools = createMediaTools({ dataDirectory: directory });
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download: fixtureDownload,
+        });
+        const first = yield* jobs.enqueue(firstUrl);
+        const refused = yield* Effect.result(jobs.remove(first.id));
+        expect(Result.isFailure(refused) && refused.failure).toMatchObject({
+          reason: "conflict",
+          message: "Cancel this download before removing it from the list.",
+        });
+        yield* jobs.cancel(first.id);
+        const staging = join(directory, "downloads", first.id);
+        yield* Effect.promise(async () => {
+          await mkdir(staging, { recursive: true });
+          await writeFile(join(staging, "media.part"), "partial bytes");
+        });
+        expect(yield* jobs.remove(first.id)).toEqual([]);
+        expect(yield* Effect.promise(() => readdir(join(directory, "downloads")))).toEqual([]);
+
+        const queued = yield* jobs.enqueue(secondUrl);
+        const failed = yield* jobs.enqueue(firstUrl, "audio");
+        const locked = yield* jobs.enqueue(firstUrl, "video-720p");
+        for (const job of [failed, locked])
+          database
+            .update(downloadJobs)
+            .set({ status: "failed", phase: "finished", error: "Source failure." })
+            .where(eq(downloadJobs.id, job.id))
+            .run();
+        const lockedStaging = join(directory, "downloads", locked.id);
+        yield* Effect.promise(() => mkdir(lockedStaging, { recursive: true }));
+        release = yield* Effect.promise(() => blockCleanup(lockedStaging));
+        const cleared = yield* Effect.result(jobs.clear());
+        expect(Result.isFailure(cleared) && cleared.failure.message).toContain(
+          "temporary download files",
+        );
+        expect((yield* jobs.list()).map((job) => job.id).toSorted()).toEqual(
+          [queued.id, locked.id].toSorted(),
+        );
+        yield* Effect.promise(release);
+        release = undefined;
+        expect((yield* jobs.clear()).map((job) => job.id)).toEqual([queued.id]);
+      }),
+    );
+  });
+
+  it("reuses the recording saved from a link and preset after its job left the history", async ({
+    signal,
+  }) => {
+    await withJobs(signal, (database, directory) =>
+      Effect.gen(function* () {
+        const tools = createMediaTools({ dataDirectory: directory });
+        let downloads = 0;
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download: (url, staging, update, preset) => {
+            downloads++;
+            return fixtureDownload(url, staging, update, preset);
+          },
+        });
+        const worker = yield* jobs.start();
+        const original = yield* jobs.enqueue(firstUrl, "audio");
+        yield* waitFor(jobs, original.id, "completed");
+        const mediaId = (yield* jobs.get(original.id)).mediaId;
+        expect(yield* jobs.preview(firstUrl)).toMatchObject({
+          url: firstUrl,
+          saved: [{ preset: "audio", mediaId }],
+        });
+        expect(yield* jobs.remove(original.id)).toEqual([]);
+
+        const again = yield* jobs.enqueue(firstUrl, "audio");
+        expect(again).toMatchObject({
+          status: "completed",
+          phase: "finished",
+          mediaId,
+          title: "A controlled source recording",
+        });
+        expect(again.id).not.toBe(original.id);
+        const video = yield* jobs.enqueue(firstUrl, "video-720p");
+        expect(video.status).toBe("queued");
+        yield* waitFor(jobs, video.id, "completed");
+        expect(downloads).toBe(2);
+        expect(
+          (yield* jobs.preview(firstUrl)).saved.map((saved) => saved.preset).toSorted(),
+        ).toEqual(["audio", "video-720p"]);
+        yield* Fiber.interrupt(worker);
+      }),
+    );
+  });
+
   it("starts with uncleared terminal jobs and clears their cleanup warning after recovery", async ({
     signal,
   }) => {
@@ -658,7 +759,12 @@ describe("persistent download jobs", () => {
           await writeFile(join(staging, "source.info.json"), "temporary metadata");
         });
         const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
-        const media = yield* library.adoptDownload(path, "Already saved", firstUrl, job.id);
+        const media = yield* library.adoptDownload(
+          path,
+          "Already saved",
+          { url: firstUrl, preset: job.preset },
+          job.id,
+        );
         database
           .update(downloadJobs)
           .set({ status: "running", phase: "saving", ownerPid: null })

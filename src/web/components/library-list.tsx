@@ -19,7 +19,7 @@ export function LibraryList({ items, sort }: { items: readonly LibraryItem[]; so
           <ul className="-mx-2.5">
             {group.items.map((item) => (
               <li key={item.id}>
-                <LibraryRow item={item} detailed offerTranscribe className="h-15" />
+                <LibraryRow item={item} detailed className="h-15" />
               </li>
             ))}
           </ul>

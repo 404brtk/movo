@@ -50,7 +50,7 @@ function createModel(cacheDirectory: string, definition: ModelDefinition) {
           if (path === null)
             throw new MediaError(
               "unavailable",
-              `Download ${definition.name} from Models before transcribing a recording.`,
+              `Download ${definition.name} from Settings before transcribing a recording.`,
             );
           return path;
         },

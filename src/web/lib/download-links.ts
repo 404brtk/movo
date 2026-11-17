@@ -69,7 +69,7 @@ export type LinkSkip =
 export function linkSkip(
   row: LinkRow,
   preset: DownloadPreset,
-  preview: { error: Error | null },
+  preview: { error: Error | null; data?: DownloadPreview | undefined },
   jobs: readonly DownloadJob[],
 ): LinkSkip | null {
   if (!row.source)
@@ -82,14 +82,17 @@ export function linkSkip(
     return { reason: "unavailable", tone: "warning", message: preview.error.message };
   const url = row.source.url;
   const existing = jobs.find((job) => job.url === url && job.preset === preset);
-  if (!existing || retryableDownloadStates.has(existing.status)) return null;
-  if (existing.status === "completed" && existing.mediaId)
+  const savedId =
+    preview.data?.saved.find((saved) => saved.preset === preset)?.mediaId ??
+    (existing?.status === "completed" ? existing.mediaId : null);
+  if (savedId)
     return {
       reason: "saved",
       tone: "idle",
       message: `Already saved as ${getDownloadPreset(preset).kind}`,
-      mediaId: existing.mediaId,
+      mediaId: savedId,
     };
+  if (!existing || retryableDownloadStates.has(existing.status)) return null;
   return { reason: "queued", tone: "idle", message: "Already in Downloads" };
 }
 

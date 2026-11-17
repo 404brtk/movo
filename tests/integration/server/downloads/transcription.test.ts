@@ -225,7 +225,12 @@ it("recovers transcription when the media was saved before download completion w
       yield* Effect.promise(() => mkdir(staging, { recursive: true }));
       const result = yield* downloader.download(url, staging);
       const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
-      yield* library.adoptDownload(result.path, result.preview.title, url, job.id);
+      yield* library.adoptDownload(
+        result.path,
+        result.preview.title,
+        { url, preset: job.preset },
+        job.id,
+      );
       database
         .update(downloadJobs)
         .set({ status: "running", phase: "saving" })

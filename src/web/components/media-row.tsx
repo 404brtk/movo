@@ -27,7 +27,7 @@ export function MediaRow({
     <div
       {...props}
       className={cn(
-        "group relative flex items-center gap-3.5 rounded-[10px] px-2.5 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring/50",
+        "group relative flex items-center gap-3.5 rounded-[10px] px-2.5 has-[[data-row-link]:focus-visible]:ring-2 has-[[data-row-link]:focus-visible]:ring-ring/50",
         className,
       )}
     >

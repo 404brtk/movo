@@ -45,13 +45,13 @@ The recognized file is:
     parakeet-ultra-Q8_0.gguf
 ```
 
-When the Models page first discovers this file, Movo verifies its exact length and SHA-256, then parses the GGUF metadata using the official [`@huggingface/gguf` parser](https://huggingface.co/docs/huggingface.js/gguf/README) and requires the Parakeet architecture. Checks are coalesced in memory and reused while file identity, size, modification time and change time remain unchanged. Restarting the server or changing the file causes verification again. Opening the application never downloads weights.
+When the Settings page first discovers this file, Movo verifies its exact length and SHA-256, then parses the GGUF metadata using the official [`@huggingface/gguf` parser](https://huggingface.co/docs/huggingface.js/gguf/README) and requires the Parakeet architecture. Checks are coalesced in memory and reused while file identity, size, modification time and change time remain unchanged. Restarting the server or changing the file causes verification again. Opening the application never downloads weights.
 
 A failed check shows **Needs repair**. Movo does not overwrite or delete a shared model to repair it. Repair or remove the affected file through your cache-management tool, then choose **Check again**. A missing file can be downloaded explicitly.
 
 ## Explicit downloads
 
-Open **Models** and choose **Download model**. The backend continues while you navigate, reload or close the browser; keep the Node server running.
+Open **Settings** and choose **Download model** under **Transcription**. The backend continues while you navigate, reload or close the browser; keep the Node server running.
 
 Each transfer streams to its own randomly named `.movo-*.partial` file beside the destination. It rejects excess data and checks exact length and SHA-256 before publication. GGUF metadata is checked before publication as well.
 

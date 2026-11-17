@@ -99,4 +99,27 @@ describe("link options", () => {
     );
     expect(video && linkSkip(video, "video-1080p", none, [job({ status: "failed" })])).toBe(null);
   });
+
+  it("skips a link the library already has in that preset, even without its download", () => {
+    const mediaId = "0b2f7c5e-3d1a-4f6b-8e9c-1a2b3c4d5e6f";
+    const preview = {
+      error: null,
+      data: {
+        url: youtube,
+        title: "A saved talk",
+        durationSeconds: 60,
+        saved: [{ preset: "audio" as const, mediaId }],
+      },
+    };
+    expect(video && linkSkip({ ...video, kind: "audio" }, "audio", preview, [])).toEqual({
+      reason: "saved",
+      tone: "idle",
+      message: "Already saved as audio",
+      mediaId,
+    });
+    expect(video && linkSkip(video, "video-1080p", preview, [])).toBe(null);
+    expect(
+      video && linkSkip(video, "audio", preview, [job({ preset: "audio", status: "failed" })]),
+    ).toMatchObject({ reason: "saved", mediaId });
+  });
 });

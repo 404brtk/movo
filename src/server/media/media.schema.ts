@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
-import { check, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { check, index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import type { DownloadPreset } from "../../shared/contracts/downloads.ts";
 import { mediaContentTypes } from "../../shared/contracts/media.ts";
 
 export const mediaItems = sqliteTable(
@@ -14,10 +15,12 @@ export const mediaItems = sqliteTable(
     durationSeconds: real("duration_seconds").notNull(),
     importedAt: integer("imported_at").notNull(),
     sourceUrl: text("source_url"),
+    sourcePreset: text("source_preset").$type<DownloadPreset>(),
     fileRemovedAt: integer("file_removed_at"),
   },
   (table) => [
     check("media_positive_size", sql`${table.byteSize} > 0`),
     check("media_positive_duration", sql`${table.durationSeconds} > 0`),
+    index("media_source").on(table.sourceUrl, table.sourcePreset),
   ],
 );

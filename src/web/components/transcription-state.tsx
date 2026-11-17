@@ -78,10 +78,10 @@ export function NoTranscriptCard({
               <span className="text-xs text-muted-foreground">{model.name} · installed</span>
             ) : (
               <Link
-                to="/models"
+                to="/settings"
                 className="rounded-sm text-xs text-muted-foreground underline decoration-border-strong underline-offset-3 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
-                Download {model.name} in Models
+                Download {model.name} in Settings
               </Link>
             )
           ) : null}

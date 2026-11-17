@@ -12,11 +12,13 @@ import { canStartTranscription, describeMedia } from "../lib/library-view.ts";
 import { useRenameRecording } from "../lib/recording-mutations.ts";
 import { copyFailureMessage } from "../lib/transcript-sharing.ts";
 import { useTranscriptionAction } from "../lib/transcription-actions.ts";
+import { rowMenuNeighbourClassName, rowMenuTriggerClassName } from "../lib/row-menu.ts";
 import { cn } from "../lib/utils.ts";
 import { focusRecordingRow, useLibraryManagement } from "./library-management.tsx";
 import { MediaRow } from "./media-row.tsx";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
 import { useRecordingActions } from "./recording-actions.tsx";
+import { SourceLink } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
 import { TranscriptionStatus } from "./transcription-status.tsx";
 import { Button } from "./ui/button.tsx";
@@ -161,13 +163,11 @@ export function LibraryRow({
   item,
   title,
   detailed,
-  offerTranscribe,
   className,
 }: {
   item: LibraryItem;
   title?: ReactNode;
   detailed: boolean;
-  offerTranscribe: boolean;
   className?: string;
 }) {
   const management = useLibraryManagement();
@@ -187,9 +187,13 @@ export function LibraryRow({
       if (deletion.cleanupError) management.reportCleanup(deletion.cleanupError);
       focusRecordingRow(next);
     },
-    library: { onSelect: () => management.select(item.id) },
+    library: {
+      onSelect: () => management.select(item.id),
+      onTranscribe: canStartTranscription(item)
+        ? () => transcribe.mutate(item.transcription === "stopped" ? "retry" : "start")
+        : undefined,
+    },
   });
-  const offerTranscribeButton = offerTranscribe && canStartTranscription(item);
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.target !== rowLink.current) return;
@@ -221,7 +225,15 @@ export function LibraryRow({
       Transcript copied
     </output>
   ) : (
-    describeMedia(item, { detailed })
+    <>
+      {describeMedia(item, { detailed })}
+      {detailed && item.sourceUrl ? (
+        <>
+          {" · "}
+          <SourceLink url={item.sourceUrl} />
+        </>
+      ) : null}
+    </>
   );
 
   return (
@@ -256,28 +268,22 @@ export function LibraryRow({
               }
               status={
                 <>
-                  {offerTranscribeButton ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      aria-busy={transcribe.isPending}
-                      disabled={transcribe.isPending}
-                      onClick={() =>
-                        transcribe.mutate(item.transcription === "stopped" ? "retry" : "start")
-                      }
-                    >
-                      {transcribe.isPending ? <Spinner /> : null}
-                      {transcribe.isPending ? "Starting…" : "Transcribe"}
-                    </Button>
-                  ) : (
-                    <TranscriptionStatus transcription={item.transcription} />
-                  )}
+                  <span className={rowMenuNeighbourClassName}>
+                    {transcribe.isPending ? (
+                      <output className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-primary-strong">
+                        <Spinner />
+                        Starting…
+                      </output>
+                    ) : (
+                      <TranscriptionStatus transcription={item.transcription} />
+                    )}
+                  </span>
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={<Button variant="ghost" size="icon-sm" />}
                       aria-label={`More actions for ${item.title}`}
                       disabled={actions.busy}
-                      className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-has-[a:focus-visible]:opacity-100 group-data-popup-open:opacity-100 group-data-selected:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100 pointer-coarse:opacity-100"
+                      className={rowMenuTriggerClassName}
                     >
                       <HugeiconsIcon icon={MoreHorizontalIcon} aria-hidden="true" />
                     </DropdownMenuTrigger>

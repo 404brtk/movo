@@ -6,10 +6,11 @@ import { CleanupNotice } from "./confirm-dialog.tsx";
 type LibraryManagementValue = {
   selected: ReadonlySet<string>;
   selectedItems: readonly LibraryItem[];
+  total: number;
   allSelected: boolean;
   toggle: (id: string, extend: boolean) => void;
   select: (id: string) => void;
-  setAll: (checked: boolean) => void;
+  selectAll: () => void;
   deselect: (ids: readonly string[]) => void;
   clear: () => void;
   reportCleanup: (message: string) => void;
@@ -63,11 +64,12 @@ export function LibraryManagement({
   const value: LibraryManagementValue = {
     selected,
     selectedItems,
+    total: order.length,
     allSelected: selecting && selected.size === order.length,
     toggle: (id, extend) =>
       update(toggleSelection(selected, order, id, current.anchor, extend), id),
     select: (id) => update(new Set([...selected, id]), id),
-    setAll: (checked) => update(checked ? new Set(order) : noSelection, null),
+    selectAll: () => update(new Set(order), null),
     deselect: (ids) =>
       update(new Set([...selected].filter((id) => !ids.includes(id))), current.anchor),
     clear,

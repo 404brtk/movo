@@ -251,7 +251,7 @@ export function ModelPicker({
         </div>
         {field ? null : (
           <Link
-            to="/models"
+            to="/settings"
             className="flex items-center gap-2 border-t px-3.5 py-2.5 text-[13px] text-muted-foreground hover:text-foreground"
           >
             <HugeiconsIcon icon={Settings01Icon} size={15} aria-hidden="true" />

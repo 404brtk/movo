@@ -3,7 +3,7 @@ import { delimiter, dirname, join } from "node:path";
 import { Effect, Schema } from "effect";
 import {
   defaultDownloadPreset,
-  DownloadPreview,
+  DownloadSourceDetails,
   getDownloadPreset,
   type DownloadPreset,
 } from "../../shared/contracts/downloads.ts";
@@ -226,7 +226,7 @@ export function createMediaDownloader(
               "unsupported",
               "The source returned metadata for a different video.",
             );
-          return Schema.decodeUnknownSync(DownloadPreview)({
+          return Schema.decodeUnknownSync(DownloadSourceDetails)({
             url,
             title: metadata.title,
             durationSeconds: metadata.duration ?? null,

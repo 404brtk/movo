@@ -1,17 +1,18 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft02Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useLocation } from "@tanstack/react-router";
+import { createFileRoute, useLocation } from "@tanstack/react-router";
 import { Schema } from "effect";
 import { maxSearchLength } from "../../shared/contracts/library.ts";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import { AskButton, AskPanel, useAskPanelOpen } from "../components/ask-panel.tsx";
+import { BackToLibrary } from "../components/back-to-library.tsx";
 import { MediaPlayer } from "../components/media-player.tsx";
 import { NotFound } from "../components/not-found.tsx";
 import { RecordingMenu } from "../components/recording-menu.tsx";
 import { TranscriptionPanel } from "../components/transcription-panel.tsx";
-import { Button, buttonVariants } from "../components/ui/button.tsx";
+import { Button } from "../components/ui/button.tsx";
 import { Skeleton } from "../components/ui/skeleton.tsx";
 import { ApiError, mediaItemOptions, transcriptionOptions } from "../lib/api.ts";
 import { formatBytes, formatDuration } from "../lib/format.ts";
@@ -163,14 +164,7 @@ function MediaDetail() {
         className={`mx-auto max-w-[720px] px-5 pt-5 ${item?.kind === "audio" && item.fileRemovedAt === null ? "pb-32" : "pb-16"}`}
       >
         <div className="-mr-1.5 -ml-2.5 flex items-center justify-between">
-          <Link
-            to="/"
-            aria-label="Back to library"
-            className={buttonVariants({ variant: "ghost", size: "sm" })}
-          >
-            <HugeiconsIcon icon={ArrowLeft02Icon} data-icon="inline-start" aria-hidden="true" />
-            Library
-          </Link>
+          <BackToLibrary />
           {item ? (
             <div className="flex items-center gap-1.5">
               {transcriptShown ? null : askButton}

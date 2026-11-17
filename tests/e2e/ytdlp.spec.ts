@@ -27,7 +27,9 @@ test("installs yt-dlp before checking a link and returns focus after setup", asy
   });
   await page.route("**/api/downloads/preview", async (route) => {
     previews++;
-    await route.fulfill({ json: { url, title: "A source recording", durationSeconds: 2 } });
+    await route.fulfill({
+      json: { url, title: "A source recording", durationSeconds: 2, saved: [] },
+    });
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Download from link", exact: true }).click();

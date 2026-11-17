@@ -22,10 +22,10 @@ test("opens the real model catalog without starting installation", async ({ page
       writes.push(request.url());
   });
   await page.goto("/");
-  await page.getByRole("link", { name: "Models", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible();
-  const transcription = page.getByRole("region", { name: "Parakeet Ultra", exact: true });
-  const speakers = page.getByRole("region", { name: "Sortformer Speakers", exact: true });
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  const transcription = page.getByRole("listitem", { name: "Parakeet Ultra", exact: true });
+  const speakers = page.getByRole("listitem", { name: "Sortformer Speakers", exact: true });
   for (const card of [transcription, speakers]) {
     await expect(card.getByRole("button", { name: "Download model", exact: true })).toBeEnabled();
     await expect(card.getByText("Not installed", { exact: true })).toBeVisible();
@@ -34,7 +34,8 @@ test("opens the real model catalog without starting installation", async ({ page
   await expect(speakers).toContainText(
     "Optional. Download it to label who speaks in new transcripts.",
   );
-  await expect(speakers).toContainText("1 language");
+  await speakers.getByRole("button", { name: "Sortformer Speakers details", exact: true }).click();
+  await expect(speakers.getByText("English", { exact: true })).toBeVisible();
   expect(writes).toEqual([]);
 });
 
@@ -64,7 +65,7 @@ test("requires an explicit download, retries a failed request and discovers inst
       await route.fulfill({ status: 202, json: model });
     }
   });
-  await page.goto("/models");
+  await page.goto("/settings");
   await expect(page.getByRole("button", { name: "Download model", exact: true })).toBeEnabled();
   expect(attempts).toBe(0);
   await page.getByRole("button", { name: "Download model", exact: true }).click();
@@ -80,7 +81,7 @@ test("requires an explicit download, retries a failed request and discovers inst
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Library", exact: true })
     .click();
-  await page.getByRole("link", { name: "Models", exact: true }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("progressbar", { name: "Parakeet Ultra download" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("progressbar", { name: "Parakeet Ultra download" })).toBeVisible();
@@ -100,8 +101,13 @@ test("requires an explicit download, retries a failed request and discovers inst
     message:
       "The cached model failed its SHA-256 integrity check. Repair it in your Hugging Face cache, then check again.",
   };
+  await page.getByRole("button", { name: "Parakeet Ultra details", exact: true }).click();
+  await expect(
+    page.getByText("Verified in your Hugging Face cache", { exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Check again", exact: true }).click();
   await expect(page.getByText("Needs repair", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Check again", exact: true })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Download model", exact: true })).toHaveCount(0);
   await expect(page.getByRole("alert")).toContainText("Repair it in your Hugging Face cache");
   await expect(page.getByRole("status")).toHaveText("Needs repair");
@@ -124,7 +130,7 @@ test("cancels verification and reports a failed verification with an explicit re
     await route.fulfill({ json: model });
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/models");
+  await page.goto("/settings");
   await expect(page.getByRole("status")).toHaveText("Verifying download…");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Download cancelled.");
@@ -140,15 +146,15 @@ test("cancels verification and reports a failed verification with an explicit re
   await page.reload();
   await expect(page.getByRole("alert")).toHaveText("The model failed its integrity check.");
   await expect(page.getByRole("button", { name: "Retry download", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "Supported languages", exact: true }).click();
+  await page.getByRole("button", { name: "Parakeet Ultra details", exact: true }).click();
   await expect(page.getByText("English, Polish", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
-  await page.screenshot({ path: testInfo.outputPath("models-mobile.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("settings-mobile.png"), fullPage: true });
 });
 
-test("lists the media tools and opens yt-dlp setup from the models page", async ({ page }) => {
+test("lists the media tools and opens yt-dlp setup from the settings page", async ({ page }) => {
   await page.route("**/api/models", (route) => route.fulfill({ json: [initial] }));
   await page.route("**/api/media-tools", (route) =>
     route.fulfill({
@@ -177,8 +183,8 @@ test("lists the media tools and opens yt-dlp setup from the models page", async 
           },
         }),
   );
-  await page.goto("/models");
-  const tools = page.getByRole("list", { name: "Tools" });
+  await page.goto("/settings");
+  const tools = page.getByRole("region", { name: "Adding recordings" });
   await expect(tools.getByRole("listitem").first()).toContainText(
     "FFprobe 7.1 and FFmpeg 7.1 · private copy",
   );

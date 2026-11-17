@@ -61,9 +61,9 @@ describe("library import dates", () => {
 });
 
 describe("library item details", () => {
-  it("lists duration, size, day and source when detailed", () => {
+  it("lists duration, size and day when detailed", () => {
     expect(describeMedia(item, { detailed: true })).toMatch(
-      /^1:21:08 · 74 MiB · \d+ \w+( \d{4})? · youtube\.com$/u,
+      /^1:21:08 · 74 MiB · \d+ \w+( \d{4})?$/u,
     );
   });
 
