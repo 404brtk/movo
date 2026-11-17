@@ -7,6 +7,7 @@ import {
   allowsSimilar,
   dictionaryFixes,
   dictionaryKeys,
+  dictionaryMightFix,
 } from "../../../src/shared/transcript-dictionary.ts";
 import { applyPatch, replaceRanges } from "../../../src/shared/transcript-edits.ts";
 import { timedWords } from "../../helpers/timed-words.ts";
@@ -120,6 +121,19 @@ describe("dictionary matching", () => {
     expect(
       fixed("alpha", [entry("Alphabet", { alsoReplace: ["alpha"] }), entry("Alphabets")]),
     ).toBe("Alphabet");
+  });
+
+  it("sees fixes an entry can make only once another entry takes competing words", () => {
+    const words = timedWords(0, 4000, "A Parakeet A Parakeet");
+    const draft = entry("A Parakeet", { similar: true });
+    expect(dictionaryFixes(words, [draft])).toEqual([]);
+    expect(
+      dictionaryFixes(words, [entry("Other", { alsoReplace: ["a parakeet a"] }), draft]).map(
+        (fix) => fix.entry,
+      ),
+    ).toEqual([0, 1]);
+    expect(dictionaryMightFix(words, draft)).toBe(true);
+    expect(dictionaryMightFix(timedWords(0, 1000, "Movo is ready"), entry("Movo"))).toBe(false);
   });
 
   it("reports only words that change", () => {

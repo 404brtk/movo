@@ -17,7 +17,11 @@ import {
   type TranscriptionJob,
   type TranscriptWord,
 } from "../../shared/contracts/transcriptions.ts";
-import { dictionaryFixes, findDictionaryProblem } from "../../shared/transcript-dictionary.ts";
+import {
+  dictionaryFixes,
+  dictionaryMightFix,
+  findDictionaryProblem,
+} from "../../shared/transcript-dictionary.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError } from "../media/error.ts";
 import { mediaItems } from "../media/media.schema.ts";
@@ -99,7 +103,7 @@ export function createDictionary(
             .flatMap((row): DictionaryPreviewRecording[] => {
               if (!row.transcript || activeStates.includes(row.status)) return [];
               const { words } = Schema.decodeUnknownSync(Transcript)(row.transcript);
-              if (dictionaryFixes(words, [request.draft]).length === 0) return [];
+              if (!dictionaryMightFix(words, request.draft)) return [];
               const fixes = dictionaryFixes(words, entries).filter(
                 (fix) => fix.entry === draftIndex,
               );

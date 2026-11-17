@@ -132,10 +132,10 @@ function distanceWithin(first: string, second: string, limit: number) {
   return previous[second.length] ?? limit + 1;
 }
 
-function findDictionaryMatches(
+function dictionaryCandidates(
   words: readonly TranscriptWord[],
   entries: readonly DictionaryDraft[],
-): DictionaryMatch[] {
+): Candidate[] {
   const keys = words.map((word) => matchKey(word.text));
   const folded = words.map((word) => letters(edges(word.text).core || word.text));
   const joinsNext = words.map(
@@ -163,7 +163,7 @@ function findDictionaryMatches(
     return found;
   };
 
-  const candidates: Candidate[] = entries.flatMap((entry, index) => {
+  return entries.flatMap((entry, index) => {
     const replacement = wordTokens(entry.spelling);
     const order = phraseKey(entry.spelling);
     const kept = new Uint8Array(words.length);
@@ -226,9 +226,14 @@ function findDictionaryMatches(
           .some(Boolean),
     );
   });
+}
 
+function findDictionaryMatches(
+  words: readonly TranscriptWord[],
+  entries: readonly DictionaryDraft[],
+): DictionaryMatch[] {
   const taken = new Uint8Array(words.length);
-  return candidates
+  return dictionaryCandidates(words, entries)
     .toSorted(
       (first, second) =>
         first.exactness - second.exactness ||
@@ -252,6 +257,11 @@ function findDictionaryMatches(
       replacement,
     }));
 }
+
+export const dictionaryMightFix = (words: readonly TranscriptWord[], entry: DictionaryDraft) =>
+  dictionaryCandidates(words, [entry]).some(
+    (candidate) => replacedTexts(words, candidate, candidate.replacement) !== null,
+  );
 
 export function dictionaryFixes(
   words: readonly TranscriptWord[],
