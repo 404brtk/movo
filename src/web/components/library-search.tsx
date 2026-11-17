@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { maxSearchLength, type LibraryQuery } from "../../shared/contracts/library.ts";
+import { useSearchDraft } from "../lib/search-draft.ts";
 import {
   InputGroup,
   InputGroupAddon,
@@ -10,25 +11,15 @@ import {
   InputGroupInput,
 } from "./ui/input-group.tsx";
 
-const searchDelayMs = 250;
-
 export function LibrarySearch({ search }: { search: LibraryQuery }) {
   const navigate = useNavigate({ from: "/" });
   const input = useRef<HTMLInputElement>(null);
-  const [draft, setDraft] = useState(search.q ?? "");
-  const [appliedQuery, setAppliedQuery] = useState(search.q);
-  if (search.q !== appliedQuery) {
-    setAppliedQuery(search.q);
-    if (draft.trim() !== (search.q ?? "")) setDraft(search.q ?? "");
-  }
-  useEffect(() => {
-    const q = draft.trim() || undefined;
-    const timer = setTimeout(() => {
-      if (q !== search.q)
-        void navigate({ search: (previous) => ({ ...previous, q }), replace: true });
-    }, searchDelayMs);
-    return () => clearTimeout(timer);
-  }, [draft, search.q, navigate]);
+  const applyQuery = useCallback(
+    (q: string | undefined) =>
+      void navigate({ search: (previous) => ({ ...previous, q }), replace: true }),
+    [navigate],
+  );
+  const [draft, setDraft] = useSearchDraft(search.q, applyQuery);
   return (
     <InputGroup className="mt-[22px]">
       <InputGroupAddon className="pr-1 pl-3">
@@ -52,10 +43,7 @@ export function LibrarySearch({ search }: { search: LibraryQuery }) {
             aria-label="Clear search"
             onClick={() => {
               setDraft("");
-              void navigate({
-                search: (previous) => ({ ...previous, q: undefined }),
-                replace: true,
-              });
+              applyQuery(undefined);
               input.current?.focus();
             }}
           >

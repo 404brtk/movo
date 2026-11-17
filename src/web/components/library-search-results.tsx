@@ -1,12 +1,14 @@
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Link } from "@tanstack/react-router";
 import type { LibraryItem } from "../../shared/contracts/library.ts";
 import { formatDuration } from "../lib/format.ts";
 import { HighlightedText } from "./highlighted-text.tsx";
 import { LibraryRow } from "./library-row.tsx";
 
-function SearchResult({ item }: { item: LibraryItem }) {
+function SearchResult({ item, query }: { item: LibraryItem; query: string }) {
   const passages = item.match?.passages ?? [];
-  const hidden = (item.match?.passageCount ?? 0) - passages.length;
+  const moreInRecording = (item.match?.everyWordPassageCount ?? 0) > passages.length;
   const untranscribed = item.transcription === "none" || item.transcription === "stopped";
   return (
     <li>
@@ -35,6 +37,17 @@ function SearchResult({ item }: { item: LibraryItem }) {
                   {formatDuration(passage.startMs / 1000)}
                 </span>
                 <span className="wrap-anywhere">
+                  {passage.speaker ? (
+                    <>
+                      <span className="font-semibold">
+                        <HighlightedText
+                          text={passage.speaker.name}
+                          ranges={passage.speaker.ranges}
+                        />
+                      </span>
+                      {": "}
+                    </>
+                  ) : null}
                   <HighlightedText text={passage.text} ranges={passage.ranges} />
                 </span>
               </Link>
@@ -42,21 +55,33 @@ function SearchResult({ item }: { item: LibraryItem }) {
           ))}
         </ol>
       ) : null}
-      {hidden > 0 ? (
-        <p className="pt-0.5 pl-[58px] text-xs text-muted-foreground">
-          {hidden} more {hidden === 1 ? "match" : "matches"} in this recording
-        </p>
+      {moreInRecording ? (
+        <Link
+          to="/media/$mediaId"
+          params={{ mediaId: item.id }}
+          search={{ q: query }}
+          className="ml-12 inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[12.5px] font-medium text-primary-strong hover:bg-tint focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          Search in this recording
+          <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5" aria-hidden="true" />
+        </Link>
       ) : null}
     </li>
   );
 }
 
-export function LibrarySearchResults({ items }: { items: readonly LibraryItem[] }) {
+export function LibrarySearchResults({
+  items,
+  query,
+}: {
+  items: readonly LibraryItem[];
+  query: string;
+}) {
   return (
     <section aria-label="Media library">
       <ul className="mt-5 grid grid-cols-1 gap-1.5">
         {items.map((item) => (
-          <SearchResult key={item.id} item={item} />
+          <SearchResult key={item.id} item={item} query={query} />
         ))}
       </ul>
     </section>

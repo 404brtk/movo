@@ -16,6 +16,7 @@ import {
   createChat,
   defaultModelOptions,
   liveAnswerUrl,
+  mediaListKey,
   setChatModel,
   setChatScope,
   stopAnswer,
@@ -37,8 +38,9 @@ function useLiveAnswer(chatId: string | null, answering: boolean, mediaId: strin
     const source = new EventSource(liveAnswerUrl(chatId));
     const refresh = () => {
       void queryClient.invalidateQueries({ queryKey: chatOptions(chatId).queryKey });
-      if (mediaId)
-        void queryClient.invalidateQueries({ queryKey: transcriptionOptions(mediaId).queryKey });
+      if (!mediaId) return;
+      void queryClient.invalidateQueries({ queryKey: transcriptionOptions(mediaId).queryKey });
+      void queryClient.invalidateQueries({ queryKey: mediaListKey });
     };
     source.addEventListener("snapshot", (event) => {
       const snapshot = decodeJson(LiveSnapshot, event.data);

@@ -298,9 +298,9 @@ test("copies plain text and downloads UTF-8 transcripts with keyboard-accessible
     { start: 1, end: 1.8, text: "A & <b>B</b> Second line --> end." },
   ]);
   await page.setViewportSize({ width: 320, height: 700 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
 });
 
 test("keeps the recording title when downloading the export URL directly", async ({

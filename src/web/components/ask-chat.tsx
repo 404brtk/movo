@@ -28,6 +28,7 @@ import {
   chatOptions,
   connectionsOptions,
   decideApproval,
+  mediaListKey,
   restoreTranscript,
   transcriptionOptions,
 } from "../lib/api.ts";
@@ -153,8 +154,9 @@ function EditCard({
         target: editRevision(part) ?? 0,
       }),
     onSuccess: () => {
-      if (mediaId)
-        void queryClient.invalidateQueries({ queryKey: transcriptionOptions(mediaId).queryKey });
+      if (!mediaId) return;
+      void queryClient.invalidateQueries({ queryKey: transcriptionOptions(mediaId).queryKey });
+      void queryClient.invalidateQueries({ queryKey: mediaListKey });
     },
   });
   if (part.state === "failed")

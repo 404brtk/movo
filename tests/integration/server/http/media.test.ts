@@ -94,7 +94,12 @@ describe("media HTTP interface", () => {
           {
             ...item,
             transcription: "none",
-            match: { title: [{ start: 0, end: 6 }], passages: [], passageCount: 0 },
+            match: {
+              title: [{ start: 0, end: 6 }],
+              passages: [],
+              passageCount: 0,
+              everyWordPassageCount: 0,
+            },
           },
         ],
         transcribing: false,

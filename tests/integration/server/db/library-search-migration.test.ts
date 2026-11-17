@@ -71,3 +71,67 @@ it("indexes recordings and transcripts saved before library search existed at st
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+it("rebuilds an index saved before speaker names were searchable", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "movo-speaker-search-migration-"));
+  const path = join(directory, "app.sqlite");
+  const id = "33333333-3333-4333-8333-333333333333";
+  try {
+    const legacy = openLegacyDatabase(directory, path, 13);
+    try {
+      legacy
+        .prepare(
+          "insert into media_items (id, title, original_name, kind, content_type, byte_size, duration_seconds, imported_at) values (?, 'Wywiad', 'original.wav', 'audio', 'audio/wav', 100, 2, 1)",
+        )
+        .run(id);
+      legacy
+        .prepare(
+          "insert into transcription_jobs (media_id, model_id, status, phase, transcript, created_at, updated_at) values (?, 'parakeet-ultra-q8', 'completed', 'finished', ?, 1, 1)",
+        )
+        .run(
+          id,
+          JSON.stringify({
+            language: "pl",
+            words: timedWords(0, 900, "Dzień dobry.").map((word) => ({ ...word, speaker: 1 })),
+            speakers: [{ id: 1, name: "Anna" }],
+          }),
+        );
+      legacy.prepare("insert into search_index (version) values (2)").run();
+      legacy
+        .prepare(
+          "insert into media_search (media_id, title, transcript) values (?, 'wywiad', 'dzien dobry.')",
+        )
+        .run(id);
+      legacy
+        .prepare(
+          "insert into search_passages (media_id, start_ms, text, search_text) values (?, 0, 'Dzień dobry.', 'dzien dobry.')",
+        )
+        .run(id);
+    } finally {
+      legacy.close();
+    }
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const database = yield* openDatabase(path);
+          const tools = createMediaTools({ dataDirectory: directory });
+          const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+          yield* library.syncSearchIndex();
+          const [interview] = yield* library.list({ q: "anna dobry" });
+          expect(interview?.match?.passages).toEqual([
+            {
+              startMs: 0,
+              text: "Dzień dobry.",
+              ranges: [{ start: 6, end: 11 }],
+              speaker: { name: "Anna", ranges: [{ start: 0, end: 4 }] },
+            },
+          ]);
+          yield* library.remove(id);
+          expect(yield* library.list({ q: "dobry" })).toEqual([]);
+        }),
+      ),
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

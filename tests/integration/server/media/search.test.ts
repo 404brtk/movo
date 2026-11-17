@@ -114,7 +114,12 @@ it("finds titles and transcript passages regardless of case, diacritics and word
       expect(yield* library.list({ q: "LODZ" })).toEqual([
         {
           ...listedMeeting,
-          match: { title: [{ start: 0, end: 4 }], passages: [], passageCount: 0 },
+          match: {
+            title: [{ start: 0, end: 4 }],
+            passages: [],
+            passageCount: 0,
+            everyWordPassageCount: 0,
+          },
         },
       ]);
       expect(yield* library.list({ q: "zrodl budzet" })).toEqual([
@@ -133,6 +138,7 @@ it("finds titles and transcript passages regardless of case, diacritics and word
               },
             ],
             passageCount: 1,
+            everyWordPassageCount: 1,
           },
         },
       ]);
@@ -181,6 +187,89 @@ it("shows the first matching passages and counts all of them", async ({ signal }
       const [result] = yield* library.list({ q: "plan" });
       expect(result?.match?.passageCount).toBe(5);
       expect(result?.match?.passages.map((passage) => passage.startMs)).toEqual([0, 400, 800]);
+    }),
+  );
+});
+
+const spokenBy = (speaker: number, words: Transcript["words"]) =>
+  words.map((word) => ({ ...word, speaker }));
+
+it("finds passages by the names given to speakers and follows renames and merges", async ({
+  signal,
+}) => {
+  await withLibrary(signal, ({ library, review, transcriptions, transcribe }) =>
+    Effect.gen(function* () {
+      yield* transcribe(review, [
+        ...spokenBy(1, timedWords(0, 400, "Dzień dobry wszystkim.")),
+        ...spokenBy(2, timedWords(500, 900, "Budżet jest gotowy.")),
+        ...spokenBy(1, timedWords(1000, 1400, "Omówmy budżet.")),
+        ...spokenBy(3, timedWords(1500, 1900, "Zgadzam się.")),
+      ]);
+      const passagesFor = (q: string) =>
+        library.list({ q }).pipe(Effect.map(([found]) => found?.match?.passages ?? []));
+      yield* transcriptions.renameSpeaker(review.id, { speaker: 1, name: "Łucja Kowalska" });
+      expect(yield* library.list({ q: "speaker" })).toEqual([]);
+      const [named] = yield* library.list({ q: "lucja" });
+      expect(named?.match).toEqual({
+        title: [],
+        passages: [
+          {
+            startMs: 0,
+            text: "Dzień dobry wszystkim.",
+            ranges: [],
+            speaker: { name: "Łucja Kowalska", ranges: [{ start: 0, end: 5 }] },
+          },
+          {
+            startMs: 1000,
+            text: "Omówmy budżet.",
+            ranges: [],
+            speaker: { name: "Łucja Kowalska", ranges: [{ start: 0, end: 5 }] },
+          },
+        ],
+        passageCount: 2,
+        everyWordPassageCount: 2,
+      });
+      const [both] = yield* library.list({ q: "kowalska budzet" });
+      expect(both?.match?.passageCount).toBe(3);
+      expect(both?.match?.everyWordPassageCount).toBe(1);
+      const [elsewhere] = yield* library.list({ q: "kowalska review" });
+      expect(elsewhere?.id).toBe(review.id);
+      expect(elsewhere?.match?.passageCount).toBe(2);
+      expect(elsewhere?.match?.everyWordPassageCount).toBe(0);
+      const [spokenByOthers] = yield* library.list({ q: "kowalska gotowy" });
+      expect(spokenByOthers?.match?.passageCount).toBe(3);
+      expect(spokenByOthers?.match?.everyWordPassageCount).toBe(0);
+      expect(both?.match?.passages).toEqual([
+        {
+          startMs: 1000,
+          text: "Omówmy budżet.",
+          ranges: [{ start: 7, end: 13 }],
+          speaker: { name: "Łucja Kowalska", ranges: [{ start: 6, end: 14 }] },
+        },
+        {
+          startMs: 0,
+          text: "Dzień dobry wszystkim.",
+          ranges: [],
+          speaker: { name: "Łucja Kowalska", ranges: [{ start: 6, end: 14 }] },
+        },
+        { startMs: 500, text: "Budżet jest gotowy.", ranges: [{ start: 0, end: 6 }] },
+      ]);
+      yield* transcriptions.renameSpeaker(review.id, { speaker: 1, name: "Anna" });
+      expect(yield* library.list({ q: "lucja" })).toEqual([]);
+      expect((yield* passagesFor("anna")).map((passage) => passage.startMs)).toEqual([0, 1000]);
+      const job = yield* transcriptions.get(review.id);
+      yield* transcriptions.mergeSpeakers(
+        review.id,
+        { revision: job?.revision ?? 0, speaker: 1, into: 3 },
+        "app",
+      );
+      expect(yield* library.list({ q: "anna" })).toEqual([]);
+      yield* transcriptions.renameSpeaker(review.id, { speaker: 3, name: "Piotr" });
+      expect((yield* passagesFor("piotr")).map((passage) => passage.startMs)).toEqual([
+        0, 1000, 1500,
+      ]);
+      yield* transcriptions.renameSpeaker(review.id, { speaker: 3, name: "" });
+      expect(yield* library.list({ q: "piotr" })).toEqual([]);
     }),
   );
 });

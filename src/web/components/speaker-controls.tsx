@@ -1,12 +1,14 @@
 import { useRef, useState } from "react";
 import { ArrowDown01Icon, UserAdd01Icon, UserSwitchIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { TextRange } from "../../shared/contracts/library.ts";
 import { maxSpeakerNameCharacters } from "../../shared/contracts/transcriptions.ts";
 import type { TranscriptPassage } from "../../shared/transcript-passages.ts";
 import type { TranscriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { assignSpeaker, mergeSpeakers, renameSpeaker } from "../lib/api.ts";
 import { formatDuration } from "../lib/format.ts";
 import { useTranscriptChange } from "../lib/transcript-change.ts";
+import { HighlightedText } from "./highlighted-text.tsx";
 import { Spinner } from "./spinner.tsx";
 import { Button } from "./ui/button.tsx";
 import {
@@ -128,15 +130,19 @@ export function SpeakerHeading({
   speaker,
   editing,
   label,
+  ranges = [],
 }: {
   speaker: number;
   editing: SpeakerEditing | undefined;
   label: string;
+  ranges?: readonly TextRange[] | undefined;
 }) {
   return editing ? (
-    <EditableSpeakerHeading speaker={speaker} editing={editing} label={label} />
+    <EditableSpeakerHeading speaker={speaker} editing={editing} label={label} ranges={ranges} />
   ) : (
-    <p className={headingClassName}>{label}</p>
+    <p className={headingClassName}>
+      <HighlightedText text={label} ranges={ranges} />
+    </p>
   );
 }
 
@@ -144,10 +150,12 @@ function EditableSpeakerHeading({
   speaker,
   editing,
   label,
+  ranges,
 }: {
   speaker: number;
   editing: SpeakerEditing;
   label: string;
+  ranges: readonly TextRange[];
 }) {
   const [naming, setNaming] = useState(false);
   const merge = useTranscriptChange(editing.mediaId, (into: number) =>
@@ -163,7 +171,7 @@ function EditableSpeakerHeading({
           aria-label={`${label}, speaker options`}
           disabled={merge.isPending}
         >
-          {label}
+          <HighlightedText text={label} ranges={ranges} />
           {merge.isPending ? (
             <Spinner />
           ) : (

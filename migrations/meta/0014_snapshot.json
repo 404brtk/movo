@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "01e50fdd-07dd-4cd1-8b50-ffba965215ed",
+  "id": "7ca4c034-502d-426c-bac7-86150f9cce1b",
   "prevId": "6584b7ca-1c54-46a6-8ea6-dbe3e3661ddc",
   "tables": {
     "ai_connections": {
@@ -568,13 +568,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "source_preset": {
-          "name": "source_preset",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "file_removed_at": {
           "name": "file_removed_at",
           "type": "integer",
@@ -583,13 +576,7 @@
           "autoincrement": false
         }
       },
-      "indexes": {
-        "media_source": {
-          "name": "media_source",
-          "columns": ["source_url", "source_preset"],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -657,6 +644,20 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "speaker": {
+          "name": "speaker",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "speaker_search_text": {
+          "name": "speaker_search_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
