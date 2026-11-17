@@ -144,17 +144,24 @@ function findDictionaryMatches(
   const spellings = new Set(entries.map((entry) => phraseKey(entry.spelling)));
   const windowKey = (firstWord: number, wordCount: number) =>
     keys.slice(firstWord, firstWord + wordCount).join(" ");
+  const letterTotals = [0];
+  const breakTotals = [0];
+  for (const [index, part] of folded.entries()) {
+    letterTotals.push((letterTotals[index] ?? 0) + part.length);
+    breakTotals.push((breakTotals[index] ?? 0) + (joinsNext[index] ? 0 : 1));
+  }
   const joined = (firstWord: number, wordCount: number) =>
     firstWord + wordCount <= words.length &&
-    joinsNext.slice(firstWord, firstWord + wordCount - 1).every(Boolean);
+    breakTotals[firstWord + wordCount - 1] === breakTotals[firstWord];
+  const windowLetters = (firstWord: number, wordCount: number) =>
+    (letterTotals[firstWord + wordCount] ?? 0) - (letterTotals[firstWord] ?? 0);
 
-  const occurrences = (pattern: readonly string[]) =>
-    keys.flatMap((_, firstWord) =>
-      firstWord + pattern.length <= words.length &&
-      pattern.every((key, offset) => keys[firstWord + offset] === key)
-        ? [firstWord]
-        : [],
-    );
+  const occurrences = (pattern: readonly string[]) => {
+    const found: number[] = [];
+    for (let firstWord = 0; firstWord + pattern.length <= words.length; firstWord++)
+      if (pattern.every((key, offset) => keys[firstWord + offset] === key)) found.push(firstWord);
+    return found;
+  };
 
   const candidates: Candidate[] = entries.flatMap((entry, index) => {
     const replacement = wordTokens(entry.spelling);
@@ -191,6 +198,7 @@ function findDictionaryMatches(
       for (let firstWord = 0; firstWord < words.length; firstWord++)
         for (const wordCount of sizes) {
           if (!joined(firstWord, wordCount)) continue;
+          if (Math.abs(windowLetters(firstWord, wordCount) - target.length) > limit) continue;
           const distance = distanceWithin(
             folded.slice(firstWord, firstWord + wordCount).join(""),
             target,

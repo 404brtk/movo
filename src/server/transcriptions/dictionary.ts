@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, notInArray } from "drizzle-orm";
 import { Effect, Result, Schema, Semaphore } from "effect";
 import {
   DictionaryEntry,
@@ -12,7 +12,11 @@ import {
   type DictionarySave,
   type DictionarySaveResult,
 } from "../../shared/contracts/dictionary.ts";
-import { Transcript, type TranscriptWord } from "../../shared/contracts/transcriptions.ts";
+import {
+  Transcript,
+  type TranscriptionJob,
+  type TranscriptWord,
+} from "../../shared/contracts/transcriptions.ts";
 import { dictionaryFixes, findDictionaryProblem } from "../../shared/transcript-dictionary.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError } from "../media/error.ts";
@@ -23,6 +27,8 @@ import type { Transcriptions } from "./jobs.ts";
 import { transcriptionJobs } from "./transcriptions.schema.ts";
 
 const contextWords = 6;
+const previewBatchSize = 20;
+const activeStates: TranscriptionJob["status"][] = ["queued", "running"];
 const textOf = (words: readonly TranscriptWord[]) => words.map((word) => word.text).join(" ");
 
 const storage = <A>(operation: () => A) =>
@@ -62,62 +68,82 @@ export function createDictionary(
       const { others } = yield* entriesWith(request.id, request.draft);
       const entries = [...others, request.draft];
       const draftIndex = others.length;
-      const rows = yield* storage(() =>
+      const transcribed = yield* storage(() =>
         database
-          .select({
-            mediaId: transcriptionJobs.mediaId,
-            title: mediaItems.title,
-            status: transcriptionJobs.status,
-            revision: transcriptionJobs.revision,
-            transcript: transcriptionJobs.transcript,
-          })
+          .select({ mediaId: transcriptionJobs.mediaId })
           .from(transcriptionJobs)
-          .innerJoin(mediaItems, eq(mediaItems.id, transcriptionJobs.mediaId))
+          .where(
+            and(
+              isNotNull(transcriptionJobs.transcript),
+              notInArray(transcriptionJobs.status, activeStates),
+            ),
+          )
           .all(),
       );
+      const found: DictionaryPreviewRecording[] = [];
+      for (let start = 0; start < transcribed.length; start += previewBatchSize) {
+        const ids = transcribed.slice(start, start + previewBatchSize).map((row) => row.mediaId);
+        const batch = yield* storage(() =>
+          database
+            .select({
+              mediaId: transcriptionJobs.mediaId,
+              title: mediaItems.title,
+              status: transcriptionJobs.status,
+              revision: transcriptionJobs.revision,
+              transcript: transcriptionJobs.transcript,
+            })
+            .from(transcriptionJobs)
+            .innerJoin(mediaItems, eq(mediaItems.id, transcriptionJobs.mediaId))
+            .where(inArray(transcriptionJobs.mediaId, ids))
+            .all()
+            .flatMap((row): DictionaryPreviewRecording[] => {
+              if (!row.transcript || activeStates.includes(row.status)) return [];
+              const { words } = Schema.decodeUnknownSync(Transcript)(row.transcript);
+              if (dictionaryFixes(words, [request.draft]).length === 0) return [];
+              const fixes = dictionaryFixes(words, entries).filter(
+                (fix) => fix.entry === draftIndex,
+              );
+              if (fixes.length === 0) return [];
+              return [
+                {
+                  mediaId: row.mediaId,
+                  title: row.title,
+                  revision: row.revision,
+                  hitCount: fixes.length,
+                  hits: fixes.slice(0, maxPreviewHits).map((fix) => {
+                    const end = fix.firstWord + fix.wordCount;
+                    return {
+                      firstWord: fix.firstWord,
+                      startMs: words[fix.firstWord]?.startMs ?? 0,
+                      before: textOf(words.slice(fix.firstWord, end)),
+                      after: fix.texts.join(" "),
+                      leading: textOf(
+                        words.slice(Math.max(0, fix.firstWord - contextWords), fix.firstWord),
+                      ),
+                      trailing: textOf(words.slice(end, end + contextWords)),
+                      moreBefore: fix.firstWord > contextWords,
+                      moreAfter: end + contextWords < words.length,
+                      similar: fix.similar,
+                    };
+                  }),
+                },
+              ];
+            }),
+        );
+        found.push(...batch);
+        yield* Effect.yieldNow;
+      }
       let shown = 0;
-      const recordings = yield* storage(() =>
-        rows
-          .flatMap((row): DictionaryPreviewRecording[] => {
-            if (!row.transcript || ["queued", "running"].includes(row.status)) return [];
-            const { words } = Schema.decodeUnknownSync(Transcript)(row.transcript);
-            const fixes = dictionaryFixes(words, entries).filter((fix) => fix.entry === draftIndex);
-            if (fixes.length === 0) return [];
-            return [
-              {
-                mediaId: row.mediaId,
-                title: row.title,
-                revision: row.revision,
-                hitCount: fixes.length,
-                hits: fixes.map((fix) => {
-                  const end = fix.firstWord + fix.wordCount;
-                  return {
-                    firstWord: fix.firstWord,
-                    startMs: words[fix.firstWord]?.startMs ?? 0,
-                    before: textOf(words.slice(fix.firstWord, end)),
-                    after: fix.texts.join(" "),
-                    leading: textOf(
-                      words.slice(Math.max(0, fix.firstWord - contextWords), fix.firstWord),
-                    ),
-                    trailing: textOf(words.slice(end, end + contextWords)),
-                    moreBefore: fix.firstWord > contextWords,
-                    moreAfter: end + contextWords < words.length,
-                    similar: fix.similar,
-                  };
-                }),
-              },
-            ];
-          })
-          .toSorted(
-            (first, second) =>
-              second.hitCount - first.hitCount || first.title.localeCompare(second.title),
-          )
-          .map((recording) => {
-            const hits = recording.hits.slice(0, Math.max(0, maxPreviewHits - shown));
-            shown += hits.length;
-            return { ...recording, hits };
-          }),
-      );
+      const recordings = found
+        .toSorted(
+          (first, second) =>
+            second.hitCount - first.hitCount || first.title.localeCompare(second.title),
+        )
+        .map((recording) => {
+          const hits = recording.hits.slice(0, Math.max(0, maxPreviewHits - shown));
+          shown += hits.length;
+          return { ...recording, hits };
+        });
       return {
         hitCount: recordings.reduce((total, recording) => total + recording.hitCount, 0),
         recordings,
