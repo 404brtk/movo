@@ -267,11 +267,17 @@ test("selects a range, transcribes the eligible recordings and reports a partial
   await expect(page.getByRole("checkbox", { name: `Select ${charlie?.title}` })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: `Select ${alpha?.title}` })).not.toBeChecked();
 
-  const selectAll = bar.getByRole("button", { name: "Select all", exact: true });
+  const selectAll = bar.getByRole("checkbox", { name: "Select all", exact: true });
   await selectAll.click();
   await expect(bar.getByRole("status")).toHaveText("4 of 4 selected");
-  await expect(selectAll).toBeFocused();
-  await expect(selectAll).toHaveAttribute("aria-disabled", "true");
+  await expect(selectAll).toBeChecked();
+  await bar.getByText("Select all", { exact: true }).click();
+  await expect(bar).toHaveCount(0);
+  await expect(page.locator("[data-row-link]").first()).toBeFocused();
+  await row(page, delta?.title ?? "").hover();
+  await page.getByRole("checkbox", { name: `Select ${delta?.title}` }).click();
+  await selectAll.click();
+  await expect(bar.getByRole("status")).toHaveText("4 of 4 selected");
   await bar.getByRole("button", { name: "Delete…" }).click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toContainText("Delete 4 recordings?");

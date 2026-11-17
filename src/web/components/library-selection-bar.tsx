@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Cancel01Icon, Delete02Icon } from "@hugeicons/core-free-icons";
+import { useId, useState } from "react";
+import { Cancel01Icon, Delete02Icon, SpeechToTextIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { LibraryItem } from "../../shared/contracts/library.ts";
@@ -22,6 +22,7 @@ import { ConfirmDialog } from "./confirm-dialog.tsx";
 import { focusRecordingRow, useLibraryManagement } from "./library-management.tsx";
 import { Spinner } from "./spinner.tsx";
 import { Button } from "./ui/button.tsx";
+import { Checkbox } from "./ui/checkbox.tsx";
 
 const failureMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Something went wrong.";
@@ -108,39 +109,51 @@ export function LibrarySelectionBar() {
     ? describeBulkDeletion(remove.data.total, remove.data.failures)
     : (remove.error?.message ?? null);
   const one = count === 1;
+  const selectAllId = useId();
+  const clearSelection = () => {
+    management.clear();
+    focusRecordingRow(null);
+  };
 
   return (
     <div className="mt-3">
       <fieldset
         aria-label="Selected recordings"
-        className="m-0 flex h-7 min-w-0 animate-in items-center gap-1.5 border-0 p-0 duration-150 fade-in-0 motion-reduce:animate-none"
+        className="m-0 flex h-7 min-w-0 animate-in items-center gap-1.5 border-0 p-0 pl-[13px] duration-150 fade-in-0 motion-reduce:animate-none"
       >
+        <Checkbox
+          id={selectAllId}
+          checked={management.allSelected}
+          indeterminate={!management.allSelected}
+          onCheckedChange={(checked) => (checked ? management.selectAll() : clearSelection())}
+        />
+        <label htmlFor={selectAllId} className="pl-1.5 text-[13px] font-medium whitespace-nowrap">
+          Select all
+        </label>
         <output
           aria-live="polite"
-          className="text-[13px] font-medium whitespace-nowrap tabular-nums"
+          className="mr-auto ml-2 text-[12.5px] whitespace-nowrap text-muted-foreground tabular-nums"
         >
-          {management.selectedItems.length} of {management.total} selected
+          {management.selectedItems.length} of {management.total}
+          <span className="max-sm:sr-only"> selected</span>
         </output>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mr-auto data-disabled:opacity-45"
-          disabled={management.allSelected}
-          focusableWhenDisabled
-          onClick={management.selectAll}
-        >
-          Select all
-        </Button>
         {transcribable.length > 0 ? (
           <Button
             variant="outline"
             size="sm"
+            className="max-sm:w-7 max-sm:px-0"
             aria-busy={transcribe.isPending}
             disabled={transcribe.isPending}
             onClick={() => transcribe.mutate(transcribable)}
           >
-            {transcribe.isPending ? <Spinner /> : null}
-            {transcribe.isPending ? "Starting…" : `Transcribe ${transcribable.length}`}
+            {transcribe.isPending ? (
+              <Spinner />
+            ) : (
+              <HugeiconsIcon icon={SpeechToTextIcon} data-icon="inline-start" aria-hidden="true" />
+            )}
+            <span className="max-sm:sr-only">
+              {transcribe.isPending ? "Starting…" : `Transcribe ${transcribable.length}`}
+            </span>
           </Button>
         ) : null}
         <Button
@@ -160,7 +173,7 @@ export function LibrarySelectionBar() {
           size="icon-sm"
           className="-mr-1.5"
           aria-label="Clear selection"
-          onClick={management.clear}
+          onClick={clearSelection}
         >
           <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
         </Button>
