@@ -11,15 +11,15 @@ import { Link } from "@tanstack/react-router";
 import type { AiConnection, AiModel, ModelChoice } from "../../shared/contracts/ask.ts";
 import { modelChoice, useModelGroups } from "../lib/ask-models.ts";
 import { reachLabels } from "../lib/ask-view.ts";
+import { isMac, pressesModifier } from "../lib/platform.ts";
 import { cn } from "../lib/utils.ts";
 import { Spinner } from "./spinner.tsx";
 import { buttonVariants } from "./ui/button.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx";
 
-const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/u.test(navigator.platform);
 export const modelShortcutLabel = isMac ? "⌘⌥/" : "Ctrl+Alt+/";
 const isModelShortcut = (event: KeyboardEvent) =>
-  event.code === "Slash" && event.altKey && (isMac ? event.metaKey : event.ctrlKey);
+  event.code === "Slash" && event.altKey && pressesModifier(event);
 const foldedGroupSize = 8;
 const choiceKey = (connectionId: string, modelId: string) => `${connectionId}\n${modelId}`;
 

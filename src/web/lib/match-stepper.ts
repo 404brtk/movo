@@ -16,7 +16,7 @@ export function useMatchStepper(count: number) {
   };
 }
 
-export const focusOnMount = (input: HTMLInputElement | null) => input?.focus();
+export const focusOnMount = (element: HTMLElement | null) => element?.focus();
 
 export const stepOnEnter =
   (step: (direction: StepDirection) => void) => (event: KeyboardEvent<HTMLInputElement>) => {

@@ -93,7 +93,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   };
   await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   await expect(panel.getByText("Second saved passage.", { exact: true })).toBeVisible();
-  await expect(panel.getByText("Parakeet Ultra", { exact: true })).toBeVisible();
+  await expect(page.getByRole("main").getByText("Parakeet Ultra", { exact: true })).toBeVisible();
   await page.reload();
   await expect(panel.getByText("First saved passage.", { exact: true })).toBeVisible();
   const passages = panel.getByRole("list", { name: "Timestamped passages" }).getByRole("listitem");
@@ -481,4 +481,44 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
   await expect(dialog).toBeHidden();
   await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
   expect(retries).toBe(3);
+});
+
+test("keeps Ask in the transcript toolbar and starts the transcript area level with the video before transcribing", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  const media: { id: string } = await uploaded.json();
+  await page.goto(`/media/${media.id}`);
+  const card = page.getByRole("region", { name: "No transcript yet" });
+  const toolbar = page.getByRole("toolbar", { name: "Transcript" });
+  const back = page.getByRole("link", { name: "Back to library" });
+  await expect(card).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Ask" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ask" })).toHaveCount(1);
+  const box = async (locator: typeof card) => {
+    const found = await locator.boundingBox();
+    if (!found) throw new Error("The element has no box.");
+    return found;
+  };
+  const player = await box(page.getByRole("region", { name: "Video player", exact: true }));
+  expect((await box(card)).y).toBe(player.y);
+  const backBox = await box(back);
+  const askBox = await box(toolbar.getByRole("button", { name: "Ask" }));
+  expect(askBox.y + askBox.height / 2).toBe(backBox.y + backBox.height / 2);
+});
+
+test("names an imported recording's file in its details", async ({ page, request }) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": "media.webm" },
+  });
+  const media: { id: string } = await uploaded.json();
+  await page.goto(`/media/${media.id}`);
+  const details = page.getByRole("main").getByText(/^Video · /u);
+  await expect(details).toContainText("media.webm");
+  await expect(details.getByRole("link")).toHaveCount(0);
 });

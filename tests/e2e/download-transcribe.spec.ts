@@ -137,6 +137,15 @@ test("downloads and transcribes once, reports missing prerequisites and shows th
   ).toBeVisible();
   await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+  const source = page
+    .getByRole("main")
+    .getByText(/^Audio · /u)
+    .getByRole("link", {
+      name: "YouTube",
+      exact: true,
+    });
+  await expect(source).toHaveAttribute("href", sourceUrl);
+  await expect(source).toHaveAttribute("target", "_blank");
   await expect(
     page.getByRole("button", { name: "Cancel transcription", exact: true }),
   ).toBeVisible();

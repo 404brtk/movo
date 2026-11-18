@@ -3,6 +3,7 @@ import { maxEditCharacters } from "../../shared/contracts/transcriptions.ts";
 import type { TranscriptPassage } from "../../shared/transcript-passages.ts";
 import { editTranscript } from "../lib/api.ts";
 import { formatDuration } from "../lib/format.ts";
+import { modifierKey } from "../lib/platform.ts";
 import { useTranscriptChange } from "../lib/transcript-change.ts";
 import { Spinner } from "./spinner.tsx";
 import { Button } from "./ui/button.tsx";
@@ -13,7 +14,6 @@ const focusAtEnd = (input: HTMLTextAreaElement | null) => {
   input?.focus();
   input?.setSelectionRange(input.value.length, input.value.length);
 };
-const modifierKey = /Mac|iPhone|iPad/u.test(globalThis.navigator?.userAgent ?? "") ? "⌘" : "Ctrl";
 
 export function PassageEditor({
   mediaId,
