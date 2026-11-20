@@ -1,18 +1,32 @@
 import { Copy01Icon, FileExportIcon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "cn";
-import { transcriptExportFormats, type Transcript } from "../../shared/contracts/transcriptions.ts";
+import { Schema } from "effect";
+import {
+  SpeakerNamePlacement,
+  speakerNamePlacements,
+  transcriptExportFormats,
+  type Transcript,
+} from "../../shared/contracts/transcriptions.ts";
+import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { transcriptionExportUrl } from "../lib/api.ts";
 import {
   copyFailureMessage,
+  setExportOptions,
   transcriptFormatNames,
   useCopyTranscript,
+  useTranscriptExportOptions,
 } from "../lib/transcript-sharing.ts";
 import { Button } from "./ui/button.tsx";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip.tsx";
@@ -22,22 +36,64 @@ const swapIconClass =
 const hiddenIconClass =
   "scale-50 opacity-0 blur-[2px] motion-reduce:scale-100 motion-reduce:blur-none";
 
-export function TranscriptExportItems({ mediaId }: { mediaId: string }) {
-  return transcriptExportFormats.map((format) => (
-    <DropdownMenuItem
-      key={format}
-      render={({ children, ...props }) => (
-        <a {...props} href={transcriptionExportUrl(mediaId, format)} download>
-          {children}
-        </a>
-      )}
-    >
-      Download {format.toUpperCase()}
-      <span className="ml-auto text-[11.5px] text-muted-foreground">
-        {transcriptFormatNames[format]}
-      </span>
-    </DropdownMenuItem>
-  ));
+const speakerNamePlacementLabels: Record<SpeakerNamePlacement, string> = {
+  turn: "At each turn",
+  line: "On every line",
+  off: "Off",
+};
+
+export function TranscriptExportItems({
+  mediaId,
+  transcript,
+}: {
+  mediaId: string;
+  transcript: Transcript;
+}) {
+  const options = useTranscriptExportOptions();
+  return (
+    <>
+      {transcriptExportFormats.map((format) => (
+        <DropdownMenuItem
+          key={format}
+          render={({ children, ...props }) => (
+            <a {...props} href={transcriptionExportUrl(mediaId, format, options)} download>
+              {children}
+            </a>
+          )}
+        >
+          Download {format.toUpperCase()}
+          <span className="ml-auto text-[11.5px] text-muted-foreground">
+            {transcriptFormatNames[format]}
+          </span>
+        </DropdownMenuItem>
+      ))}
+      <DropdownMenuSeparator />
+      {transcriptSpeakers(transcript).labeled ? (
+        <>
+          <DropdownMenuRadioGroup
+            value={options.speakers}
+            onValueChange={(value) =>
+              setExportOptions({ speakers: Schema.decodeUnknownSync(SpeakerNamePlacement)(value) })
+            }
+          >
+            <DropdownMenuLabel>Speaker names</DropdownMenuLabel>
+            {speakerNamePlacements.map((placement) => (
+              <DropdownMenuRadioItem key={placement} value={placement}>
+                {speakerNamePlacementLabels[placement]}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+        </>
+      ) : null}
+      <DropdownMenuCheckboxItem
+        checked={options.timestamps}
+        onCheckedChange={(timestamps) => setExportOptions({ timestamps })}
+      >
+        Timestamps in TXT
+      </DropdownMenuCheckboxItem>
+    </>
+  );
 }
 
 export function TranscriptActions({
@@ -94,7 +150,7 @@ export function TranscriptActions({
             <TooltipContent>Export transcript</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end" className="w-56">
-            <TranscriptExportItems mediaId={mediaId} />
+            <TranscriptExportItems mediaId={mediaId} transcript={transcript} />
           </DropdownMenuContent>
         </DropdownMenu>
       </TooltipProvider>
