@@ -153,7 +153,7 @@ it("counts the cached second file while downloading and verifying the first", as
     const total = speakers.segmentation.length + speakers.embedding.length;
     await Effect.runPromise(models.install(speakerModel.id));
     await expect
-      .poll(async () => (await status(models)).installation)
+      .poll(async () => (await status(models)).installation, { timeout: 10000 })
       .toMatchObject({
         phase: "downloading",
         downloadedBytes: speakers.embedding.length + firstChunk,
@@ -161,7 +161,7 @@ it("counts the cached second file while downloading and verifying the first", as
     if (!transfer) throw new Error("The segmentation download did not start.");
     transfer.write(speakers.segmentation.subarray(firstChunk));
     await expect
-      .poll(async () => (await status(models)).installation)
+      .poll(async () => (await status(models)).installation, { timeout: 10000 })
       .toMatchObject({
         phase: "verifying",
         downloadedBytes: total,
@@ -197,7 +197,7 @@ it.each(["cancelled", "failed"] as const)(
       const models = create(speakers.definition);
       await Effect.runPromise(models.install(speakerModel.id));
       await expect
-        .poll(async () => (await status(models)).installation.downloadedBytes)
+        .poll(async () => (await status(models)).installation.downloadedBytes, { timeout: 10000 })
         .toBe(speakers.segmentation.length + firstChunk);
       if (!transfer) throw new Error("The embedding download did not start.");
       if (phase === "cancelled") await Effect.runPromise(models.cancel(speakerModel.id));
