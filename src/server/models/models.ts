@@ -21,38 +21,67 @@ const shutdownError = (cause: unknown) =>
   );
 
 function createModel(cacheDirectory: string, definition: ModelDefinition) {
-  const cache = createModelCache(cacheDirectory, definition);
+  const files = definition.files.map((file) => ({
+    file,
+    cache: createModelCache(cacheDirectory, file),
+  }));
+  const bytes = definition.files.reduce((total, file) => total + file.bytes, 0);
   const lifetime = new AbortController();
   let installation: ModelInstallation = { phase: "idle", downloadedBytes: 0, error: null };
   let running: Promise<void> | undefined;
   let controller: AbortController | undefined;
   let closed = false;
+  const availability = async () => {
+    const states = await Promise.all(files.map(({ cache }) => cache.inspect(lifetime.signal)));
+    return (
+      states.find((entry) => entry.state === "broken") ??
+      states.find((entry) => entry.state === "missing") ?? { state: "ready", message: null }
+    );
+  };
   const status = async () =>
     Schema.decodeUnknownSync(ModelStatus)({
       ...definition,
-      ...(await cache.inspect(lifetime.signal)),
+      bytes,
+      ...(await availability()),
       installation,
     });
+  const download = async (signal: AbortSignal) => {
+    let completedBytes = 0;
+    for (const { file, cache } of files) {
+      if ((await cache.inspect(signal)).state !== "ready")
+        await cache.download(signal, (fileBytes) => {
+          const downloadedBytes = completedBytes + fileBytes;
+          installation = {
+            phase: downloadedBytes === bytes ? "verifying" : "downloading",
+            downloadedBytes,
+            error: null,
+          };
+        });
+      completedBytes += file.bytes;
+    }
+  };
   const failure = (cause: unknown) => (closed ? shutdownError(cause) : modelError(cause));
   const installed = async () => {
     if (closed) throw failure(undefined);
     const current = await status();
     if (current.state === "broken")
       throw new MediaError("unavailable", current.message ?? "The cached model needs repair.");
-    return current.state === "ready" ? modelCachePath(cacheDirectory, definition) : null;
+    return current.state === "ready"
+      ? definition.files.map((file) => modelCachePath(cacheDirectory, file))
+      : null;
   };
   return {
     status: () => Effect.tryPromise({ try: status, catch: failure }),
     resolve: () =>
       Effect.tryPromise({
         try: async () => {
-          const path = await installed();
-          if (path === null)
+          const paths = await installed();
+          if (paths === null)
             throw new MediaError(
               "unavailable",
               `Download ${definition.name} from Settings before transcribing a recording.`,
             );
-          return path;
+          return paths;
         },
         catch: failure,
       }),
@@ -72,14 +101,7 @@ function createModel(cacheDirectory: string, definition: ModelDefinition) {
           const operation = controller;
           installation = { phase: "checking", downloadedBytes: 0, error: null };
           const signal = AbortSignal.any([operation.signal, AbortSignal.timeout(30 * 60 * 1000)]);
-          running = cache
-            .download(signal, (downloadedBytes) => {
-              installation = {
-                phase: downloadedBytes === definition.bytes ? "verifying" : "downloading",
-                downloadedBytes,
-                error: null,
-              };
-            })
+          running = download(signal)
             .then(() => {
               installation = { ...installation, phase: "complete" };
               return undefined;

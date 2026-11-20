@@ -25,6 +25,7 @@ import {
   speakerModel,
   transcriptionModel,
   type ModelDefinition,
+  type ModelFile,
 } from "../../../../src/server/models/catalog.ts";
 import { createModels, type Models } from "../../../../src/server/models/models.ts";
 import { validateModel } from "../../../../src/server/models/validation.ts";
@@ -40,7 +41,7 @@ it("resolves only verified cached weights without starting a download", async ()
     expect(requests()).toBe(0);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, weights);
-    expect(await Effect.runPromise(models.resolve(transcriptionModel.id))).toBe(path);
+    expect(await Effect.runPromise(models.resolve(transcriptionModel.id))).toEqual([path]);
     await writeFile(path, Buffer.alloc(weights.length, 1));
     await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
       /integrity/u,
@@ -53,38 +54,71 @@ it("resolves only verified cached weights without starting a download", async ()
   });
 });
 
-it("keeps the optional speaker model separate and treats it as absent until verified", async () => {
-  await withModels(async ({ cacheDirectory, definition, requests }) => {
-    const speakerWeights = ggufWeights("sortformer");
-    const speakers: ModelDefinition = {
-      ...speakerModel,
-      url: definition.url,
-      bytes: speakerWeights.length,
-      sha256: digest(speakerWeights),
-    };
-    const models = createModels({ cacheDirectory, definitions: [definition, speakers] });
+function speakerFixture(cacheDirectory: string, url: string) {
+  const [segmentationFile, embeddingFile] = speakerModel.files;
+  if (!segmentationFile || !embeddingFile) throw new Error("The speaker model needs two files.");
+  const segmentation = Buffer.from("segmentation weights");
+  const embedding = Buffer.from("speaker embedding weights");
+  const definition: ModelDefinition = {
+    ...speakerModel,
+    files: [
+      {
+        ...segmentationFile,
+        url: `${url}/segmentation`,
+        bytes: segmentation.length,
+        sha256: digest(segmentation),
+      },
+      {
+        ...embeddingFile,
+        url: `${url}/embedding`,
+        bytes: embedding.length,
+        sha256: digest(embedding),
+      },
+    ],
+  };
+  const [segmentationPath = "", embeddingPath = ""] = definition.files.map((entry) =>
+    modelCachePath(cacheDirectory, entry),
+  );
+  return { definition, segmentation, embedding, segmentationPath, embeddingPath };
+}
+
+it("keeps the optional speaker models separate and treats them as absent until every file is verified", async () => {
+  await withModels(async ({ cacheDirectory, file, definition, requests }) => {
+    const speakers = speakerFixture(cacheDirectory, file.url);
+    const models = createModels({ cacheDirectory, definitions: [definition, speakers.definition] });
     try {
       expect(
-        (await Effect.runPromise(models.list())).map(({ id, role, state }) => ({
+        (await Effect.runPromise(models.list())).map(({ id, role, state, bytes }) => ({
           id,
           role,
           state,
+          bytes,
         })),
       ).toEqual([
-        { id: transcriptionModel.id, role: "transcription", state: "missing" },
-        { id: speakerModel.id, role: "speakers", state: "missing" },
+        { id: transcriptionModel.id, role: "transcription", state: "missing", bytes: file.bytes },
+        {
+          id: speakerModel.id,
+          role: "speakers",
+          state: "missing",
+          bytes: speakers.segmentation.length + speakers.embedding.length,
+        },
       ]);
       expect(await Effect.runPromise(models.installed(speakerModel.id))).toBeNull();
-      const speakerPath = modelCachePath(cacheDirectory, speakers);
-      await mkdir(dirname(speakerPath), { recursive: true });
-      await writeFile(speakerPath, Buffer.alloc(speakerWeights.length, 1));
+      await mkdir(dirname(speakers.segmentationPath), { recursive: true });
+      await writeFile(speakers.segmentationPath, speakers.segmentation);
+      expect(await Effect.runPromise(models.installed(speakerModel.id))).toBeNull();
+      await mkdir(dirname(speakers.embeddingPath), { recursive: true });
+      await writeFile(speakers.embeddingPath, Buffer.alloc(speakers.embedding.length, 1));
       await expect(Effect.runPromise(models.installed(speakerModel.id))).rejects.toThrow(
         /integrity/u,
       );
-      await writeFile(speakerPath, speakerWeights);
+      await writeFile(speakers.embeddingPath, speakers.embedding);
       const repairedAt = new Date(Date.now() + 60000);
-      await utimes(speakerPath, repairedAt, repairedAt);
-      expect(await Effect.runPromise(models.installed(speakerModel.id))).toBe(speakerPath);
+      await utimes(speakers.embeddingPath, repairedAt, repairedAt);
+      expect(await Effect.runPromise(models.installed(speakerModel.id))).toEqual([
+        speakers.segmentationPath,
+        speakers.embeddingPath,
+      ]);
       await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
         /Download Parakeet Ultra/u,
       );
@@ -92,6 +126,37 @@ it("keeps the optional speaker model separate and treats it as absent until veri
         /Model not found/u,
       );
       expect(requests()).toBe(0);
+    } finally {
+      await Effect.runPromise(models.close());
+    }
+  });
+});
+
+it("downloads only the missing files of a model and reports their combined progress", async () => {
+  await withModels(async ({ cacheDirectory, file, respond, requests }) => {
+    const speakers = speakerFixture(cacheDirectory, file.url);
+    const requested: string[] = [];
+    respond((request, response) => {
+      requested.push(request.url ?? "");
+      response.end(
+        request.url?.endsWith("/embedding") ? speakers.embedding : speakers.segmentation,
+      );
+    });
+    await mkdir(dirname(speakers.segmentationPath), { recursive: true });
+    await writeFile(speakers.segmentationPath, speakers.segmentation);
+    const models = createModels({ cacheDirectory, definitions: [speakers.definition] });
+    try {
+      await Effect.runPromise(models.install(speakerModel.id));
+      expect(await finished(models)).toMatchObject({
+        state: "ready",
+        installation: {
+          phase: "complete",
+          downloadedBytes: speakers.segmentation.length + speakers.embedding.length,
+        },
+      });
+      expect(requests()).toBe(1);
+      expect(requested).toEqual(["/weights/embedding"]);
+      expect(await readFile(speakers.embeddingPath)).toEqual(speakers.embedding);
     } finally {
       await Effect.runPromise(models.close());
     }
@@ -127,7 +192,9 @@ async function withModels(
     directory: string;
     cacheDirectory: string;
     path: string;
+    file: ModelFile;
     definition: ModelDefinition;
+    withFile: (changes: Partial<ModelFile>) => ModelDefinition;
     create: (definition?: ModelDefinition) => Models;
     requests: () => number;
     respond: (handler: RequestListener) => void;
@@ -154,12 +221,19 @@ async function withModels(
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Model fixture has no port.");
-  const definition: ModelDefinition = {
-    ...transcriptionModel,
+  const [parakeetFile] = transcriptionModel.files;
+  if (!parakeetFile) throw new Error("The transcription model has no file.");
+  const file: ModelFile = {
+    ...parakeetFile,
     url: `http://127.0.0.1:${address.port}/weights`,
     bytes: weights.length,
     sha256: digest(weights),
   };
+  const withFile = (changes: Partial<ModelFile>): ModelDefinition => ({
+    ...transcriptionModel,
+    files: [{ ...file, ...changes }],
+  });
+  const definition = withFile({});
   const create = (entry = definition) => {
     const manager = createModels({ cacheDirectory, definitions: [entry] });
     instances.push(manager);
@@ -168,8 +242,10 @@ async function withModels(
   await test({
     directory,
     cacheDirectory,
-    path: modelCachePath(cacheDirectory, definition),
+    path: modelCachePath(cacheDirectory, file),
+    file,
     definition,
+    withFile,
     create,
     requests: () => requests,
     respond: (updated) => {
@@ -223,7 +299,7 @@ describe("shared transcription model cache", () => {
   });
 
   it("reuses and verifies an external cache file without copies or manifests, detects changed bytes and rediscovery", async () => {
-    await withModels(async ({ path, create, requests }) => {
+    await withModels(async ({ path, file, create, requests }) => {
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, weights);
       const original = await stat(path);
@@ -232,7 +308,7 @@ describe("shared transcription model cache", () => {
       await Effect.runPromise(models.install(transcriptionModel.id));
       expect((await status(create())).state).toBe("ready");
       expect(requests()).toBe(0);
-      expect(await readdir(dirname(path))).toEqual([transcriptionModel.filename]);
+      expect(await readdir(dirname(path))).toEqual([file.filename]);
       expect((await stat(path)).mtimeMs).toBe(original.mtimeMs);
       await writeFile(path, Buffer.alloc(weights.length, 42));
       await utimes(path, original.atime, original.mtime);
@@ -251,10 +327,10 @@ describe("shared transcription model cache", () => {
   });
 
   it("follows cached links and leaves their target unchanged", async () => {
-    await withModels(async ({ directory, path, create, requests }) => {
+    await withModels(async ({ directory, path, file, create, requests }) => {
       const blobs = join(directory, "blobs");
       await mkdir(blobs);
-      const blob = join(blobs, transcriptionModel.filename);
+      const blob = join(blobs, file.filename);
       await writeFile(blob, weights);
       await mkdir(dirname(dirname(path)), { recursive: true });
       if (process.platform === "win32") {
@@ -270,7 +346,7 @@ describe("shared transcription model cache", () => {
   });
 
   it("deduplicates requests in one manager and publishes only completed verified weights", async () => {
-    await withModels(async ({ path, create, requests, definition, respond }) => {
+    await withModels(async ({ path, file, create, requests, definition, respond }) => {
       let finish: (() => void) | undefined;
       respond((_request, response) => {
         response.write(weights.subarray(0, 8));
@@ -291,13 +367,13 @@ describe("shared transcription model cache", () => {
       finish();
       expect((await finished(models)).state).toBe("ready");
       expect(await readFile(path)).toEqual(weights);
-      expect(await readdir(dirname(path))).toEqual([definition.filename]);
+      expect(await readdir(dirname(path))).toEqual([file.filename]);
       expect((await status(create())).state).toBe("ready");
     });
   });
 
   it("publishes safely when two independent Node processes download to the same cache", async (context) => {
-    await withModels(async ({ cacheDirectory, path, definition, respond, requests }) => {
+    await withModels(async ({ cacheDirectory, path, file, definition, respond, requests }) => {
       const responses: ServerResponse[] = [];
       respond((_request, response) => {
         response.write(weights.subarray(0, 8));
@@ -344,12 +420,12 @@ describe("shared transcription model cache", () => {
       }
       expect(requests()).toBe(2);
       expect(await readFile(path)).toEqual(weights);
-      expect(await readdir(dirname(path))).toEqual([definition.filename]);
+      expect(await readdir(dirname(path))).toEqual([file.filename]);
     });
   });
 
   it("preserves an existing file that appears while a download is running", async () => {
-    await withModels(async ({ path, create, definition, respond }) => {
+    await withModels(async ({ path, file, create, definition, respond }) => {
       const foreign = Buffer.alloc(weights.length, 42);
       respond((_request, response) => {
         void writeFile(path, foreign).then(
@@ -364,13 +440,13 @@ describe("shared transcription model cache", () => {
         installation: { phase: "failed" },
       });
       expect(await readFile(path)).toEqual(foreign);
-      expect(await readdir(dirname(path))).toEqual([definition.filename]);
+      expect(await readdir(dirname(path))).toEqual([file.filename]);
     });
   });
 
   it.each([-1, 1])("rejects an incorrect download length (offset %s)", async (offset) => {
-    await withModels(async ({ path, definition, create }) => {
-      const models = create({ ...definition, bytes: definition.bytes + offset });
+    await withModels(async ({ path, file, definition, withFile, create }) => {
+      const models = create(withFile({ bytes: file.bytes + offset }));
       await Effect.runPromise(models.install(definition.id));
       expect((await finished(models)).installation.phase).toBe("failed");
       expect(await readdir(dirname(path))).toEqual([]);
@@ -378,8 +454,8 @@ describe("shared transcription model cache", () => {
   });
 
   it("rejects a SHA-256 mismatch before publication", async () => {
-    await withModels(async ({ path, create, definition }) => {
-      const models = create({ ...definition, sha256: "0".repeat(64) });
+    await withModels(async ({ path, create, definition, withFile }) => {
+      const models = create(withFile({ sha256: "0".repeat(64) }));
       await Effect.runPromise(models.install(definition.id));
       expect((await finished(models)).installation.error).toContain("integrity check");
       expect(await readdir(dirname(path))).toEqual([]);
@@ -389,14 +465,14 @@ describe("shared transcription model cache", () => {
   it.each(["llama", "invalid"])(
     "rejects correctly hashed incompatible GGUF (%s)",
     async (architecture) => {
-      await withModels(async ({ path, create, definition, respond }) => {
+      await withModels(async ({ path, create, definition, withFile, respond }) => {
         const content =
           architecture === "invalid" ? Buffer.from("not GGUF") : ggufWeights(architecture);
         respond((_request, response) => response.end(content));
-        const models = create({ ...definition, bytes: content.length, sha256: digest(content) });
+        const models = create(withFile({ bytes: content.length, sha256: digest(content) }));
         await Effect.runPromise(models.install(definition.id));
         expect((await finished(models)).installation.error).toContain(
-          "supported Parakeet Ultra GGUF",
+          "is not a supported parakeet GGUF",
         );
         expect(await readdir(dirname(path))).toEqual([]);
       });
@@ -448,7 +524,7 @@ describe("shared transcription model cache", () => {
   });
 
   it("keeps another manager's download running when one transfer is cancelled", async () => {
-    await withModels(async ({ path, create, definition, respond }) => {
+    await withModels(async ({ path, file, create, definition, respond }) => {
       const responses: ServerResponse[] = [];
       respond((_request, response) => {
         response.write(weights.subarray(0, 8));
@@ -472,7 +548,7 @@ describe("shared transcription model cache", () => {
       response.end(weights.subarray(8));
       expect((await finished(second)).state).toBe("ready");
       expect(await readFile(path)).toEqual(weights);
-      expect(await readdir(dirname(path))).toEqual([definition.filename]);
+      expect(await readdir(dirname(path))).toEqual([file.filename]);
     });
   });
 

@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { Transcript } from "../../../../src/shared/contracts/transcriptions.ts";
+import { maxSpeakers, type Transcript } from "../../../../src/shared/contracts/transcriptions.ts";
 import { assignSpeakers } from "../../../../src/server/transcriptions/speakers.ts";
 
 const transcript = (...spans: [number, number][]): Transcript => ({
   language: "pl",
   words: spans.map(([startMs, endMs], index) => ({ startMs, endMs, text: `w${index}` })),
 });
-const turn = (speakerId: number, t0Ms: number, t1Ms: number) => ({ speakerId, t0Ms, t1Ms, p: 0.9 });
+const turn = (speaker: number, startMs: number, endMs: number) => ({
+  start: startMs / 1000,
+  end: endMs / 1000,
+  speaker,
+});
 const speakers = (result: Transcript) => result.words.map((word) => word.speaker);
 
 describe("speaker assignment", () => {
@@ -38,6 +42,27 @@ describe("speaker assignment", () => {
     expect(speakers(result)).toEqual([1, 2, 1, 2]);
   });
 
+  it("numbers speakers from one when the engine counts them from zero", () => {
+    const result = assignSpeakers(transcript([0, 100], [200, 300]), [
+      turn(0, 0, 150),
+      turn(1, 150, 300),
+    ]);
+    expect(speakers(result)).toEqual([1, 2]);
+  });
+
+  it("rejects more speakers than a transcript can label", () => {
+    const spans = Array.from({ length: maxSpeakers + 1 }, (_, index): [number, number] => [
+      index * 1000,
+      index * 1000 + 500,
+    ]);
+    expect(() =>
+      assignSpeakers(
+        transcript(...spans),
+        spans.map(([startMs, endMs], index) => turn(index, startMs, endMs)),
+      ),
+    ).toThrow(`more than ${maxSpeakers} speakers`);
+  });
+
   it("keeps a transcript without speakers when no turns were found", () => {
     const original = transcript([0, 100]);
     expect(assignSpeakers(original, [])).toBe(original);
@@ -46,13 +71,13 @@ describe("speaker assignment", () => {
   it.each([
     { name: "a reversed turn", turns: [turn(1, 500, 100)], cause: /ends before it starts/u },
     {
-      name: "a speaker without an id",
-      turns: [turn(0, 0, 100)],
-      cause: /greater than or equal to 1/u,
+      name: "a negative speaker",
+      turns: [turn(-1, 0, 100)],
+      cause: /greater than or equal to 0/u,
     },
     {
       name: "an unreadable value",
-      turns: [{ speakerId: 1, t0Ms: "0", t1Ms: 100 }],
+      turns: [{ speaker: 1, start: "0", end: 0.1 }],
       cause: /Expected number/u,
     },
   ])("rejects $name from the engine", ({ turns, cause }) => {

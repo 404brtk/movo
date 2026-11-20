@@ -13,16 +13,14 @@ The transcription model is **Parakeet Ultra Q8_0** (`parakeet-ultra-q8`).
 - SHA-256: `007a59761e9258779f189df396b50d12b83bb5b79e66df4b955c230d2f2a0a59`.
 - License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); retain attribution to the upstream model and conversion publishers.
 
-The optional speaker model is **Sortformer** (`sortformer-4spk-q8`), shown in Settings as **Speaker labels** under Parakeet Ultra. When it is installed, new transcripts label who speaks when, for up to four speakers; without it, transcription works as before.
+The optional speaker model is **Pyannote** (`pyannote-wespeaker`), pyannote segmentation with a WeSpeaker voice model,, shown in Settings as **Speaker labels** under Parakeet Ultra. When it is installed, new transcripts label who speaks when and the number of speakers is found from the recording, up to the 32 a transcript can label; without it, transcription works as before. It consists of two ONNX files that are downloaded, verified and reported together, with one **Download model** action and one combined size and progress:
 
-- Upstream model: [NVIDIA Streaming Sortformer Diarizer 4spk v2.1](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1), trained mainly on English speech, so speakers in other languages may be separated less reliably.
-- Converted weights: [Handy GGUF repository](https://huggingface.co/handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf/tree/60ebab3ef7cae9869be0abcde13360347e96ba03).
-- Revision: `60ebab3ef7cae9869be0abcde13360347e96ba03`.
-- File: `diar_streaming_sortformer_4spk-v2.1-Q8_0.gguf`, exactly `139310336` bytes.
-- SHA-256: `a5dacdc650790266c7a362e54e6bf51952015487edaa606c4e11632bc32442a9`.
-- License: [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/).
+- Segmentation, which finds when someone speaks and where the speaker changes: [sherpa-onnx conversion](https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/tree/9403a6902bb58e3d5ae8c7e77c3422de279db2e0) of [pyannote segmentation 3.0](https://huggingface.co/pyannote/segmentation-3.0), file `model.onnx`, exactly `5992913` bytes, SHA-256 `220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079`, [MIT license](https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/blob/9403a6902bb58e3d5ae8c7e77c3422de279db2e0/LICENSE).
+- Speaker embedding, which describes each voice so that the same speaker is recognized across the recording: [sherpa-onnx copy](https://huggingface.co/csukuangfj/speaker-embedding-models/tree/a8055d6daef723a6a4ecf4de233708575bf4994f) of [WeSpeaker ResNet34-LM](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM), trained on VoxCeleb2, file `wespeaker_en_voxceleb_resnet34_LM.onnx`, exactly `26530550` bytes, SHA-256 `e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012`, which matches the [sherpa-onnx release asset](https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
-The catalog is shipped with Movo. Each model has a role, `transcription` or `speakers`, and is downloaded with its own **Download model** action. Only these pinned artifacts are recognized; arbitrary cached LLMs, other formats and other revisions are not imported automatically. GGUF verification also checks each file's declared architecture (`parakeet` or `sortformer`).
+The voice model card lists English, so speakers in other languages may be separated less reliably. The pinned `sherpa-onnx-node` package runs both files; see the [sherpa-onnx speaker diarization documentation](https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/index.html).
+
+The catalog is shipped with Movo. Each model has a role, `transcription` or `speakers`, and is downloaded with its own **Download model** action. A model is ready only when all of its files are verified, and a download fetches only the files that are missing. Only these pinned artifacts are recognized; arbitrary cached LLMs, other formats and other revisions are not imported automatically. GGUF verification also checks the file's declared architecture (`parakeet`); ONNX files are verified by their exact length and SHA-256.
 
 ## Shared Hugging Face cache
 
@@ -67,7 +65,7 @@ The complete download is bounded at thirty minutes. Publication already in progr
 
 SHA-256 verifies that bytes match the pinned artifact. GGUF metadata checks the format and declared architecture. Neither guarantees that a particular engine/backend has enough memory or can run every model capability.
 
-Model setup does not load hundreds of megabytes of weights into the native engine. Runtime loading belongs to transcription execution. The project uses the pinned `transcribe-cpp` Node package; package installation includes its native platform dependency, not model weights. See the [engine documentation](https://github.com/handy-computer/transcribe.cpp/blob/v0.4.1/bindings/typescript/README.md) for runtime prerequisites.
+Model setup does not load hundreds of megabytes of weights into the native engine. Runtime loading belongs to transcription execution. The project uses the pinned `transcribe-cpp` and `sherpa-onnx-node` Node packages; package installation includes their native platform dependencies, not model weights. See the [engine documentation](https://github.com/handy-computer/transcribe.cpp/blob/v0.4.1/bindings/typescript/README.md) for runtime prerequisites.
 
 Shared cache files must be treated as immutable. Another tool can remove or replace them; Movo detects missing or changed files on subsequent discovery. It does not guarantee safety against arbitrary concurrent in-place modification by other software.
 
@@ -79,6 +77,6 @@ Shared cache files must be treated as immutable. Another tool can remove or repl
 
 Only curated IDs are accepted; callers cannot supply a URL or destination path. Loopback host and same-origin checks apply. Responses omit filesystem paths.
 
-Ordinary tests use tiny generated GGUF headers, a loopback download server and isolated temporary caches. They verify cache reuse, changed/corrupt files, real parser rejection, two independent Node writers, publication collisions, cancellation and cleanup. Browser tests use an isolated cache and never inspect the user's weights. A no-weights native-engine check catches missing runtime packages.
+Ordinary tests use tiny generated GGUF headers and model files, a loopback download server and isolated temporary caches. They verify cache reuse, changed/corrupt files, real parser rejection, models made of several files, two independent Node writers, publication collisions, cancellation and cleanup. Browser tests use an isolated cache and never inspect the user's weights. No-weights checks of both native runtimes catch missing runtime packages.
 
 `bun run test:models:real` is opt-in: it downloads into an isolated temporary HF cache, checks the real CPU loader and rediscovery, then removes the temporary weights. Ordinary tests and CI never download models or run speech inference.

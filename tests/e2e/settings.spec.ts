@@ -34,7 +34,7 @@ test("opens the real model catalog without starting installation", async ({ page
   await expect(speakers).toContainText(
     "Optional. Download it to label who speaks in new transcripts.",
   );
-  await expect(speakers).toContainText("Sortformer · optional");
+  await expect(speakers).toContainText("Pyannote · optional");
   await expect(
     page
       .getByRole("listitem", { name: "Dictionary", exact: true })

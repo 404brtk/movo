@@ -26,7 +26,7 @@ it.for([1, 7])(
     const directory = await mkdtemp(join(tmpdir(), "movo-real-transcription-"));
     const models = createModels();
     try {
-      const modelPath = await Effect.runPromise(models.resolve(transcriptionModel.id));
+      const [modelPath = ""] = await Effect.runPromise(models.resolve(transcriptionModel.id));
       const before = await stat(modelPath);
       await Effect.runPromise(
         Effect.scoped(

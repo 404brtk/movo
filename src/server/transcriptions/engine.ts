@@ -84,10 +84,9 @@ export function createTranscriptionEngine(
           import.meta.url,
         );
         let deviceReported = false;
-        const speakerArguments = speakers === null ? [] : [speakers];
         yield* run(
           process.execPath,
-          [fileURLToPath(worker), model, pcm, resultPath, ...speakerArguments],
+          [fileURLToPath(worker), ...model, pcm, resultPath, ...(speakers ?? [])],
           {
             timeoutMs: 6 * 60 * 60 * 1000,
             ipc: true,

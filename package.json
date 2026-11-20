@@ -57,6 +57,7 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
+    "sherpa-onnx-node": "2.0.2",
     "transcribe-cpp": "0.4.1"
   },
   "devDependencies": {

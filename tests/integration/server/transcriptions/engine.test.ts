@@ -36,7 +36,7 @@ it.for(["tone.wav", "sample.webm"])(
     const engine = createTranscriptionEngine(
       tools,
       {
-        resolve: () => Effect.succeed("verified-model.gguf"),
+        resolve: () => Effect.succeed(["verified-model.gguf"]),
         installed: () => Effect.succeed(null),
       },
       (file, args, options) =>
@@ -118,7 +118,7 @@ it.for([
   const engine = createTranscriptionEngine(
     tools,
     {
-      resolve: () => Effect.succeed("verified-model.gguf"),
+      resolve: () => Effect.succeed(["verified-model.gguf"]),
       installed: () => Effect.succeed(null),
     },
     (file, args, options) =>
@@ -146,7 +146,7 @@ it.for([
   });
 });
 
-it("hands the verified speaker model to the worker and accepts its speaker phase and result", async () => {
+it("hands the verified speaker models to the worker and accepts its speaker phase and result", async () => {
   const directory = await mkdtemp(join(tmpdir(), "movo-transcription-speakers-"));
   onTestFinished(() =>
     rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }),
@@ -163,8 +163,8 @@ it("hands the verified speaker model to the worker and accepts its speaker phase
   const engine = createTranscriptionEngine(
     createMediaTools({ dataDirectory: directory }),
     {
-      resolve: () => Effect.succeed("verified-model.gguf"),
-      installed: () => Effect.succeed("verified-speakers.gguf"),
+      resolve: () => Effect.succeed(["verified-model.gguf"]),
+      installed: () => Effect.succeed(["segmentation.onnx", "embedding.onnx"]),
     },
     (file, args, options) =>
       Effect.promise(async () => {
@@ -192,7 +192,8 @@ it("hands the verified speaker model to the worker and accepts its speaker phase
       "verified-model.gguf",
       join(directory, "audio.f32"),
       join(directory, "result.json"),
-      "verified-speakers.gguf",
+      "segmentation.onnx",
+      "embedding.onnx",
     ],
   ]);
 });

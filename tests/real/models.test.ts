@@ -9,10 +9,13 @@ import { createModels } from "../../src/server/models/models.ts";
 import { modelCachePath } from "../../src/server/models/cache.ts";
 import { validateModel } from "../../src/server/models/validation.ts";
 
+const [transcriptionFile] = transcriptionModel.files;
+
 it("installs the pinned real model, loads it in an isolated CPU worker and discovers it after restart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "movo-real-model-"));
   const models = createModels({ cacheDirectory: directory });
   try {
+    if (!transcriptionFile) throw new Error("The transcription model has no file.");
     expect((await Effect.runPromise(models.list()))[0]?.state).toBe("missing");
     await Effect.runPromise(models.install(transcriptionModel.id));
     await expect
@@ -27,8 +30,8 @@ it("installs the pinned real model, loads it in an isolated CPU worker and disco
     const installed = (await Effect.runPromise(models.list()))[0];
     if (installed?.installation.error) throw new Error(installed.installation.error);
     expect(installed?.state).toBe("ready");
-    await validateModel(modelCachePath(directory, transcriptionModel), AbortSignal.timeout(120000));
-    expect(installed?.installation.downloadedBytes).toBe(transcriptionModel.bytes);
+    await validateModel(modelCachePath(directory, transcriptionFile), AbortSignal.timeout(120000));
+    expect(installed?.installation.downloadedBytes).toBe(transcriptionFile.bytes);
     await Effect.runPromise(models.close());
     const reopened = createModels({ cacheDirectory: directory });
     try {
@@ -40,12 +43,12 @@ it("installs the pinned real model, loads it in an isolated CPU worker and disco
       await readdir(
         join(
           directory,
-          `models--${transcriptionModel.repository.replaceAll("/", "--")}`,
+          `models--${transcriptionFile.repository.replaceAll("/", "--")}`,
           "snapshots",
-          transcriptionModel.revision,
+          transcriptionFile.revision,
         ),
       ),
-    ).toEqual([transcriptionModel.filename]);
+    ).toEqual([transcriptionFile.filename]);
   } finally {
     await Effect.runPromise(models.close());
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });

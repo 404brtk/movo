@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-export const ModelId = Schema.Literals(["parakeet-ultra-q8", "sortformer-4spk-q8"]);
+export const ModelId = Schema.Literals(["parakeet-ultra-q8", "pyannote-wespeaker"]);
 export type ModelId = typeof ModelId.Type;
 export const ModelRole = Schema.Literals(["transcription", "speakers"]);
 export type ModelRole = typeof ModelRole.Type;
