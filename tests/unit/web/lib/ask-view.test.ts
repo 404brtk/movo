@@ -99,7 +99,23 @@ const tool = (toolName: string, input: unknown, extra: Partial<ToolPart> = {}): 
   ...extra,
 });
 
+const scan = (progress: { done: number; total: number } | null) =>
+  toolLabel({ toolName: "scan_transcript", input: {}, progress }, "now");
+
 describe("answer receipts", () => {
+  it("follows the parts of a whole-transcript reading and names how many it took", () => {
+    expect(scan(null)).toBe("Reading the whole transcript");
+    expect(scan({ done: 0, total: 1 })).toBe("Reading the whole transcript");
+    expect(scan({ done: 2, total: 12 })).toBe("Reading the whole transcript, part 3 of 12");
+    expect(scan({ done: 12, total: 12 })).toBe("Bringing the notes together");
+    expect(stepReceipt([tool("scan_transcript", {}, { resultCount: 12 })], false)).toEqual([
+      "Read the whole transcript in 12 parts",
+    ]);
+    expect(stepReceipt([tool("scan_transcript", {}, { resultCount: 1 })], false)).toEqual([
+      "Read the whole transcript",
+    ]);
+  });
+
   it("names the step in progress and the finished steps", () => {
     const titles = new Map([[id, "Weekly sync"]]);
     expect(toolLabel({ toolName: "read_transcript", input: { mediaId: id } }, "now")).toBe(
@@ -141,10 +157,10 @@ describe("answer receipts", () => {
   it("says whether the model held the whole transcript or read parts of it", () => {
     expect(transcriptReceipt("whole", "Model A")).toBe("Read the whole transcript");
     expect(transcriptReceipt("parts", "Model A")).toBe(
-      "Model A can't hold the whole transcript, so it read parts",
+      "Model A can't hold the whole transcript at once, so it read it in parts",
     );
     expect(transcriptReceipt("parts", null)).toBe(
-      "This model can't hold the whole transcript, so it read parts",
+      "This model can't hold the whole transcript at once, so it read it in parts",
     );
     expect(transcriptReceipt(null, "Model A")).toBeNull();
   });

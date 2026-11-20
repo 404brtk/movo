@@ -1,6 +1,7 @@
 import {
   localServerName,
   providerNames,
+  type ActivityProgress,
   type AiConnection,
   type ChatMessage,
   type ChatPart,
@@ -73,6 +74,22 @@ const toolLabels: Record<string, { now: string; done: string }> = {
   rename_speaker: { now: "Preparing a change", done: "Prepared a change" },
 };
 
+function scanLabel(
+  tense: "now" | "done",
+  progress: ActivityProgress | null | undefined,
+  partCount: number | null | undefined,
+) {
+  if (tense === "done")
+    return partCount && partCount > 1
+      ? `Read the whole transcript in ${partCount} parts`
+      : "Read the whole transcript";
+  if (progress && progress.total > 0 && progress.done === progress.total)
+    return "Bringing the notes together";
+  if (progress && progress.total > 1)
+    return `Reading the whole transcript, part ${progress.done + 1} of ${progress.total}`;
+  return "Reading the whole transcript";
+}
+
 const speakerReceipts: Record<string, string> = {
   assign_speaker: "Changed the speaker",
   merge_speakers: "Merged speakers",
@@ -80,10 +97,17 @@ const speakerReceipts: Record<string, string> = {
 };
 
 export function toolLabel(
-  activity: { toolName: string; input: unknown },
+  activity: {
+    toolName: string;
+    input: unknown;
+    progress?: ActivityProgress | null;
+    resultCount?: number | null;
+  },
   tense: "now" | "done",
   titles?: ReadonlyMap<string, string>,
 ) {
+  if (activity.toolName === "scan_transcript")
+    return scanLabel(tense, activity.progress, activity.resultCount);
   const query = textField(activity.input, "q").trim();
   if (activity.toolName === "search_library" && query)
     return tense === "now" ? `Searching for “${query}”` : `Searched for “${query}”`;
@@ -119,7 +143,7 @@ export function stepReceipt(parts: readonly ChatPart[], library: boolean) {
 export function transcriptReceipt(reading: TranscriptReading | null, modelName: string | null) {
   if (reading === "whole") return "Read the whole transcript";
   if (reading === "parts")
-    return `${modelName ?? "This model"} can't hold the whole transcript, so it read parts`;
+    return `${modelName ?? "This model"} can't hold the whole transcript at once, so it read it in parts`;
   return null;
 }
 

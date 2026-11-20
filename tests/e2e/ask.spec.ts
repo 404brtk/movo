@@ -573,9 +573,12 @@ test("keeps long steps, failures and model names inside the panel, one step per 
   const searched = panel.getByText(`Searched for “${query}”`, { exact: true });
   const read = panel.getByText("Read the transcript", { exact: true });
   const failed = panel.getByText(failure, { exact: true });
-  const parts = panel.getByText(`${longModel} can't hold the whole transcript, so it read parts`, {
-    exact: true,
-  });
+  const parts = panel.getByText(
+    `${longModel} can't hold the whole transcript at once, so it read it in parts`,
+    {
+      exact: true,
+    },
+  );
   await expect(searched).toBeVisible();
   await expect(read).toBeVisible();
   await expect(failed).toBeVisible();

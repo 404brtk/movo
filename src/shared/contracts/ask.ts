@@ -186,8 +186,14 @@ export const ChatDetail = Schema.Struct({
 export type ChatDetail = typeof ChatDetail.Type;
 export const ChatListQuery = Schema.Struct({ mediaId: Schema.optional(MediaId) });
 
+export const ActivityProgress = Schema.Struct({ done: Count, total: Count });
+export type ActivityProgress = typeof ActivityProgress.Type;
 export const LiveActivity = Schema.NullOr(
-  Schema.Struct({ toolName: Schema.String, input: Schema.Unknown }),
+  Schema.Struct({
+    toolName: Schema.String,
+    input: Schema.Unknown,
+    progress: Schema.NullOr(ActivityProgress),
+  }),
 );
 export type LiveActivity = typeof LiveActivity.Type;
 export const LiveSnapshot = Schema.Struct({ text: Schema.String, activity: LiveActivity });

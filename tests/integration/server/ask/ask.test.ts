@@ -39,13 +39,14 @@ const words = [
   ...timedWords(600, 1100, "Anna presents the numbers."),
 ];
 
+const usage = () => ({
+  inputTokens: { total: 120, noCache: 120, cacheRead: undefined, cacheWrite: undefined },
+  outputTokens: { total: 10, text: 10, reasoning: undefined },
+});
 const finish = (unified: "stop" | "tool-calls"): LanguageModelV4StreamPart => ({
   type: "finish",
   finishReason: { unified, raw: undefined },
-  usage: {
-    inputTokens: { total: 120, noCache: 120, cacheRead: undefined, cacheWrite: undefined },
-    outputTokens: { total: 10, text: 10, reasoning: undefined },
-  },
+  usage: usage(),
 });
 const text = (value: string): LanguageModelV4StreamPart[] => [
   { type: "text-start", id: "t" },
@@ -79,6 +80,7 @@ function withAsk(
     otherMediaId: string;
     transcript: () => Promise<string>;
     calls: LanguageModelV4CallOptions[];
+    generated: LanguageModelV4CallOptions[];
     database: AppDatabase;
   }) => Promise<void>,
   modelOverride?: AskBoundaries["languageModel"],
@@ -116,6 +118,7 @@ function withAsk(
             const worker = yield* transcriptions.start();
             let counter = 0;
             const calls: LanguageModelV4CallOptions[] = [];
+            const generated: LanguageModelV4CallOptions[] = [];
             const boundaries: AskBoundaries = {
               listModels: async (connection) => {
                 if (connection.apiKey !== validKey && connection.kind !== "server")
@@ -140,6 +143,15 @@ function withAsk(
                         revision,
                       });
                     },
+                    doGenerate: async (options) => {
+                      generated.push(options);
+                      return {
+                        content: [{ type: "text", text: "The budget meeting starts [0]." }],
+                        finishReason: { unified: "stop", raw: undefined },
+                        usage: usage(),
+                        warnings: [],
+                      };
+                    },
                   })),
             };
             const ask = yield* Effect.acquireRelease(
@@ -162,6 +174,7 @@ function withAsk(
                     .map((word) => word.text)
                     .join(" ") ?? "",
                 calls,
+                generated,
                 database,
               });
             });
@@ -357,9 +370,11 @@ it(
           statusCode: 400,
           isRetryable: false,
         });
-      return stream(text("From the parts I read."));
+      if (index === 1)
+        return stream(call("scan_transcript", { instruction: "Note the main points" }));
+      return stream(text("It opens with the budget [0]."));
     },
-    async ({ request, mediaId, calls }) => {
+    async ({ request, mediaId, calls, generated }) => {
       const chatId = await connectAndCreateChat(request, mediaId);
       await request(`/chats/${chatId}/messages`, json({ text: "Summarise it" }));
       const detail = await settled(request, chatId);
@@ -367,14 +382,25 @@ it(
         state: "done",
         error: null,
         transcriptReading: "parts",
-        parts: [{ type: "text", text: "From the parts I read." }],
+        moments: [{ startMs: 0, mediaId }],
+        parts: [
+          { type: "tool", toolName: "scan_transcript", state: "done", resultCount: 1 },
+          { type: "text", text: "It opens with the budget [0]." },
+        ],
       });
-      expect(calls).toHaveLength(2);
+      expect(calls).toHaveLength(3);
       expect(systemTexts(calls[0])).toHaveLength(2);
+      expect(calls[0]?.tools?.map((tool) => tool.name)).not.toContain("scan_transcript");
       const retried = systemTexts(calls[1]);
       expect(retried).toHaveLength(1);
       expect(retried[0]?.text).toContain("too long for you to hold at once");
       expect(retried[0]?.text).not.toContain("Anna presents the numbers.");
+      expect(calls[1]?.tools?.map((tool) => tool.name)).toContain("scan_transcript");
+      expect(generated).toHaveLength(1);
+      const part = JSON.stringify(generated[0]?.prompt);
+      expect(part).toContain("Instruction: Note the main points");
+      expect(part).toContain("Anna presents the numbers.");
+      expect(JSON.stringify(calls[2]?.prompt.at(-1))).toContain("The budget meeting starts [0].");
     },
   ),
 );

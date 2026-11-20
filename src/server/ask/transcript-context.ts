@@ -2,6 +2,8 @@ import type { Transcript } from "../../shared/contracts/transcriptions.ts";
 import { labeledPassages } from "../../shared/transcript-export.ts";
 
 export interface TranscriptContext {
+  title: string;
+  lines: string[];
   text: string;
   moments: number[];
 }
@@ -21,6 +23,8 @@ export function transcriptContext(
     ? " A speaker's name starts each change of speaker."
     : "";
   return {
+    title,
+    lines,
     text: [
       `The whole transcript of "${title}" (revision ${revision}${language}). Each line is a passage that starts with its startMs in square brackets.${speakers}`,
       "<transcript>",

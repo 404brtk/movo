@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   APICallError,
+  generateText,
   stepCountIs,
   streamText,
   type Instructions,
@@ -10,7 +11,6 @@ import {
 } from "ai";
 import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { Effect, Schema } from "effect";
-import { Tool } from "effect/ai";
 import {
   ChatDetail,
   localServerName,
@@ -53,7 +53,14 @@ import {
   listModels,
   type ConnectionSecret,
 } from "./providers.ts";
-import { chatTools, chatToolNames } from "./tools.ts";
+import { scanTranscript } from "./scan.ts";
+import {
+  chatTools,
+  chatToolNames,
+  scanTranscriptDefinition,
+  scanTranscriptTool,
+  toolDefinitionCharacters,
+} from "./tools.ts";
 import { transcriptContext, type TranscriptContext } from "./transcript-context.ts";
 
 export interface AskBoundaries {
@@ -214,7 +221,10 @@ function summary(row: typeof chats.$inferSelect, recordingCount = 0): ChatSummar
 
 const outputCount = (output: unknown) => {
   if (typeof output !== "object" || output === null) return null;
-  const count = Reflect.get(output, "replacementCount") ?? Reflect.get(output, "total");
+  const count =
+    Reflect.get(output, "replacementCount") ??
+    Reflect.get(output, "partCount") ??
+    Reflect.get(output, "total");
   return typeof count === "number" ? count : null;
 };
 
@@ -355,7 +365,9 @@ function instructionsFor(
     ...shared,
     `This chat is about one recording, mediaId ${mediaId}. Tools only work with that recording.`,
     ...(reading === "parts"
-      ? ["The whole transcript is too long for you to hold at once, so read the parts you need."]
+      ? [
+          "The whole transcript is too long for you to hold at once. For particular words or moments, search and read the parts you need. For anything that needs the whole recording, such as a summary, decisions, open questions or what someone said throughout, call scan_transcript once and answer from its notes.",
+        ]
       : []),
     citeMoments,
     "To fix the transcript, use edit_transcript or replace_in_transcript. When speakers were identified, use rename_speaker to name a speaker, assign_speaker to attribute a passage to another speaker and merge_speakers when one person appears as two speakers. The user approves each change. When a change is not approved, don't try it again.",
@@ -495,16 +507,11 @@ const questionText = (messages: readonly ModelMessage[]) => {
   return last?.type === "text" ? last.text : "";
 };
 
-const toolDefinitionCharacters = (mediaId: string | null) =>
-  chatToolNames(mediaId).reduce((total, name) => {
-    const definition = movoTools.tools[name];
-    return (
-      total +
-      name.length +
-      (Tool.getDescription(definition) ?? "").length +
-      JSON.stringify(Tool.getJsonSchema(definition)).length
-    );
-  }, 0);
+const chatToolCharacters = (mediaId: string | null, reading: TranscriptReading | null) =>
+  chatToolNames(mediaId).reduce(
+    (total, name) => total + toolDefinitionCharacters(movoTools.tools[name]),
+    reading === "parts" ? toolDefinitionCharacters(scanTranscriptDefinition) : 0,
+  );
 
 const secret = (request: ConnectRequest) =>
   Effect.try({
@@ -654,15 +661,52 @@ export function createAsk(
       const rows = messageRows(chatId);
       const contextTokens = chat.contextTokens ?? fallbackContextTokens[connection.kind];
       const transcript = chat.mediaId ? await loadTranscript(chat.mediaId, signal) : null;
+      const transcriptCharactersPerToken = calibratedCharactersPerToken(
+        latestWholeMeasurement(connection.id, chat.modelId),
+      );
+      const contextCharacters = (charactersPerToken: number) =>
+        Math.floor(contextTokens * trimThreshold * charactersPerToken);
+      const scan = (
+        { title, lines, moments }: TranscriptContext,
+        promptCharacters: number,
+        charactersPerToken: number,
+      ) => {
+        const model = boundaries.languageModel(connection, chat.modelId);
+        return async (instruction: string, toolSignal: AbortSignal | undefined) => {
+          updateAnswer(chatId, seq, {
+            transcriptMoments: [...new Set([...(row.transcriptMoments ?? []), ...moments])],
+          });
+          const input = { instruction };
+          return scanTranscript({
+            title,
+            lines,
+            instruction,
+            callCharacters: contextCharacters(transcriptCharactersPerToken),
+            resultCharacters: contextCharacters(charactersPerToken) - promptCharacters,
+            read: async (system, prompt) =>
+              (
+                await generateText({
+                  model,
+                  instructions: system,
+                  prompt,
+                  abortSignal: toolSignal ?? signal,
+                })
+              ).text,
+            tooLong: isContextOverflow,
+            onProgress: (done, total) => {
+              current.activity = { toolName: "scan_transcript", input, progress: { done, total } };
+              emit(chatId, { type: "activity", activity: current.activity });
+            },
+          });
+        };
+      };
       const plan = (reading: TranscriptReading | null) => {
         const whole = reading === "whole" ? transcript : null;
         const instructions = instructionsFor(chat.mediaId, chat.scope, reading);
         const systemCharacters = instructions.length + (whole?.text.length ?? 0);
-        const charactersPerToken = calibratedCharactersPerToken(
-          whole
-            ? latestWholeMeasurement(connection.id, chat.modelId)
-            : rows.findLast((stored) => stored.inputTokens !== null),
-        );
+        const charactersPerToken = whole
+          ? transcriptCharactersPerToken
+          : calibratedCharactersPerToken(rows.findLast((stored) => stored.inputTokens !== null));
         const prompt = buildPrompt({
           rows: rows.map((stored): StoredMessage => ({
             seq: stored.seq,
@@ -671,7 +715,7 @@ export function createAsk(
           })),
           cuts: { toolCutSeq: chat.toolCutSeq, contextCutSeq: chat.contextCutSeq },
           contextTokens,
-          prefixCharacters: systemCharacters + toolDefinitionCharacters(chat.mediaId),
+          prefixCharacters: systemCharacters + chatToolCharacters(chat.mediaId, reading),
           charactersPerToken,
         });
         return { reading, whole, instructions, systemCharacters, charactersPerToken, prompt };
@@ -697,13 +741,21 @@ export function createAsk(
           transcriptMoments: whole?.moments ?? row.transcriptMoments,
         });
         emit(chatId, { type: "step" });
-        const tools: ToolSet = chatTools(handlers, services.library.get, {
-          mediaId: chat.mediaId,
-          library: chat.scope,
-          pagePassages: prompt.pagePassages,
-        });
-        const maxStepCharacters =
-          contextTokens * trimThreshold * charactersPerToken - systemCharacters;
+        const tools: ToolSet = {
+          ...chatTools(handlers, services.library.get, {
+            mediaId: chat.mediaId,
+            library: chat.scope,
+            pagePassages: prompt.pagePassages,
+          }),
+          ...(reading === "parts" && transcript
+            ? {
+                scan_transcript: scanTranscriptTool(
+                  scan(transcript, prompt.promptCharacters, charactersPerToken),
+                ),
+              }
+            : {}),
+        };
+        const maxStepCharacters = contextCharacters(charactersPerToken) - systemCharacters;
         const result = streamText({
           model: boundaries.languageModel(connection, chat.modelId),
           instructions: systemPrompt(instructions, whole, connection.kind, chat.modelId),
@@ -728,7 +780,7 @@ export function createAsk(
             emit(chatId, { type: "activity", activity: null });
           }
           if (part.type === "tool-call") {
-            current.activity = { toolName: part.toolName, input: part.input };
+            current.activity = { toolName: part.toolName, input: part.input, progress: null };
             emit(chatId, { type: "activity", activity: current.activity });
           }
           if (part.type === "text-delta") {
