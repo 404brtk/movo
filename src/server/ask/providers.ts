@@ -53,6 +53,11 @@ const OpenRouterModels = Schema.Struct({
       id: Schema.String,
       name: Schema.String,
       context_length: Schema.optional(Schema.NullOr(Schema.Number)),
+      top_provider: Schema.optional(
+        Schema.NullOr(
+          Schema.Struct({ context_length: Schema.optional(Schema.NullOr(Schema.Number)) }),
+        ),
+      ),
     }),
   ),
 });
@@ -186,7 +191,7 @@ async function listOpenRouter(apiKey: string, signal?: AbortSignal) {
   return page.data.map((model): AiModel => ({
     id: model.id,
     name: model.name,
-    contextTokens: model.context_length ?? null,
+    contextTokens: model.top_provider?.context_length ?? model.context_length ?? null,
     tools: "yes",
   }));
 }
@@ -371,7 +376,11 @@ const modelFactories: Record<
 > = {
   anthropic: (connection, modelId) => createAnthropic(keyOf(connection))(modelId),
   openai: (connection, modelId) => createOpenAI(keyOf(connection))(modelId),
-  openrouter: (connection, modelId) => createOpenRouter(keyOf(connection))(modelId),
+  openrouter: (connection, modelId) =>
+    createOpenRouter({
+      ...keyOf(connection),
+      extraBody: { plugins: [{ id: "context-compression", enabled: false }] },
+    })(modelId),
   server: (connection, modelId) =>
     createOpenAICompatible({
       name: "server",

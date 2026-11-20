@@ -146,6 +146,8 @@ export const ChatPart = Schema.Union([
 export type ChatPart = typeof ChatPart.Type;
 export const failureKinds = ["busy", "key", "server", "tools", "model", "other"] as const;
 export type FailureKind = (typeof failureKinds)[number];
+export const transcriptReadings = ["whole", "parts"] as const;
+export type TranscriptReading = (typeof transcriptReadings)[number];
 export const ChatMoment = Schema.Struct({ startMs: Count, mediaId: MediaId });
 export type ChatMoment = typeof ChatMoment.Type;
 export const ChatMessage = Schema.Struct({
@@ -156,8 +158,10 @@ export const ChatMessage = Schema.Struct({
   error: Schema.NullOr(Schema.String),
   errorKind: Schema.NullOr(Schema.Literals(failureKinds)),
   passage: Schema.NullOr(Passage),
+  transcriptReading: Schema.NullOr(Schema.Literals(transcriptReadings)),
   parts: Schema.Array(ChatPart),
   moments: Schema.Array(ChatMoment),
+  liveTranscript: Schema.optional(Schema.Boolean),
   createdAt: Timestamp,
 });
 export type ChatMessage = typeof ChatMessage.Type;
@@ -183,8 +187,14 @@ export const ChatDetail = Schema.Struct({
 export type ChatDetail = typeof ChatDetail.Type;
 export const ChatListQuery = Schema.Struct({ mediaId: Schema.optional(MediaId) });
 
+export const ActivityProgress = Schema.Struct({ done: Count, total: Count });
+export type ActivityProgress = typeof ActivityProgress.Type;
 export const LiveActivity = Schema.NullOr(
-  Schema.Struct({ toolName: Schema.String, input: Schema.Unknown }),
+  Schema.Struct({
+    toolName: Schema.String,
+    input: Schema.Unknown,
+    progress: Schema.NullOr(ActivityProgress),
+  }),
 );
 export type LiveActivity = typeof LiveActivity.Type;
 export const LiveSnapshot = Schema.Struct({ text: Schema.String, activity: LiveActivity });

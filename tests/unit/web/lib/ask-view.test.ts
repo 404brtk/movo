@@ -15,6 +15,7 @@ import {
   revealHiddenCharacters,
   stepReceipt,
   toolLabel,
+  transcriptReceipt,
 } from "../../../../src/web/lib/ask-view.ts";
 
 const id = "0b6f7c1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f";
@@ -47,6 +48,7 @@ const message = (seq: number, modelName: string | null): ChatMessage => ({
   error: null,
   errorKind: null,
   passage: null,
+  transcriptReading: null,
   parts: [],
   moments: [],
   createdAt: 1,
@@ -97,7 +99,24 @@ const tool = (toolName: string, input: unknown, extra: Partial<ToolPart> = {}): 
   ...extra,
 });
 
+const scan = (progress: { done: number; total: number } | null) =>
+  toolLabel({ toolName: "scan_transcript", input: {}, progress }, "now");
+
 describe("answer receipts", () => {
+  it("follows the parts of a whole-transcript reading and names how many it took", () => {
+    expect(scan(null)).toBe("Reading the whole transcript");
+    expect(scan({ done: 0, total: 1 })).toBe("Reading the whole transcript");
+    expect(scan({ done: 2, total: 12 })).toBe("Reading the whole transcript, part 3 of 12");
+    expect(scan({ done: 12, total: 12 })).toBe("Bringing the notes together");
+    expect(stepReceipt([tool("scan_transcript", {}, { resultCount: 12 })], false)).toEqual([
+      "Read the whole transcript in 12 parts",
+    ]);
+    expect(stepReceipt([tool("scan_transcript", {}, { resultCount: 1 })], false)).toEqual([
+      "Read the whole transcript",
+    ]);
+    expect(stepReceipt([tool("scan_transcript", {}, { state: "failed" })], false)).toEqual([]);
+  });
+
   it("names the step in progress and the finished steps", () => {
     const titles = new Map([[id, "Weekly sync"]]);
     expect(toolLabel({ toolName: "read_transcript", input: { mediaId: id } }, "now")).toBe(
@@ -134,6 +153,23 @@ describe("answer receipts", () => {
       stepReceipt([tool("get_recording", {}), tool("list_transcript_changes", {})], true),
     ).toEqual([]);
     expect(stepReceipt([tool("read_transcript", {}, { state: "running" })], false)).toEqual([]);
+  });
+
+  it("describes the model's transcript context when there is answer text", () => {
+    const whole: ChatMessage = {
+      ...message(2, "Model A"),
+      transcriptReading: "whole",
+      parts: [{ type: "text", text: "An answer." }],
+    };
+    expect(transcriptReceipt(whole)).toBe("Read the whole transcript");
+    expect(transcriptReceipt({ ...whole, transcriptReading: "parts" })).toBe(
+      "The whole transcript didn't fit in Model A's context",
+    );
+    expect(transcriptReceipt({ ...whole, transcriptReading: null })).toBeNull();
+    expect(transcriptReceipt({ ...whole, state: "stopped", parts: [] })).toBeNull();
+    expect(transcriptReceipt({ ...whole, state: "answering", parts: [] }, "Live text")).toBe(
+      "Read the whole transcript",
+    );
   });
 
   it("describes what an approved or declined change did", () => {

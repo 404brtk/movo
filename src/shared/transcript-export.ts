@@ -15,7 +15,7 @@ type LabeledPassage = {
   named: boolean;
 };
 
-function labeledPassages(transcript: Transcript, placement: SpeakerNamePlacement) {
+export function labeledPassages(transcript: Transcript, placement: SpeakerNamePlacement = "turn") {
   const speakers = transcriptSpeakers(transcript);
   return transcriptPassages(transcript.words).map((passage, index, passages): LabeledPassage => {
     const speaker =

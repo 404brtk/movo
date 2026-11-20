@@ -7,6 +7,7 @@ import {
   Copy01Icon,
   PencilEdit02Icon,
   SidebarRight01Icon,
+  TextAlignLeftIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -42,8 +43,9 @@ import {
 import { Kbd } from "./ui/kbd.tsx";
 
 const openKey = "movo.ask.open";
+const summaryQuestion = "Summarise this recording";
 const panelSuggestions = [
-  "Summarise this recording",
+  summaryQuestion,
   "List decisions and action items",
   "What was left open?",
 ] as const;
@@ -340,6 +342,16 @@ export function AskPanel({
     connections.data?.length === 0 && defaultModel.isSuccess && defaultModel.data === null;
   const block = transcriptBlock(transcription.isSuccess, transcription.data, item, transcribe);
   const hasMessages = (state.detail?.messages.length ?? 0) > 0;
+  const cannotAsk = block !== null || state.model === null || state.send.isPending;
+  const summariseInNewChat = chatId === null || hasMessages || state.model === null;
+  const summaryModel = summariseInNewChat ? defaultModel.data : state.model;
+  const canSummarise =
+    transcription.isSuccess &&
+    block === null &&
+    !state.send.isPending &&
+    (selected !== undefined || chats.isSuccess) &&
+    (chatId === null || state.detail !== undefined) &&
+    Boolean(summaryModel);
   const closeOnSmallScreens = () => {
     if (window.matchMedia("(max-width: 699px)").matches) change(false, "pointer");
   };
@@ -362,6 +374,25 @@ export function AskPanel({
           <h2 className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">Ask</h2>
           {needsConnection ? null : (
             <>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!canSummarise}
+                onClick={() =>
+                  state.send.mutate({
+                    text: summaryQuestion,
+                    passage: null,
+                    newChat: summariseInNewChat,
+                  })
+                }
+              >
+                <HugeiconsIcon
+                  icon={TextAlignLeftIcon}
+                  data-icon="inline-start"
+                  aria-hidden="true"
+                />
+                Summarise
+              </Button>
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -397,10 +428,14 @@ export function AskPanel({
           ) : (
             <>
               {hasMessages ? (
-                <AskConversation state={state} mediaId={item.id} />
+                <AskConversation
+                  state={state}
+                  mediaId={item.id}
+                  transcript={transcription.data?.transcript}
+                />
               ) : (
                 <EmptyChat
-                  disabled={block !== null || state.model === null || state.send.isPending}
+                  disabled={cannotAsk}
                   onAsk={(question) => state.send.mutate({ text: question, passage: null })}
                 />
               )}

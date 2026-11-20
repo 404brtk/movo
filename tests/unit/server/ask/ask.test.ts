@@ -9,6 +9,7 @@ const question = (text: string) => ({
   role: "user" as const,
   state: "done" as const,
   passage: null,
+  transcriptMoments: null,
   messages: [{ role: "user", content: text } satisfies ModelMessage],
 });
 
@@ -16,6 +17,7 @@ const answer = (reads: { id: string; mediaId: string; starts: number[] }[], text
   role: "assistant" as const,
   state: "done" as const,
   passage: null,
+  transcriptMoments: null,
   messages: [
     ...reads.flatMap(({ id, mediaId, starts }): ModelMessage[] => [
       {
@@ -81,4 +83,22 @@ it("leaves a moment unlinked when one turn read it in two recordings", () => {
     null,
   );
   expect(writing?.moments).toEqual([{ startMs: 4000, mediaId: first }]);
+});
+
+it("links the moments of a whole transcript only for the chat's own recording", () => {
+  const whole = {
+    ...answer([], "Anna opens [0] and closes [9000], not [123]."),
+    transcriptMoments: [0, 9000],
+  };
+  const [, done] = answerMoments([question("Who speaks?"), whole], first);
+  expect(done?.moments).toEqual([
+    { startMs: 0, mediaId: first },
+    { startMs: 9000, mediaId: first },
+  ]);
+  const later = answerMoments(
+    [question("Who speaks?"), whole, question("When?"), answer([], "At the end [9000].")],
+    first,
+  ).at(-1);
+  expect(later?.moments).toEqual([{ startMs: 9000, mediaId: first }]);
+  expect(answerMoments([question("Who speaks?"), whole], null)[1]?.moments).toEqual([]);
 });

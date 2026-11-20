@@ -101,8 +101,20 @@ export function useAskChat({
     onChatChange(updated.chat.id);
   };
   const send = useMutation({
-    mutationFn: async ({ text, passage }: { text: string; passage: Passage | null }) =>
-      askQuestion(chatId ?? (await createChat(mediaId, scope)).chat.id, text, passage),
+    mutationFn: async ({
+      text,
+      passage,
+      newChat = false,
+    }: {
+      text: string;
+      passage: Passage | null;
+      newChat?: boolean;
+    }) =>
+      askQuestion(
+        (!newChat && chatId) || (await createChat(mediaId, scope)).chat.id,
+        text,
+        passage,
+      ),
     onSuccess: store,
   });
   const stop = useMutation({ mutationFn: () => stopAnswer(chatId ?? ""), onSuccess: store });
