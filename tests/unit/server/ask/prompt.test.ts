@@ -116,6 +116,28 @@ describe("buildPrompt", () => {
     );
   });
 
+  it("gives a large prefix priority over older turns and reports when even the latest turn won't fit", () => {
+    const rows = Array.from({ length: 12 }, (_, index) => [
+      {
+        seq: index * 2 + 1,
+        role: "user" as const,
+        messages: [{ role: "user" as const, content: "q".repeat(2000) }],
+      },
+      {
+        seq: index * 2 + 2,
+        role: "assistant" as const,
+        messages: [{ role: "assistant" as const, content: "a".repeat(2000) }],
+      },
+    ]).flat();
+    expect(buildPrompt({ ...base, rows, contextTokens: 100_000 }).fits).toBe(true);
+    const transcript = { ...base, rows, prefixCharacters: 200_000, contextTokens: 70_000 };
+    const crowded = buildPrompt(transcript);
+    expect(crowded.fits).toBe(true);
+    expect(crowded.cuts.contextCutSeq).toBeGreaterThan(0);
+    expect(crowded.messages.at(-1)).toEqual(rows.at(-1)?.messages.at(-1));
+    expect(buildPrompt({ ...transcript, contextTokens: 60_000 }).fits).toBe(false);
+  });
+
   it("shrinks transcript pages as the free context gets smaller", () => {
     const rows = turns(1, 10);
     const roomy = buildPrompt({ ...base, rows, contextTokens: 200_000 }).pagePassages;

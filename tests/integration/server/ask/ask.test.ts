@@ -315,6 +315,70 @@ it(
   ),
 );
 
+const systemTexts = (options: LanguageModelV4CallOptions | undefined) =>
+  (options?.prompt ?? []).flatMap((message) =>
+    message.role === "system" ? [{ text: message.content, options: message.providerOptions }] : [],
+  );
+
+it(
+  "gives the model the recording's whole transcript, cached, and links any moment of it",
+  withAsk(
+    () => stream(text("The meeting opens at [0].")),
+    async ({ request, mediaId, calls }) => {
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "How does it open?" }));
+      const detail = await settled(request, chatId);
+      expect(detail.messages[1]).toMatchObject({
+        state: "done",
+        transcriptReading: "whole",
+        moments: [{ startMs: 0, mediaId }],
+      });
+      expect(calls).toHaveLength(1);
+      const [instructions, transcript] = systemTexts(calls[0]);
+      expect(instructions?.text).toContain("whole transcript follows");
+      expect(instructions?.text).not.toContain("Read in pages");
+      expect(transcript?.text).toContain('The whole transcript of "meeting"');
+      expect(transcript?.text).toContain("Anna presents the numbers.");
+      expect(transcript?.options).toEqual({ anthropic: { cacheControl: { type: "ephemeral" } } });
+      expect(calls[0]?.tools).toHaveLength(9);
+    },
+  ),
+);
+
+it(
+  "reads the transcript in parts when the provider says the whole one is too long",
+  withAsk(
+    (_options, index) => {
+      if (index === 0)
+        throw new APICallError({
+          message: "prompt is too long: 250000 tokens > 199999 maximum",
+          url: "https://api.anthropic.com/v1/messages",
+          requestBodyValues: {},
+          statusCode: 400,
+          isRetryable: false,
+        });
+      return stream(text("From the parts I read."));
+    },
+    async ({ request, mediaId, calls }) => {
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "Summarise it" }));
+      const detail = await settled(request, chatId);
+      expect(detail.messages[1]).toMatchObject({
+        state: "done",
+        error: null,
+        transcriptReading: "parts",
+        parts: [{ type: "text", text: "From the parts I read." }],
+      });
+      expect(calls).toHaveLength(2);
+      expect(systemTexts(calls[0])).toHaveLength(2);
+      const retried = systemTexts(calls[1]);
+      expect(retried).toHaveLength(1);
+      expect(retried[0]?.text).toContain("too long for you to hold at once");
+      expect(retried[0]?.text).not.toContain("Anna presents the numbers.");
+    },
+  ),
+);
+
 it(
   "waits for approval before editing and records the change as made by Ask",
   withAsk(
@@ -444,6 +508,8 @@ it(
       const chosen = await settled(request, chatId);
       expect(chosen.chat.scope).toEqual({ mediaIds: [otherMediaId] });
       expect(parts(chosen)).toEqual(["failed", "done", "text"]);
+      expect(chosen.messages[1]?.transcriptReading).toBeNull();
+      expect(systemTexts(calls[0])).toHaveLength(1);
       expect(JSON.stringify(calls[1]?.prompt.at(-1))).toContain("outside the chat's scope");
       expect(JSON.stringify(calls[2]?.prompt.at(-1))).toContain('"total":0');
       expect(calls[0]?.tools?.map((tool) => tool.name)).not.toContain("edit_transcript");
@@ -651,6 +717,11 @@ describe("requests sent to providers", () => {
         expect((await settled(request, chatId)).messages[1]?.state).toBe("done");
         const sent = await sentTo(provider("anthropic"), "/v1/messages");
         expect(lastMessage(sent)).toContain(ephemeral);
+        const system = Array.isArray(sent.system) ? sent.system : [];
+        expect(system).toHaveLength(2);
+        expect(JSON.stringify(system[0])).not.toContain("cache_control");
+        expect(JSON.stringify(system[1])).toContain("Anna presents the numbers.");
+        expect(JSON.stringify(system[1])).toContain(ephemeral);
         expect(JSON.stringify(sent.tools)).toContain("read_transcript");
         const stored = database
           .select({ inputTokens: chatMessages.inputTokens })
@@ -680,6 +751,9 @@ describe("requests sent to providers", () => {
         const sent = await sentTo(provider("openrouter"), "/chat/completions");
         expect(sent.model).toBe("anthropic/claude-sonnet");
         expect(lastMessage(sent)).toContain(ephemeral);
+        const transcript = Array.isArray(sent.messages) ? sent.messages[1] : null;
+        expect(JSON.stringify(transcript)).toContain("Anna presents the numbers.");
+        expect(JSON.stringify(transcript)).toContain(ephemeral);
       },
       (_connection, modelId) =>
         createOpenRouter({ apiKey: validKey, baseURL: provider("openrouter").baseUrl })(modelId),

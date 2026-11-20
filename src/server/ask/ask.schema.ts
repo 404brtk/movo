@@ -5,6 +5,7 @@ import {
   answerStates,
   connectionKinds,
   failureKinds,
+  transcriptReadings,
   type ChatScope,
   type Passage,
 } from "../../shared/contracts/ask.ts";
@@ -70,6 +71,8 @@ export const chatMessages = sqliteTable(
     error: text("error"),
     errorKind: text("error_kind", { enum: failureKinds }),
     passage: text("passage", { mode: "json" }).$type<Passage>(),
+    transcriptReading: text("transcript_reading", { enum: transcriptReadings }),
+    transcriptMoments: text("transcript_moments", { mode: "json" }).$type<number[]>(),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [unique("chat_messages_order").on(table.chatId, table.seq)],

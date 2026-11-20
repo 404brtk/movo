@@ -72,6 +72,7 @@ const userMessage = (text: string): ChatMessage => ({
   error: null,
   errorKind: null,
   passage: null,
+  transcriptReading: null,
   parts: [{ type: "text", text }],
   moments: [],
   createdAt: Date.now(),
@@ -100,6 +101,7 @@ const answerMessage = (
   error: null,
   errorKind: null,
   passage: null,
+  transcriptReading: null,
   parts: state === "answering" ? [] : parts,
   moments,
   createdAt: Date.now(),
@@ -201,8 +203,8 @@ test("asks about a recording in the side panel, streams the answer and applies a
   const chatId = randomUUID();
   const summary = summaryOf(chatId, media.id, "Who presents?");
   const question = userMessage("Who presents?");
-  const answer = (state: ChatMessage["state"], approval: "pending" | "done") =>
-    answerMessage(
+  const answer = (state: ChatMessage["state"], approval: "pending" | "done"): ChatMessage => ({
+    ...answerMessage(
       state,
       [
         tool("read_transcript", { mediaId: media.id }),
@@ -219,7 +221,9 @@ test("asks about a recording in the side panel, streams the answer and applies a
         ),
       ],
       [{ startMs: 1000, mediaId: media.id }],
-    );
+    ),
+    transcriptReading: "whole",
+  });
   let detail: ChatDetail = {
     chat: summary,
     messages: [],
@@ -280,6 +284,7 @@ test("asks about a recording in the side panel, streams the answer and applies a
   await expect(panel.getByText("Who presents?", { exact: true })).toBeVisible();
   const moment = panel.getByRole("link", { name: "0:01" });
   await expect(moment).toHaveAttribute("href", `/media/${media.id}?startMs=1000`);
+  await expect(panel.getByText("Read the whole transcript")).toBeVisible();
   await expect(panel.getByText("Read the transcript")).toBeVisible();
   await expect(panel.getByText("Change the transcript?")).toBeVisible();
   await expect(composer).toHaveAttribute("placeholder", "Answer the question above to continue");
@@ -545,6 +550,7 @@ test("keeps long steps, failures and model names inside the panel, one step per 
         ]),
         seq: 4,
         modelName: longModel,
+        transcriptReading: "parts",
       },
     ],
     hiddenBeforeSeq: 0,
@@ -567,9 +573,13 @@ test("keeps long steps, failures and model names inside the panel, one step per 
   const searched = panel.getByText(`Searched for “${query}”`, { exact: true });
   const read = panel.getByText("Read the transcript", { exact: true });
   const failed = panel.getByText(failure, { exact: true });
+  const parts = panel.getByText(`${longModel} can't hold the whole transcript, so it read parts`, {
+    exact: true,
+  });
   await expect(searched).toBeVisible();
   await expect(read).toBeVisible();
   await expect(failed).toBeVisible();
+  await expect(parts).toBeVisible();
   await expect(async () => {
     const panelBox = await box(panel);
     const panelRight = panelBox.x + panelBox.width;
@@ -577,6 +587,7 @@ test("keeps long steps, failures and model names inside the panel, one step per 
       searched,
       read,
       failed,
+      parts,
       panel.getByText(`${longModel} answers from here`, { exact: true }),
       panel.getByText("Who presents the numbers?", { exact: true }),
     ]) {
@@ -584,7 +595,9 @@ test("keeps long steps, failures and model names inside the panel, one step per 
       expect(lineBox.x + lineBox.width).toBeLessThanOrEqual(panelRight);
     }
     expect((await box(read)).y).toBeGreaterThan((await box(searched)).y);
+    expect((await box(searched)).y).toBeGreaterThan((await box(parts)).y);
     expect((await box(failed)).x).toBe((await box(searched)).x);
+    expect((await box(parts)).x).toBe((await box(searched)).x);
   }).toPass();
 });
 

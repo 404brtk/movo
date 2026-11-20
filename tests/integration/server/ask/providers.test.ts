@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { streamText } from "ai";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { listModels } from "../../../../src/server/ask/providers.ts";
+import { isContextOverflow } from "../../../../src/server/ask/ask.ts";
+import { languageModel, listModels } from "../../../../src/server/ask/providers.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
 
 type Handler = (path: string, body: string) => { status?: number; json?: unknown } | undefined;
@@ -39,7 +41,15 @@ const openRouterReplies = (keyStatus: number) =>
     if (url === "https://openrouter.ai/api/v1/key")
       return Response.json({ data: { label: "movo" } }, { status: keyStatus });
     return Response.json({
-      data: [{ id: "anthropic/claude", name: "Anthropic: Claude", context_length: 200_000 }],
+      data: [
+        { id: "anthropic/claude", name: "Anthropic: Claude", context_length: 200_000 },
+        {
+          id: "vendor/wide",
+          name: "Vendor: Wide",
+          context_length: 1_048_576,
+          top_provider: { context_length: 262_144 },
+        },
+      ],
     });
   });
 
@@ -60,12 +70,42 @@ describe("OpenRouter", () => {
     );
   });
 
-  it("lists tool-capable models for a key it accepts", async () => {
+  it("lists tool-capable models with the context their serving provider allows", async () => {
     const fetch = openRouterReplies(200);
     expect(await listModels({ kind: "openrouter", baseUrl: null, apiKey: "sk-or-live" })).toEqual([
       { id: "anthropic/claude", name: "Anthropic: Claude", contextTokens: 200_000, tools: "yes" },
+      { id: "vendor/wide", name: "Vendor: Wide", contextTokens: 262_144, tools: "yes" },
     ]);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks OpenRouter to reject a prompt that is too long rather than compress it", async () => {
+    const bodies: unknown[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      bodies.push(typeof init?.body === "string" ? JSON.parse(init.body) : null);
+      return Response.json(
+        { error: { message: "This endpoint's maximum context length is 8192 tokens." } },
+        { status: 400 },
+      );
+    });
+    const errors: unknown[] = [];
+    const result = streamText({
+      model: languageModel(
+        { kind: "openrouter", baseUrl: null, apiKey: "sk-or-live" },
+        "vendor/small",
+      ),
+      prompt: "A long transcript",
+      maxRetries: 0,
+      onError: ({ error }) => {
+        errors.push(error);
+      },
+    });
+    await result.consumeStream();
+    expect(bodies[0]).toMatchObject({
+      plugins: [{ id: "context-compression", enabled: false }],
+    });
+    expect(errors).toHaveLength(1);
+    expect(isContextOverflow(errors[0])).toBe(true);
   });
 });
 

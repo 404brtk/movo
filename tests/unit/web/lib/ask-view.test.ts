@@ -15,6 +15,7 @@ import {
   revealHiddenCharacters,
   stepReceipt,
   toolLabel,
+  transcriptReceipt,
 } from "../../../../src/web/lib/ask-view.ts";
 
 const id = "0b6f7c1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f";
@@ -47,6 +48,7 @@ const message = (seq: number, modelName: string | null): ChatMessage => ({
   error: null,
   errorKind: null,
   passage: null,
+  transcriptReading: null,
   parts: [],
   moments: [],
   createdAt: 1,
@@ -134,6 +136,17 @@ describe("answer receipts", () => {
       stepReceipt([tool("get_recording", {}), tool("list_transcript_changes", {})], true),
     ).toEqual([]);
     expect(stepReceipt([tool("read_transcript", {}, { state: "running" })], false)).toEqual([]);
+  });
+
+  it("says whether the model held the whole transcript or read parts of it", () => {
+    expect(transcriptReceipt("whole", "Model A")).toBe("Read the whole transcript");
+    expect(transcriptReceipt("parts", "Model A")).toBe(
+      "Model A can't hold the whole transcript, so it read parts",
+    );
+    expect(transcriptReceipt("parts", null)).toBe(
+      "This model can't hold the whole transcript, so it read parts",
+    );
+    expect(transcriptReceipt(null, "Model A")).toBeNull();
   });
 
   it("describes what an approved or declined change did", () => {

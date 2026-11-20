@@ -5,6 +5,7 @@ import {
   ArrowUp02Icon,
   Cancel01Icon,
   File01Icon,
+  InformationCircleIcon,
   Key01Icon,
   LaptopIcon,
   StopIcon,
@@ -42,6 +43,7 @@ import {
   proposedChange,
   stepReceipt,
   toolLabel,
+  transcriptReceipt,
 } from "../lib/ask-view.ts";
 import { formatDuration } from "../lib/format.ts";
 import { cn } from "../lib/utils.ts";
@@ -261,6 +263,10 @@ function Answer({
     ? new Map([...recordings].map(([id, item]) => [id, item.title]))
     : undefined;
   const receipt = stepReceipt(message.parts, recordings !== null);
+  const reading =
+    message.state === "failed"
+      ? null
+      : transcriptReceipt(message.transcriptReading, message.modelName);
   const runningLabel = live?.activity
     ? toolLabel(live.activity, "now", titles)
     : answering && !live?.text
@@ -268,8 +274,15 @@ function Answer({
       : null;
   return (
     <div className="grid grid-cols-1 gap-2" aria-busy={answering}>
-      {receipt.length > 0 ? (
+      {receipt.length > 0 || reading ? (
         <div className="ask-fade-in grid gap-0.5">
+          {reading ? (
+            <StatusLine
+              icon={message.transcriptReading === "whole" ? Tick02Icon : InformationCircleIcon}
+            >
+              {reading}
+            </StatusLine>
+          ) : null}
           {receipt.map((step) => (
             <StatusLine key={step} icon={Tick02Icon}>
               {step}

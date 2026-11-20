@@ -5,6 +5,7 @@ import {
   type ChatMessage,
   type ChatPart,
   type FailureKind,
+  type TranscriptReading,
 } from "../../shared/contracts/ask.ts";
 import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
 import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
@@ -113,6 +114,13 @@ export function stepReceipt(parts: readonly ChatPart[], library: boolean) {
     return summary ? [summary] : [];
   }
   return [...new Set(steps.map((part) => describeTool(part)))].slice(0, 3);
+}
+
+export function transcriptReceipt(reading: TranscriptReading | null, modelName: string | null) {
+  if (reading === "whole") return "Read the whole transcript";
+  if (reading === "parts")
+    return `${modelName ?? "This model"} can't hold the whole transcript, so it read parts`;
+  return null;
 }
 
 export function editReceipt(part: ToolPart) {
