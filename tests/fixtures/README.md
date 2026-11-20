@@ -11,7 +11,7 @@ ffmpeg -f lavfi -i color=c=0x2457d6:s=160x90:r=10:d=2 -f lavfi -i sine=frequency
 
 Ordinary integration and browser tests use the committed files and local FFprobe. They do not download media or models.
 
-`speech.wav` is approximately 5.6 seconds of synthetic English speech, mono 16 kHz PCM16, used only by the opt-in real transcription test. It says: “This is a local transcription test. The recording stays on this computer.” It was generated offline with Windows `System.Speech`; it is not a user recording or a downloaded clip.
+`speech.wav` is approximately 5.6 seconds of synthetic English speech, mono 16 kHz PCM16, used by the opt-in transcription and speaker tests. It says: “This is a local transcription test. The recording stays on this computer.” It was generated offline with Windows `System.Speech`; it is not a user recording or a downloaded clip.
 
 Regenerate the speech fixture in Windows PowerShell:
 

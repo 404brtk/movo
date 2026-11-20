@@ -9,7 +9,7 @@ const speakerDistanceThreshold = 0.5;
 export async function diarizeSpeakers(
   segmentationPath: string,
   embeddingPath: string,
-  pcm: Buffer,
+  pcm: Uint8Array,
 ) {
   const { default: sherpaOnnx } = await import("sherpa-onnx-node");
   const numThreads = availableParallelism();

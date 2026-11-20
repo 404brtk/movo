@@ -1,13 +1,13 @@
 import { writeFile } from "node:fs/promises";
+import { Worker } from "node:worker_threads";
 import { Schema } from "effect";
 import { TranscribeModel } from "transcribe-cpp";
 import { TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
 import { readEngineTranscript } from "./engine-result.ts";
 import { readPreparedAudio } from "./prepared-audio.ts";
-import { diarizeSpeakers } from "./speaker-diarization.ts";
 import { assignSpeakers } from "./speakers.ts";
 
-const ownerDisconnected = () => process.exit(1);
+const ownerDisconnected = () => process.kill(process.pid, "SIGKILL");
 process.once("disconnect", ownerDisconnected);
 
 async function transcribe(modelPath: string, audioPath: string) {
@@ -34,9 +34,27 @@ async function transcribe(modelPath: string, audioPath: string) {
   }
 }
 
-async function speakerSegments(segmentationPath: string, embeddingPath: string, pcm: Buffer) {
+function speakerSegments(
+  segmentationPath: string,
+  embeddingPath: string,
+  pcm: Buffer<ArrayBuffer>,
+) {
   console.log("MOVO_PHASE:speakers");
-  return diarizeSpeakers(segmentationPath, embeddingPath, pcm);
+  const script = new URL(
+    import.meta.url.endsWith(".ts") ? "./speaker-worker.ts" : "./speaker-worker.js",
+    import.meta.url,
+  );
+  const worker = new Worker(script, {
+    workerData: { segmentationPath, embeddingPath, pcm },
+    transferList: [pcm.buffer],
+  });
+  return new Promise<unknown>((resolve, reject) => {
+    worker.once("message", resolve);
+    worker.once("error", reject);
+    worker.once("exit", (code) =>
+      reject(new Error(`The speaker worker exited without a result (code ${code}).`)),
+    );
+  });
 }
 
 try {
