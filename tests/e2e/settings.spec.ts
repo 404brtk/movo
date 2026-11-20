@@ -101,11 +101,13 @@ test("requires an explicit download, retries a failed request and discovers inst
   await page.reload();
   await expect(page.getByText("Installed", { exact: true })).toBeVisible();
   expect(attempts).toBe(2);
+  const repairMessage =
+    "The cached file parakeet-ultra-Q8_0.gguf failed its SHA-256 integrity check. Repair it in your Hugging Face cache, then check again.";
   model = {
     ...model,
     state: "broken",
-    message:
-      "The cached model failed its SHA-256 integrity check. Repair it in your Hugging Face cache, then check again.",
+    message: repairMessage,
+    installation: { phase: "failed", downloadedBytes: 0, error: "The download was interrupted." },
   };
   await page.getByRole("button", { name: "Parakeet Ultra details", exact: true }).click();
   await expect(
@@ -115,7 +117,7 @@ test("requires an explicit download, retries a failed request and discovers inst
   await expect(page.getByText("Needs repair", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Check again", exact: true })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Download model", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("alert")).toContainText("Repair it in your Hugging Face cache");
+  await expect(page.getByRole("alert")).toHaveText(repairMessage);
   await expect(page.getByRole("status")).toHaveText("Needs repair");
 });
 

@@ -82,7 +82,7 @@ export function ModelRow({ model }: { model: ModelStatus }) {
   const { phase, downloadedBytes, error } = model.installation;
   const busy = activeModelPhases.includes(phase);
   const note = modelNote(model, busy);
-  const failure = action.error?.message ?? error ?? model.message;
+  const failure = model.message ?? action.error?.message ?? error;
   const retry = phase === "failed" || phase === "interrupted";
   const checking = models.isRefetching && !busy;
   const addOn = model.role === "speakers";
