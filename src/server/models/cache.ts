@@ -59,16 +59,25 @@ export function createModelCache(directory: string, file: ModelFile) {
   let verification: { fingerprint: string; result: Promise<void> } | undefined;
   const verify = async (initial: Stats, signal: AbortSignal) => {
     if (!initial.isFile() || initial.size !== file.bytes)
-      throw new MediaError("unsupported", "The cached model has an unexpected file type or size.");
+      throw new MediaError(
+        "unsupported",
+        `The cached file ${file.filename} has an unexpected type or size.`,
+      );
     const hash = createHash("sha256");
     for await (const chunk of createReadStream(path, { signal })) hash.update(chunk);
     if (hash.digest("hex") !== file.sha256)
-      throw new MediaError("unsupported", "The cached model failed its SHA-256 integrity check.");
+      throw new MediaError(
+        "unsupported",
+        `The cached file ${file.filename} failed its SHA-256 integrity check.`,
+      );
     signal.throwIfAborted();
     await verifyHeader(path, file);
     signal.throwIfAborted();
     if (fingerprint(await stat(path)) !== fingerprint(initial))
-      throw new MediaError("unavailable", "The model changed during verification. Check again.");
+      throw new MediaError(
+        "unavailable",
+        `The cached file ${file.filename} changed during verification. Check again.`,
+      );
   };
   const inspect = async (signal: AbortSignal, retry = true): Promise<Availability> => {
     signal.throwIfAborted();

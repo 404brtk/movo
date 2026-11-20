@@ -110,7 +110,7 @@ it("keeps the optional speaker models separate and treats them as absent until e
       await mkdir(dirname(speakers.embeddingPath), { recursive: true });
       await writeFile(speakers.embeddingPath, Buffer.alloc(speakers.embedding.length, 1));
       await expect(Effect.runPromise(models.installed(speakerModel.id))).rejects.toThrow(
-        /integrity/u,
+        /wespeaker_en_voxceleb_resnet34_LM\.onnx.*integrity/u,
       );
       await writeFile(speakers.embeddingPath, speakers.embedding);
       const repairedAt = new Date(Date.now() + 60000);
@@ -132,20 +132,82 @@ it("keeps the optional speaker models separate and treats them as absent until e
   });
 });
 
-it("downloads only the missing files of a model and reports their combined progress", async () => {
-  await withModels(async ({ cacheDirectory, file, respond, requests }) => {
+it("counts the cached second file while downloading and verifying the first", async () => {
+  await withModels(async ({ cacheDirectory, file, respond, create, requests }) => {
     const speakers = speakerFixture(cacheDirectory, file.url);
     const requested: string[] = [];
+    let transfer: ServerResponse | undefined;
+    const firstChunk = 8;
     respond((request, response) => {
       requested.push(request.url ?? "");
-      response.end(
-        request.url?.endsWith("/embedding") ? speakers.embedding : speakers.segmentation,
-      );
+      response.write(speakers.segmentation.subarray(0, firstChunk));
+      transfer = response;
     });
-    await mkdir(dirname(speakers.segmentationPath), { recursive: true });
-    await writeFile(speakers.segmentationPath, speakers.segmentation);
-    const models = createModels({ cacheDirectory, definitions: [speakers.definition] });
-    try {
+    await mkdir(dirname(speakers.embeddingPath), { recursive: true });
+    await writeFile(speakers.embeddingPath, speakers.embedding);
+    const models = create(speakers.definition);
+    const total = speakers.segmentation.length + speakers.embedding.length;
+    await Effect.runPromise(models.install(speakerModel.id));
+    await expect
+      .poll(async () => (await status(models)).installation)
+      .toMatchObject({
+        phase: "downloading",
+        downloadedBytes: speakers.embedding.length + firstChunk,
+      });
+    if (!transfer) throw new Error("The segmentation download did not start.");
+    transfer.write(speakers.segmentation.subarray(firstChunk));
+    await expect
+      .poll(async () => (await status(models)).installation)
+      .toMatchObject({
+        phase: "verifying",
+        downloadedBytes: total,
+      });
+    transfer.end();
+    expect(await finished(models)).toMatchObject({
+      state: "ready",
+      installation: { phase: "complete", downloadedBytes: total },
+    });
+    expect(requests()).toBe(1);
+    expect(requested).toEqual(["/weights/segmentation"]);
+    expect(await readFile(speakers.segmentationPath)).toEqual(speakers.segmentation);
+  });
+});
+
+it.each(["cancelled", "failed"] as const)(
+  "retries only the second file after it %s",
+  async (phase) => {
+    await withModels(async ({ cacheDirectory, file, respond, create }) => {
+      const speakers = speakerFixture(cacheDirectory, file.url);
+      const requested: string[] = [];
+      let transfer: ServerResponse | undefined;
+      const firstChunk = 8;
+      respond((request, response) => {
+        const url = request.url ?? "";
+        requested.push(url);
+        if (url === "/weights/segmentation") response.end(speakers.segmentation);
+        else {
+          response.write(speakers.embedding.subarray(0, firstChunk));
+          transfer = response;
+        }
+      });
+      const models = create(speakers.definition);
+      await Effect.runPromise(models.install(speakerModel.id));
+      await expect
+        .poll(async () => (await status(models)).installation.downloadedBytes)
+        .toBe(speakers.segmentation.length + firstChunk);
+      if (!transfer) throw new Error("The embedding download did not start.");
+      if (phase === "cancelled") await Effect.runPromise(models.cancel(speakerModel.id));
+      else transfer.end();
+      expect(await finished(models)).toMatchObject({
+        state: "missing",
+        installation: { phase },
+      });
+      expect(await readdir(dirname(speakers.embeddingPath))).toEqual([]);
+      expect(await readFile(speakers.segmentationPath)).toEqual(speakers.segmentation);
+      respond((request, response) => {
+        requested.push(request.url ?? "");
+        response.end(speakers.embedding);
+      });
       await Effect.runPromise(models.install(speakerModel.id));
       expect(await finished(models)).toMatchObject({
         state: "ready",
@@ -154,14 +216,15 @@ it("downloads only the missing files of a model and reports their combined progr
           downloadedBytes: speakers.segmentation.length + speakers.embedding.length,
         },
       });
-      expect(requests()).toBe(1);
-      expect(requested).toEqual(["/weights/embedding"]);
+      expect(requested).toEqual([
+        "/weights/segmentation",
+        "/weights/embedding",
+        "/weights/embedding",
+      ]);
       expect(await readFile(speakers.embeddingPath)).toEqual(speakers.embedding);
-    } finally {
-      await Effect.runPromise(models.close());
-    }
-  });
-});
+    });
+  },
+);
 
 function ggufString(value: string) {
   const bytes = Buffer.from(value);

@@ -13,7 +13,7 @@ The transcription model is **Parakeet Ultra Q8_0** (`parakeet-ultra-q8`).
 - SHA-256: `007a59761e9258779f189df396b50d12b83bb5b79e66df4b955c230d2f2a0a59`.
 - License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); retain attribution to the upstream model and conversion publishers.
 
-The optional speaker model is **Pyannote** (`pyannote-wespeaker`), pyannote segmentation with a WeSpeaker voice model,, shown in Settings as **Speaker labels** under Parakeet Ultra. When it is installed, new transcripts label who speaks when and the number of speakers is found from the recording, up to the 32 a transcript can label; without it, transcription works as before. It consists of two ONNX files that are downloaded, verified and reported together, with one **Download model** action and one combined size and progress:
+The optional speaker model is **Pyannote** (`pyannote-wespeaker`), shown in Settings as **Speaker labels** under Parakeet Ultra. When installed, it detects who speaks when and labels up to 32 speakers in each new transcript. The **Download model** action reports the combined size and progress of its two ONNX files.
 
 - Segmentation, which finds when someone speaks and where the speaker changes: [sherpa-onnx conversion](https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/tree/9403a6902bb58e3d5ae8c7e77c3422de279db2e0) of [pyannote segmentation 3.0](https://huggingface.co/pyannote/segmentation-3.0), file `model.onnx`, exactly `5992913` bytes, SHA-256 `220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079`, [MIT license](https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/blob/9403a6902bb58e3d5ae8c7e77c3422de279db2e0/LICENSE).
 - Speaker embedding, which describes each voice so that the same speaker is recognized across the recording: [sherpa-onnx copy](https://huggingface.co/csukuangfj/speaker-embedding-models/tree/a8055d6daef723a6a4ecf4de233708575bf4994f) of [WeSpeaker ResNet34-LM](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM), trained on VoxCeleb2, file `wespeaker_en_voxceleb_resnet34_LM.onnx`, exactly `26530550` bytes, SHA-256 `e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012`, which matches the [sherpa-onnx release asset](https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
@@ -35,17 +35,21 @@ Cache location, in priority order:
 
 On a typical Windows installation the default is `C:\Users\<user>\.cache\huggingface\hub`. Set environment variables for the Node server, then restart it. Cache selection is independent of `MOVO_DATA_DIR`.
 
-The recognized file is:
+Movo recognizes these files under the shared cache.
 
 ```text
-<cache>/models--handy-computer--parakeet-ultra-gguf/
-  snapshots/39eeb55181f0d354fd934f06e92fd8d5037fed8e/
-    parakeet-ultra-Q8_0.gguf
+<cache>/
+  models--handy-computer--parakeet-ultra-gguf/
+    snapshots/39eeb55181f0d354fd934f06e92fd8d5037fed8e/parakeet-ultra-Q8_0.gguf
+  models--csukuangfj--sherpa-onnx-pyannote-segmentation-3-0/
+    snapshots/9403a6902bb58e3d5ae8c7e77c3422de279db2e0/model.onnx
+  models--csukuangfj--speaker-embedding-models/
+    snapshots/a8055d6daef723a6a4ecf4de233708575bf4994f/wespeaker_en_voxceleb_resnet34_LM.onnx
 ```
 
-When the Settings page first discovers this file, Movo verifies its exact length and SHA-256, then parses the GGUF metadata using the official [`@huggingface/gguf` parser](https://huggingface.co/docs/huggingface.js/gguf/README) and requires the Parakeet architecture. Checks are coalesced in memory and reused while file identity, size, modification time and change time remain unchanged. Restarting the server or changing the file causes verification again. Opening the application never downloads weights.
+When the Settings page first discovers these files, Movo verifies each file’s exact length and SHA-256. For the GGUF file, it also verifies the Parakeet architecture using the official [`@huggingface/gguf` parser](https://huggingface.co/docs/huggingface.js/gguf/README). Checks are coalesced in memory and reused while file identity, size, modification time and change time remain unchanged. Restarting the server or changing a file causes verification again. Model downloads start only on request.
 
-A failed check shows **Needs repair**. Movo does not overwrite or delete a shared model to repair it. Repair or remove the affected file through your cache-management tool, then choose **Check again**. A missing file can be downloaded explicitly.
+A failed check shows **Needs repair** and names the affected file. Repair or remove that file through your cache-management tool, then choose **Check again**. You can download missing files from Settings.
 
 ## Explicit downloads
 
@@ -57,7 +61,7 @@ Movo publishes the completed file with an exclusive filesystem hard link, then r
 
 Separate processes can download concurrently without sharing partial files. If another process publishes first, Movo verifies the existing destination and leaves it intact. Concurrent transfers can duplicate network work; they do not require Redis or a cross-client lock. Movo does not use the JS SDK's shared `.incomplete` writer.
 
-**Cancel installation** aborts the transfer and waits for its temporary file to be removed. Failure and graceful shutdown also clean owned partials. Other clients' files are left untouched. Retry starts from the beginning. A forced process termination can leave an unused `.movo-*.partial` file; it is never recognized as an available model.
+**Cancel installation** aborts the transfer and waits for its temporary file to be removed. Failure and graceful shutdown also clean owned partials. A retry reuses verified files and starts each missing file from the beginning. A forced process termination can leave an unused `.movo-*.partial` file. Movo only recognizes files published to their final cache paths.
 
 The complete download is bounded at thirty minutes. Publication already in progress finishes before cancellation is reported. Cleanup errors are reported as failures.
 

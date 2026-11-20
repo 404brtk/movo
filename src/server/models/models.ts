@@ -46,17 +46,26 @@ function createModel(cacheDirectory: string, definition: ModelDefinition) {
       installation,
     });
   const download = async (signal: AbortSignal) => {
+    const pending = [];
     let completedBytes = 0;
     for (const { file, cache } of files) {
-      if ((await cache.inspect(signal)).state !== "ready")
-        await cache.download(signal, (fileBytes) => {
-          const downloadedBytes = completedBytes + fileBytes;
-          installation = {
-            phase: downloadedBytes === bytes ? "verifying" : "downloading",
-            downloadedBytes,
-            error: null,
-          };
-        });
+      const current = await cache.inspect(signal);
+      if (current.state === "broken")
+        throw new MediaError("unavailable", current.message ?? "The cached model needs repair.");
+      if (current.state === "ready") completedBytes += file.bytes;
+      else pending.push({ file, cache });
+    }
+    installation = { ...installation, downloadedBytes: completedBytes };
+    for (const { file, cache } of pending) {
+      signal.throwIfAborted();
+      await cache.download(signal, (fileBytes) => {
+        const downloadedBytes = completedBytes + fileBytes;
+        installation = {
+          phase: downloadedBytes === bytes ? "verifying" : "downloading",
+          downloadedBytes,
+          error: null,
+        };
+      });
       completedBytes += file.bytes;
     }
   };
