@@ -212,6 +212,28 @@ test("keeps export choices from other open tabs when changing one in this tab", 
   expect(new URL(subtitles).search).toBe("?speakers=line&timestamps=true");
 });
 
+test("starts from the default export choices when the remembered ones are unreadable", async ({
+  page,
+}) => {
+  for (const stored of ["{", JSON.stringify({ speakers: true, timestamps: true })]) {
+    await page.evaluate(
+      (value) => localStorage.setItem("movo.transcript.exportOptions", value),
+      stored,
+    );
+    await page.reload();
+    await openExportMenu(page);
+    await expect(page.getByRole("menuitemradio", { name: "At each turn" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(page.getByRole("menuitemcheckbox", { name: "Timestamps in TXT" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    await page.keyboard.press("Escape");
+  }
+});
+
 test("moves passages between speakers, merges them, names the remaining speaker and undoes the merge from history", async ({
   page,
 }) => {

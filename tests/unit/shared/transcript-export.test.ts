@@ -151,6 +151,26 @@ describe("speaker labels", () => {
     );
   });
 
+  it("leaves a passage without a speaker unnamed and names the turn that follows it", () => {
+    const interrupted: Transcript = {
+      ...conversation,
+      words: [
+        { startMs: 0, endMs: 500, text: "Hello.", speaker: 1 },
+        { startMs: 600, endMs: 1000, text: "Noise." },
+        { startMs: 1200, endMs: 1500, text: "Hi.", speaker: 2 },
+      ],
+    };
+    const named = "Speaker 1: Hello.\nNoise.\n\nAnn & Co: Hi.";
+    expect(transcriptText(interrupted, { speakers: "turn", timestamps: false })).toBe(named);
+    expect(transcriptText(interrupted, { speakers: "line", timestamps: false })).toBe(named);
+    expect(transcriptText(interrupted, { speakers: "off", timestamps: false })).toBe(
+      "Hello.\nNoise.\nHi.",
+    );
+    expect(exportTranscript(interrupted, "srt", { speakers: "line", timestamps: false })).toContain(
+      "2\n00:00:00,600 --> 00:00:01,000\nNoise.\n\n",
+    );
+  });
+
   it("leaves a single unnamed speaker unlabeled but labels a named one", () => {
     const alone: Transcript = {
       language: null,
