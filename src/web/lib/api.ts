@@ -53,6 +53,7 @@ import {
   type SpeakerMerge,
   type SpeakerRename,
   type TranscriptExportFormat,
+  type TranscriptExportOptions,
   type TranscriptReplace,
   type TranscriptRestore,
 } from "../../shared/contracts/transcriptions.ts";
@@ -196,8 +197,15 @@ export const deleteMedia = (id: string) =>
   readResponse(client.api.media[":id"].$delete({ param: { id } }), MediaDeletion);
 export const removeMediaFile = (id: string) =>
   readResponse(client.api.media[":id"].file.$delete({ param: { id } }), MediaDeletion);
-export const transcriptionExportUrl = (id: string, format: TranscriptExportFormat) =>
-  `/api/media/${encodeURIComponent(id)}/transcription/export/${format}`;
+export const transcriptionExportUrl = (
+  id: string,
+  format: TranscriptExportFormat,
+  { speakers, timestamps }: TranscriptExportOptions,
+) =>
+  `/api/media/${encodeURIComponent(id)}/transcription/export/${format}?${new URLSearchParams({
+    speakers,
+    timestamps: String(timestamps),
+  })}`;
 
 export const modelsOptions = queryOptions({
   queryKey: ["models"],

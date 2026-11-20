@@ -86,6 +86,22 @@ export type TranscriptionDevice = typeof TranscriptionDevice.Type;
 export const transcriptExportFormats = ["txt", "srt", "vtt"] as const;
 export const TranscriptExportFormat = Schema.Literals(transcriptExportFormats);
 export type TranscriptExportFormat = typeof TranscriptExportFormat.Type;
+export const speakerNamePlacements = ["turn", "line", "off"] as const;
+export const SpeakerNamePlacement = Schema.Literals(speakerNamePlacements);
+export type SpeakerNamePlacement = typeof SpeakerNamePlacement.Type;
+export const TranscriptExportOptions = Schema.Struct({
+  speakers: SpeakerNamePlacement,
+  timestamps: Schema.Boolean,
+});
+export type TranscriptExportOptions = typeof TranscriptExportOptions.Type;
+export const defaultTranscriptExportOptions: TranscriptExportOptions = {
+  speakers: "turn",
+  timestamps: false,
+};
+export const TranscriptExportQuery = Schema.Struct({
+  speakers: Schema.optional(SpeakerNamePlacement),
+  timestamps: Schema.optional(Schema.Literals(["true", "false"])),
+});
 export const TranscriptionJob = Schema.Struct({
   mediaId: MediaId,
   modelId: ModelId,

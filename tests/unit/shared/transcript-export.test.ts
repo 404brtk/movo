@@ -107,6 +107,70 @@ describe("speaker labels", () => {
     );
   });
 
+  it("leaves speaker names out of every format when they are turned off", () => {
+    const withoutSpeakers = { speakers: "off", timestamps: false } as const;
+    expect(transcriptText(conversation, withoutSpeakers)).toBe("Hello.\nAgain.\n<Hi>.");
+    expect(exportTranscript(conversation, "srt", withoutSpeakers)).toContain(
+      "3\n00:00:01,200 --> 00:00:01,500\n&lt;Hi&gt;.\n\n",
+    );
+    expect(exportTranscript(conversation, "vtt", withoutSpeakers)).not.toContain("<v ");
+  });
+
+  it("names the speaker on every plain text line and SRT cue while keeping turns apart", () => {
+    const everyLine = { speakers: "line", timestamps: false } as const;
+    expect(transcriptText(conversation, everyLine)).toBe(
+      "Speaker 1: Hello.\nSpeaker 1: Again.\n\nAnn & Co: <Hi>.",
+    );
+    expect(exportTranscript(conversation, "srt", everyLine)).toContain(
+      "2\n00:00:00,600 --> 00:00:01,000\nSpeaker 1: Again.\n\n",
+    );
+    expect(exportTranscript(conversation, "vtt", everyLine)).toBe(
+      exportTranscript(conversation, "vtt"),
+    );
+  });
+
+  it("starts each plain text passage with its time, before the speaker name of a new turn", () => {
+    const timed: Transcript = {
+      ...conversation,
+      words: [
+        ...conversation.words,
+        { startMs: 3725999, endMs: 3727000, text: "Late.", speaker: 2 },
+      ],
+    };
+    expect(transcriptText(timed, { speakers: "turn", timestamps: true })).toBe(
+      "[00:00:00] Speaker 1: Hello.\n[00:00:00] Again.\n\n[00:00:01] Ann & Co: <Hi>.\n[01:02:05] Late.",
+    );
+    expect(transcriptText(timed, { speakers: "line", timestamps: true })).toBe(
+      "[00:00:00] Speaker 1: Hello.\n[00:00:00] Speaker 1: Again.\n\n[00:00:01] Ann & Co: <Hi>.\n[01:02:05] Ann & Co: Late.",
+    );
+    expect(transcriptText(timed, { speakers: "off", timestamps: true })).toBe(
+      "[00:00:00] Hello.\n[00:00:00] Again.\n[00:00:01] <Hi>.\n[01:02:05] Late.",
+    );
+    expect(exportTranscript(timed, "srt", { speakers: "turn", timestamps: false })).toBe(
+      exportTranscript(timed, "srt", { speakers: "turn", timestamps: true }),
+    );
+  });
+
+  it("leaves a passage without a speaker unnamed and names the turn that follows it", () => {
+    const interrupted: Transcript = {
+      ...conversation,
+      words: [
+        { startMs: 0, endMs: 500, text: "Hello.", speaker: 1 },
+        { startMs: 600, endMs: 1000, text: "Noise." },
+        { startMs: 1200, endMs: 1500, text: "Hi.", speaker: 2 },
+      ],
+    };
+    const named = "Speaker 1: Hello.\nNoise.\n\nAnn & Co: Hi.";
+    expect(transcriptText(interrupted, { speakers: "turn", timestamps: false })).toBe(named);
+    expect(transcriptText(interrupted, { speakers: "line", timestamps: false })).toBe(named);
+    expect(transcriptText(interrupted, { speakers: "off", timestamps: false })).toBe(
+      "Hello.\nNoise.\nHi.",
+    );
+    expect(exportTranscript(interrupted, "srt", { speakers: "line", timestamps: false })).toContain(
+      "2\n00:00:00,600 --> 00:00:01,000\nNoise.\n\n",
+    );
+  });
+
   it("leaves a single unnamed speaker unlabeled but labels a named one", () => {
     const alone: Transcript = {
       language: null,

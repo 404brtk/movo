@@ -33,7 +33,9 @@ import {
   SpeakerAssignment,
   SpeakerMerge,
   SpeakerRename,
+  defaultTranscriptExportOptions,
   TranscriptExportFormat,
+  TranscriptExportQuery,
   TranscriptHistoryQuery,
   TranscriptReplace,
   TranscriptRestore,
@@ -298,31 +300,50 @@ export function createApp(
       context.header("Cache-Control", "no-store");
       return context.json(await runMedia(transcriptions.get(context.req.param("id"))));
     })
-    .get("/media/:id/transcription/export/:format", async (context) => {
-      let format: TranscriptExportFormat;
-      try {
-        format = Schema.decodeUnknownSync(TranscriptExportFormat)(context.req.param("format"));
-      } catch (cause) {
-        throw new MediaError("invalid", "Choose TXT, SRT or VTT for the transcript export.", cause);
-      }
-      const job = await runMedia(transcriptions.get(context.req.param("id")));
-      if (!job?.transcript)
-        throw new MediaError("invalid", "Complete the transcription before downloading it.");
-      const item = await runMedia(library.get(job.mediaId));
-      const contentTypes = {
-        txt: "text/plain; charset=utf-8",
-        srt: "application/x-subrip; charset=utf-8",
-        vtt: "text/vtt; charset=utf-8",
-      };
-      return new Response(exportTranscript(job.transcript, format), {
-        headers: {
-          "Content-Type": contentTypes[format],
-          "Content-Disposition": attachmentDisposition(`${item.title}.${format}`),
-          "Cache-Control": "private, no-store",
-          "X-Content-Type-Options": "nosniff",
-        },
-      });
-    })
+    .get(
+      "/media/:id/transcription/export/:format",
+      sValidator("query", Schema.toStandardSchemaV1(TranscriptExportQuery), (result) => {
+        if (!result.success)
+          throw new MediaError(
+            "invalid",
+            "Place speaker names at each turn, on every line or nowhere, and choose true or false for timestamps.",
+          );
+      }),
+      async (context) => {
+        let format: TranscriptExportFormat;
+        try {
+          format = Schema.decodeUnknownSync(TranscriptExportFormat)(context.req.param("format"));
+        } catch (cause) {
+          throw new MediaError(
+            "invalid",
+            "Choose TXT, SRT or VTT for the transcript export.",
+            cause,
+          );
+        }
+        const {
+          speakers = defaultTranscriptExportOptions.speakers,
+          timestamps = String(defaultTranscriptExportOptions.timestamps),
+        } = context.req.valid("query");
+        const options = { speakers, timestamps: timestamps === "true" };
+        const job = await runMedia(transcriptions.get(context.req.param("id")));
+        if (!job?.transcript)
+          throw new MediaError("invalid", "Complete the transcription before downloading it.");
+        const item = await runMedia(library.get(job.mediaId));
+        const contentTypes = {
+          txt: "text/plain; charset=utf-8",
+          srt: "application/x-subrip; charset=utf-8",
+          vtt: "text/vtt; charset=utf-8",
+        };
+        return new Response(exportTranscript(job.transcript, format, options), {
+          headers: {
+            "Content-Type": contentTypes[format],
+            "Content-Disposition": attachmentDisposition(`${item.title}.${format}`),
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      },
+    )
     .get(
       "/media/:id/transcription/changes",
       sValidator("query", Schema.toStandardSchemaV1(TranscriptHistoryQuery), (result) => {
