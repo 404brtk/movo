@@ -133,4 +133,11 @@ describe("scanTranscript", () => {
       "The notes from this transcript don't fit the model's context. Ask about a narrower topic.",
     );
   });
+
+  it("fails before reading any part when there is no space for notes", async () => {
+    const { scan, calls, progress } = request({ resultCharacters: 0 });
+    await expect(scanTranscript(scan)).rejects.toThrow("Ask about a narrower topic.");
+    expect(calls).toEqual([]);
+    expect(progress).toEqual([]);
+  });
 });

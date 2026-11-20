@@ -413,6 +413,29 @@ it(
 );
 
 it(
+  "reuses the first transcript scan when the model asks to scan again",
+  withAsk(
+    (_options, index) => {
+      if (index === 0) throw contextOverflow();
+      if (index < 3) {
+        const [scan, finishStep] = call("scan_transcript", { instruction: `Scan ${index}` });
+        if (scan?.type !== "tool-call" || !finishStep) throw new Error("Missing scan step.");
+        return stream([{ ...scan, toolCallId: `scan-${index}` }, finishStep]);
+      }
+      return stream(text("The meeting opens at [0]."));
+    },
+    async ({ request, mediaId, calls, generated }) => {
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "Summarise it" }));
+      const detail = await settled(request, chatId);
+      expect(parts(detail)).toEqual(["done", "done", "text"]);
+      expect(generated).toHaveLength(1);
+      expect(JSON.stringify(calls[3]?.prompt.at(-1))).toContain("The budget meeting starts [0].");
+    },
+  ),
+);
+
+it(
   "uses parts immediately when the estimated budget cannot hold the whole transcript",
   withAsk(
     () => stream(text("I'll look in parts.")),

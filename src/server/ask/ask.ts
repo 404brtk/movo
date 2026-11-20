@@ -674,12 +674,25 @@ export function createAsk(
         charactersPerToken: number,
       ) => {
         const model = boundaries.languageModel(connection, chat.modelId);
-        return async (instruction: string, toolSignal: AbortSignal | undefined) => {
-          updateAnswer(chatId, seq, {
-            transcriptMoments: [...new Set([...(row.transcriptMoments ?? []), ...moments])],
-          });
+        const previous = base
+          .flatMap((message) => (message.role === "tool" ? message.content : []))
+          .flatMap((part) =>
+            part.type === "tool-result" && part.toolName === scanTranscriptDefinition.name
+              ? [part.output]
+              : [],
+          )
+          .at(-1);
+        const read = async (instruction: string, toolSignal: AbortSignal | undefined) => {
+          if (previous?.type === "json")
+            return Schema.decodeUnknownSync(scanTranscriptDefinition.successSchema)(previous.value);
+          if (previous)
+            throw new Error(
+              previous.type === "error-text"
+                ? previous.value
+                : "The transcript scan already failed.",
+            );
           const input = { instruction };
-          return scanTranscript({
+          const result = await scanTranscript({
             title,
             lines,
             instruction,
@@ -700,7 +713,14 @@ export function createAsk(
               emit(chatId, { type: "activity", activity: current.activity });
             },
           });
+          updateAnswer(chatId, seq, {
+            transcriptMoments: [...new Set([...(row.transcriptMoments ?? []), ...moments])],
+          });
+          return result;
         };
+        let result: ReturnType<typeof read> | undefined;
+        return (instruction: string, toolSignal: AbortSignal | undefined) =>
+          (result ??= read(instruction, toolSignal));
       };
       let storedCuts = { toolCutSeq: chat.toolCutSeq, contextCutSeq: chat.contextCutSeq };
       const plan = (reading: TranscriptReading | null) => {

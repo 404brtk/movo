@@ -73,12 +73,19 @@ const partPrompt = (instruction: string, heading: string, title: string, part: s
 const combinePrompt = (instruction: string, notes: string) =>
   `Instruction: ${instruction}\n\nNotes:\n${notes}`;
 
+const notesDoNotFit = () =>
+  new MediaError(
+    "invalid",
+    "The notes from this transcript don't fit the model's context. Ask about a narrower topic.",
+  );
+
 export async function scanTranscript(request: ScanRequest) {
+  if (request.resultCharacters <= 0) throw notesDoNotFit();
   const partCharacters =
     request.callCharacters -
     Math.max(partInstructions.length, combineInstructions.length) -
     partPrompt(request.instruction, `Part ${request.lines.length}`, request.title, "").length;
-  const longestLine = Math.max(0, ...request.lines.map((line) => line.length));
+  const longestLine = request.lines.reduce((longest, line) => Math.max(longest, line.length), 0);
   if (partCharacters <= longestLine)
     throw new MediaError(
       "invalid",
@@ -109,11 +116,7 @@ export async function scanTranscript(request: ScanRequest) {
         ).trim(),
       () => undefined,
     );
-    if (combined.length >= notes.length)
-      throw new MediaError(
-        "invalid",
-        "The notes from this transcript don't fit the model's context. Ask about a narrower topic.",
-      );
+    if (combined.length >= notes.length) throw notesDoNotFit();
     notes = combined;
   }
   return { partCount, notes: joined(notes) };
