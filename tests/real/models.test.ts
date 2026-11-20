@@ -9,13 +9,12 @@ import { createModels } from "../../src/server/models/models.ts";
 import { modelCachePath } from "../../src/server/models/cache.ts";
 import { validateModel } from "../../src/server/models/validation.ts";
 
-const [transcriptionFile] = transcriptionModel.files;
+const transcriptionFile = transcriptionModel.files.transcription;
 
 it("installs the pinned real model, loads it in an isolated CPU worker and discovers it after restart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "movo-real-model-"));
   const models = createModels({ cacheDirectory: directory });
   try {
-    if (!transcriptionFile) throw new Error("The transcription model has no file.");
     expect((await Effect.runPromise(models.list()))[0]?.state).toBe("missing");
     await Effect.runPromise(models.install(transcriptionModel.id));
     await expect

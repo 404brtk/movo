@@ -25,7 +25,22 @@ export function createTranscriptionEngine(
       ffmpeg: tools.resolve("ffmpeg"),
       model: models.resolve(transcriptionModel.id),
       speakers: models.installed(speakerModel.id),
-    });
+    }).pipe(
+      Effect.flatMap(({ ffmpeg, model, speakers }) => {
+        const modelPath = model.transcription;
+        const { segmentation, embedding } = speakers ?? {};
+        const speakerPaths = segmentation && embedding ? [segmentation, embedding] : [];
+        if (!modelPath || (speakers && speakerPaths.length === 0))
+          return Effect.fail(
+            new MediaError("unavailable", "The model catalog is missing a required file."),
+          );
+        return Effect.succeed({
+          ffmpeg,
+          modelPath,
+          speakerPaths,
+        });
+      }),
+    );
   return {
     check: () => resources().pipe(Effect.asVoid),
     transcribe: (
@@ -35,7 +50,7 @@ export function createTranscriptionEngine(
       reportDevice: (device: TranscriptionDevice) => void,
     ) =>
       Effect.gen(function* () {
-        const { ffmpeg, model, speakers } = yield* resources();
+        const { ffmpeg, modelPath, speakerPaths } = yield* resources();
         const pcm = join(directory, "audio.f32");
         const resultPath = join(directory, "result.json");
         update("preparing");
@@ -86,7 +101,7 @@ export function createTranscriptionEngine(
         let deviceReported = false;
         yield* run(
           process.execPath,
-          [fileURLToPath(worker), ...model, pcm, resultPath, ...(speakers ?? [])],
+          [fileURLToPath(worker), modelPath, pcm, resultPath, ...speakerPaths],
           {
             timeoutMs: 6 * 60 * 60 * 1000,
             ipc: true,

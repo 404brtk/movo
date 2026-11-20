@@ -36,7 +36,7 @@ it.for(["tone.wav", "sample.webm"])(
     const engine = createTranscriptionEngine(
       tools,
       {
-        resolve: () => Effect.succeed(["verified-model.gguf"]),
+        resolve: () => Effect.succeed({ transcription: "verified-model.gguf" }),
         installed: () => Effect.succeed(null),
       },
       (file, args, options) =>
@@ -118,7 +118,7 @@ it.for([
   const engine = createTranscriptionEngine(
     tools,
     {
-      resolve: () => Effect.succeed(["verified-model.gguf"]),
+      resolve: () => Effect.succeed({ transcription: "verified-model.gguf" }),
       installed: () => Effect.succeed(null),
     },
     (file, args, options) =>
@@ -163,8 +163,9 @@ it("hands the verified speaker models to the worker and accepts its speaker phas
   const engine = createTranscriptionEngine(
     createMediaTools({ dataDirectory: directory }),
     {
-      resolve: () => Effect.succeed(["verified-model.gguf"]),
-      installed: () => Effect.succeed(["segmentation.onnx", "embedding.onnx"]),
+      resolve: () => Effect.succeed({ transcription: "verified-model.gguf" }),
+      installed: () =>
+        Effect.succeed({ embedding: "embedding.onnx", segmentation: "segmentation.onnx" }),
     },
     (file, args, options) =>
       Effect.promise(async () => {
@@ -196,4 +197,15 @@ it("hands the verified speaker models to the worker and accepts its speaker phas
       "embedding.onnx",
     ],
   ]);
+});
+
+it("rejects a configured speaker model without both file roles before starting transcription", async () => {
+  const engine = createTranscriptionEngine(
+    { resolve: () => Effect.succeed("ffmpeg") },
+    {
+      resolve: () => Effect.succeed({ transcription: "verified-model.gguf" }),
+      installed: () => Effect.succeed({ embedding: "embedding.onnx" }),
+    },
+  );
+  await expect(Effect.runPromise(engine.check())).rejects.toThrow(/missing a required file/u);
 });

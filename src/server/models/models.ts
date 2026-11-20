@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import { ModelId, ModelStatus, type ModelInstallation } from "../../shared/contracts/models.ts";
 import { MediaError } from "../media/error.ts";
 import { createModelCache, huggingFaceCacheDirectory, modelCachePath } from "./cache.ts";
-import { modelCatalog, type ModelDefinition } from "./catalog.ts";
+import { modelCatalog, type ModelDefinition, type ModelPaths } from "./catalog.ts";
 
 const modelError = (cause: unknown) =>
   cause instanceof MediaError
@@ -21,11 +21,12 @@ const shutdownError = (cause: unknown) =>
   );
 
 function createModel(cacheDirectory: string, definition: ModelDefinition) {
-  const files = definition.files.map((file) => ({
+  const files = Object.entries(definition.files).map(([role, file]) => ({
+    role,
     file,
     cache: createModelCache(cacheDirectory, file),
   }));
-  const bytes = definition.files.reduce((total, file) => total + file.bytes, 0);
+  const bytes = files.reduce((total, { file }) => total + file.bytes, 0);
   const lifetime = new AbortController();
   let installation: ModelInstallation = { phase: "idle", downloadedBytes: 0, error: null };
   let running: Promise<void> | undefined;
@@ -70,13 +71,15 @@ function createModel(cacheDirectory: string, definition: ModelDefinition) {
     }
   };
   const failure = (cause: unknown) => (closed ? shutdownError(cause) : modelError(cause));
-  const installed = async () => {
+  const installed = async (): Promise<ModelPaths | null> => {
     if (closed) throw failure(undefined);
     const current = await status();
     if (current.state === "broken")
       throw new MediaError("unavailable", current.message ?? "The cached model needs repair.");
     return current.state === "ready"
-      ? definition.files.map((file) => modelCachePath(cacheDirectory, file))
+      ? Object.fromEntries(
+          files.map(({ role, file }) => [role, modelCachePath(cacheDirectory, file)]),
+        )
       : null;
   };
   return {

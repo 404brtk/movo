@@ -41,7 +41,9 @@ it("resolves only verified cached weights without starting a download", async ()
     expect(requests()).toBe(0);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, weights);
-    expect(await Effect.runPromise(models.resolve(transcriptionModel.id))).toEqual([path]);
+    expect(await Effect.runPromise(models.resolve(transcriptionModel.id))).toEqual({
+      transcription: path,
+    });
     await writeFile(path, Buffer.alloc(weights.length, 1));
     await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
       /integrity/u,
@@ -55,37 +57,39 @@ it("resolves only verified cached weights without starting a download", async ()
 });
 
 function speakerFixture(cacheDirectory: string, url: string) {
-  const [segmentationFile, embeddingFile] = speakerModel.files;
-  if (!segmentationFile || !embeddingFile) throw new Error("The speaker model needs two files.");
+  const { segmentation: segmentationFile, embedding: embeddingFile } = speakerModel.files;
   const segmentation = Buffer.from("segmentation weights");
   const embedding = Buffer.from("speaker embedding weights");
-  const definition: ModelDefinition = {
+  const definition = {
     ...speakerModel,
-    files: [
-      {
+    files: {
+      segmentation: {
         ...segmentationFile,
         url: `${url}/segmentation`,
         bytes: segmentation.length,
         sha256: digest(segmentation),
       },
-      {
+      embedding: {
         ...embeddingFile,
         url: `${url}/embedding`,
         bytes: embedding.length,
         sha256: digest(embedding),
       },
-    ],
-  };
-  const [segmentationPath = "", embeddingPath = ""] = definition.files.map((entry) =>
-    modelCachePath(cacheDirectory, entry),
-  );
+    },
+  } satisfies ModelDefinition;
+  const segmentationPath = modelCachePath(cacheDirectory, definition.files.segmentation);
+  const embeddingPath = modelCachePath(cacheDirectory, definition.files.embedding);
   return { definition, segmentation, embedding, segmentationPath, embeddingPath };
 }
 
 it("keeps the optional speaker models separate and treats them as absent until every file is verified", async () => {
   await withModels(async ({ cacheDirectory, file, definition, requests }) => {
     const speakers = speakerFixture(cacheDirectory, file.url);
-    const models = createModels({ cacheDirectory, definitions: [definition, speakers.definition] });
+    const { embedding, segmentation } = speakers.definition.files;
+    const models = createModels({
+      cacheDirectory,
+      definitions: [definition, { ...speakers.definition, files: { embedding, segmentation } }],
+    });
     try {
       expect(
         (await Effect.runPromise(models.list())).map(({ id, role, state, bytes }) => ({
@@ -115,10 +119,10 @@ it("keeps the optional speaker models separate and treats them as absent until e
       await writeFile(speakers.embeddingPath, speakers.embedding);
       const repairedAt = new Date(Date.now() + 60000);
       await utimes(speakers.embeddingPath, repairedAt, repairedAt);
-      expect(await Effect.runPromise(models.installed(speakerModel.id))).toEqual([
-        speakers.segmentationPath,
-        speakers.embeddingPath,
-      ]);
+      expect(await Effect.runPromise(models.installed(speakerModel.id))).toEqual({
+        segmentation: speakers.segmentationPath,
+        embedding: speakers.embeddingPath,
+      });
       await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
         /Download Parakeet Ultra/u,
       );
@@ -284,17 +288,15 @@ async function withModels(
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Model fixture has no port.");
-  const [parakeetFile] = transcriptionModel.files;
-  if (!parakeetFile) throw new Error("The transcription model has no file.");
   const file: ModelFile = {
-    ...parakeetFile,
+    ...transcriptionModel.files.transcription,
     url: `http://127.0.0.1:${address.port}/weights`,
     bytes: weights.length,
     sha256: digest(weights),
   };
   const withFile = (changes: Partial<ModelFile>): ModelDefinition => ({
     ...transcriptionModel,
-    files: [{ ...file, ...changes }],
+    files: { transcription: { ...file, ...changes } },
   });
   const definition = withFile({});
   const create = (entry = definition) => {
