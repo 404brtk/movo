@@ -536,6 +536,7 @@ export function createAsk(
 ) {
   const handlers = toolHandlers(services, "chat");
   const live = new Map<string, LiveAnswer>();
+  const rejectedWholePrompts = new Map<string, Map<string, number>>();
 
   const connectionRow = (id: string) =>
     database.select().from(aiConnections).where(eq(aiConnections.id, id)).get();
@@ -660,6 +661,7 @@ export function createAsk(
     try {
       const rows = messageRows(chatId);
       const contextTokens = chat.contextTokens ?? fallbackContextTokens[connection.kind];
+      const modelContext = JSON.stringify([chat.modelId, contextTokens, connection.verifiedAt]);
       const transcript = chat.mediaId ? await loadTranscript(chat.mediaId, signal) : null;
       const transcriptCharactersPerToken = calibratedCharactersPerToken(
         latestWholeMeasurement(connection.id, chat.modelId),
@@ -700,6 +702,7 @@ export function createAsk(
           });
         };
       };
+      let storedCuts = { toolCutSeq: chat.toolCutSeq, contextCutSeq: chat.contextCutSeq };
       const plan = (reading: TranscriptReading | null) => {
         const whole = reading === "whole" ? transcript : null;
         const instructions = instructionsFor(chat.mediaId, chat.scope, reading);
@@ -713,14 +716,13 @@ export function createAsk(
             role: stored.role,
             messages: stored.messages,
           })),
-          cuts: { toolCutSeq: chat.toolCutSeq, contextCutSeq: chat.contextCutSeq },
+          cuts: storedCuts,
           contextTokens,
           prefixCharacters: systemCharacters + chatToolCharacters(chat.mediaId, reading),
           charactersPerToken,
         });
         return { reading, whole, instructions, systemCharacters, charactersPerToken, prompt };
       };
-      let storedCuts = { toolCutSeq: chat.toolCutSeq, contextCutSeq: chat.contextCutSeq };
       const run = async ({
         reading,
         whole,
@@ -802,14 +804,26 @@ export function createAsk(
         });
       };
       const preferred = plan(transcript ? "whole" : null);
+      const rejectedSize = rejectedWholePrompts.get(connection.id)?.get(modelContext) ?? Infinity;
       const chosen =
-        preferred.reading === "whole" && !preferred.prompt.fits ? plan("parts") : preferred;
+        preferred.reading === "whole" &&
+        (!preferred.prompt.fits || preferred.prompt.promptCharacters >= rejectedSize)
+          ? plan("parts")
+          : preferred;
       try {
         await run(chosen);
       } catch (error) {
         const nothingAnswered = completed.length === 0 && current.text === "";
         if (chosen.reading !== "whole" || !nothingAnswered || !isContextOverflow(error))
           throw error;
+        const rejectedPrompts =
+          rejectedWholePrompts.get(connection.id) ?? new Map<string, number>();
+        const latestRejectedSize = rejectedPrompts.get(modelContext) ?? Infinity;
+        rejectedPrompts.set(
+          modelContext,
+          Math.min(latestRejectedSize, chosen.prompt.promptCharacters),
+        );
+        rejectedWholePrompts.set(connection.id, rejectedPrompts);
         await run(plan("parts"));
       }
     } catch (error) {
@@ -903,6 +917,7 @@ export function createAsk(
               .set(updated)
               .where(eq(aiConnections.id, existing.id))
               .run();
+            rejectedWholePrompts.delete(existing.id);
             return publicConnection(updated);
           }
           const row = { id: randomUUID(), ...connection, createdAt: now, verifiedAt: now };
@@ -915,6 +930,7 @@ export function createAsk(
       Effect.gen(function* () {
         const row = yield* requireConnection(id);
         yield* storage(() => database.delete(aiConnections).where(eq(aiConnections.id, id)).run());
+        rejectedWholePrompts.delete(id);
         return publicConnection(row);
       }),
 

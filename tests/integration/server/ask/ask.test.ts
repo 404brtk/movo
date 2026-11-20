@@ -84,6 +84,7 @@ function withAsk(
     database: AppDatabase;
   }) => Promise<void>,
   modelOverride?: AskBoundaries["languageModel"],
+  fixtureWords = words,
 ) {
   return async () => {
     const directory = await mkdtemp(join(tmpdir(), "movo-ask-"));
@@ -97,7 +98,7 @@ function withAsk(
             const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
             const transcriptions = createTranscriptions(database, config, tools, {
               check: () => Effect.void,
-              transcribe: () => Effect.succeed({ language: "en", words }),
+              transcribe: () => Effect.succeed({ language: "en", words: fixtureWords }),
             });
             const downloads = createDownloads(database, config, tools, {
               preview: (url) => Effect.succeed({ url, title: "A source", durationSeconds: 2 }),
@@ -192,7 +193,7 @@ async function connectAndCreateChat(
   request: (path: string, init?: RequestInit) => Promise<Response>,
   mediaId: string | null,
   scope: unknown = null,
-  { kind = "anthropic", modelId = "model-a" }: { kind?: string; modelId?: string } = {},
+  { kind = "anthropic", modelId = "model-a", contextTokens = 100_000 } = {},
 ) {
   const connection = Schema.decodeUnknownSync(AiConnection)(
     await (await request("/connections", json({ kind, apiKey: validKey }))).json(),
@@ -206,7 +207,7 @@ async function connectAndCreateChat(
             connectionId: connection.id,
             modelId,
             modelName: "Model A",
-            contextTokens: 100_000,
+            contextTokens,
           },
           "PUT",
         ),
@@ -358,18 +359,20 @@ it(
   ),
 );
 
+const contextOverflow = () =>
+  new APICallError({
+    message: "prompt is too long: 250000 tokens > 199999 maximum",
+    url: "https://api.anthropic.com/v1/messages",
+    requestBodyValues: {},
+    statusCode: 400,
+    isRetryable: false,
+  });
+
 it(
   "reads the transcript in parts when the provider says the whole one is too long",
   withAsk(
     (_options, index) => {
-      if (index === 0)
-        throw new APICallError({
-          message: "prompt is too long: 250000 tokens > 199999 maximum",
-          url: "https://api.anthropic.com/v1/messages",
-          requestBodyValues: {},
-          statusCode: 400,
-          isRetryable: false,
-        });
+      if (index === 0) throw contextOverflow();
       if (index === 1)
         return stream(call("scan_transcript", { instruction: "Note the main points" }));
       return stream(text("It opens with the budget [0]."));
@@ -401,7 +404,80 @@ it(
       expect(part).toContain("Instruction: Note the main points");
       expect(part).toContain("Anna presents the numbers.");
       expect(JSON.stringify(calls[2]?.prompt.at(-1))).toContain("The budget meeting starts [0].");
+      await request(`/chats/${chatId}/messages`, json({ text: "Summarise it again" }));
+      expect((await settled(request, chatId)).messages.at(-1)?.transcriptReading).toBe("parts");
+      expect(calls).toHaveLength(4);
+      expect(systemTexts(calls[3])).toHaveLength(1);
     },
+  ),
+);
+
+it(
+  "uses parts immediately when the estimated budget cannot hold the whole transcript",
+  withAsk(
+    () => stream(text("I'll look in parts.")),
+    async ({ request, mediaId, calls }) => {
+      const chatId = await connectAndCreateChat(request, mediaId, null, { contextTokens: 4096 });
+      await request(`/chats/${chatId}/messages`, json({ text: "Summarise it" }));
+      expect((await settled(request, chatId)).messages.at(-1)?.transcriptReading).toBe("parts");
+      expect(calls).toHaveLength(1);
+      expect(systemTexts(calls[0])).toHaveLength(1);
+    },
+    undefined,
+    timedWords(0, 1500, "A long recording has many passages of discussion. ".repeat(250).trim()),
+  ),
+);
+
+it(
+  "keeps partial text and does not retry a whole transcript after streaming has started",
+  withAsk(
+    () =>
+      stream([
+        ...text("The meeting opens.").slice(0, -1),
+        { type: "error", error: contextOverflow() },
+      ]),
+    async ({ request, mediaId, calls }) => {
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "How does it open?" }));
+      expect((await settled(request, chatId)).messages.at(-1)).toMatchObject({
+        state: "failed",
+        parts: [{ type: "text", text: "The meeting opens." }],
+      });
+      expect(calls).toHaveLength(1);
+    },
+  ),
+);
+
+it(
+  "keeps the history cut made by a rejected whole-transcript request",
+  withAsk(
+    (_options, index) => {
+      if (index === 0) throw contextOverflow();
+      return stream(text("It opens with a discussion."));
+    },
+    async ({ request, mediaId, calls, database }) => {
+      const chatId = await connectAndCreateChat(request, mediaId, null, { contextTokens: 6000 });
+      const earlier = "An earlier question. ".repeat(260);
+      database
+        .insert(chatMessages)
+        .values({
+          chatId,
+          seq: 1,
+          role: "user",
+          state: "done",
+          createdAt: Date.now(),
+          messages: [{ role: "user", content: earlier }],
+        })
+        .run();
+      await request(`/chats/${chatId}/messages`, json({ text: "Summarise it" }));
+      const detail = await settled(request, chatId);
+      expect(calls).toHaveLength(2);
+      expect(systemTexts(calls[0])).toHaveLength(2);
+      expect(detail.hiddenBeforeSeq).toBe(2);
+      expect(JSON.stringify(calls[1]?.prompt)).not.toContain("An earlier question");
+    },
+    undefined,
+    timedWords(0, 1500, "The budget meeting opens with a discussion. ".repeat(70).trim()),
   ),
 );
 
