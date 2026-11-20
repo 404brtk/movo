@@ -154,14 +154,22 @@ const answerText = (row: MessageRow) =>
 export function answerMoments<Row extends MessageRow>(
   rows: readonly Row[],
   mediaId: string | null,
+  { includeMoments = true } = {},
 ) {
   const earlier = new Map<number, ReadonlySet<string>>();
   const turn = new Map<number, Set<string>>();
   const reads = new Map<string, string>();
+  const transcripts: number[][] = [];
+  const index = {
+    get(startMs: number) {
+      if (mediaId && transcripts.some((moments) => moments.includes(startMs))) return mediaId;
+      const owners = turn.get(startMs) ?? earlier.get(startMs);
+      return owners?.size === 1 ? owners.values().next().value : undefined;
+    },
+  };
   return rows.map((row) => {
     if (row.passage && mediaId) addOwner(turn, row.passage.startMs, mediaId);
-    if (mediaId)
-      for (const startMs of row.transcriptMoments ?? []) addOwner(turn, startMs, mediaId);
+    if (mediaId && row.transcriptMoments?.length) transcripts.push(row.transcriptMoments);
     for (const message of row.messages) {
       if (typeof message.content === "string") continue;
       for (const part of message.content) {
@@ -179,24 +187,26 @@ export function answerMoments<Row extends MessageRow>(
       }
     }
     if (row.role === "user") return { row, recordings: [], moments: [] };
-    const index = new Map<number, string>();
-    for (const startMs of new Set([...earlier.keys(), ...turn.keys()])) {
-      const [owner, ...others] = turn.get(startMs) ?? earlier.get(startMs) ?? [];
-      if (owner && others.length === 0) index.set(startMs, owner);
+    const cited = citedMoments(answerText(row), index);
+    const moments = includeMoments
+      ? cited.flatMap((group) =>
+          group.moments.map((startMs) => ({ startMs, mediaId: group.mediaId })),
+        )
+      : [];
+    if (includeMoments && row.state === "answering") {
+      const citedStarts = new Set(moments.map((moment) => moment.startMs));
+      for (const startMs of new Set([...earlier.keys(), ...turn.keys()])) {
+        const owner = index.get(startMs);
+        if (owner && !citedStarts.has(startMs)) moments.push({ startMs, mediaId: owner });
+      }
     }
     for (const [startMs, owners] of turn)
       earlier.set(startMs, new Set([...(earlier.get(startMs) ?? []), ...owners]));
     turn.clear();
-    const cited = citedMoments(answerText(row), index);
     return {
       row,
       recordings: cited.map((group) => group.mediaId),
-      moments:
-        row.state === "answering"
-          ? [...index].map(([startMs, owner]) => ({ startMs, mediaId: owner }))
-          : cited.flatMap((group) =>
-              group.moments.map((startMs) => ({ startMs, mediaId: group.mediaId })),
-            ),
+      moments,
     };
   });
 }
@@ -616,6 +626,9 @@ export function createAsk(
               ? [{ type: "text", text: questionText(row.messages) }]
               : displayParts(row.messages),
           moments,
+          ...(row.state === "answering" && row.transcriptMoments?.length
+            ? { liveTranscript: true }
+            : {}),
           createdAt: row.createdAt,
         })),
       });
@@ -999,7 +1012,12 @@ export function createAsk(
           .orderBy(desc(chats.updatedAt))
           .all()
           .map((chat) =>
-            summary(chat, citedRecordings(answerMoments(messageRows(chat.id), chat.mediaId))),
+            summary(
+              chat,
+              citedRecordings(
+                answerMoments(messageRows(chat.id), chat.mediaId, { includeMoments: false }),
+              ),
+            ),
           ),
       ),
 

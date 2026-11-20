@@ -415,7 +415,11 @@ export function AskPanel({
           ) : (
             <>
               {hasMessages ? (
-                <AskConversation state={state} mediaId={item.id} />
+                <AskConversation
+                  state={state}
+                  mediaId={item.id}
+                  transcript={transcription.data?.transcript}
+                />
               ) : (
                 <EmptyChat
                   disabled={cannotAsk}

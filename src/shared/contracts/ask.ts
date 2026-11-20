@@ -161,6 +161,7 @@ export const ChatMessage = Schema.Struct({
   transcriptReading: Schema.NullOr(Schema.Literals(transcriptReadings)),
   parts: Schema.Array(ChatPart),
   moments: Schema.Array(ChatMoment),
+  liveTranscript: Schema.optional(Schema.Boolean),
   createdAt: Timestamp,
 });
 export type ChatMessage = typeof ChatMessage.Type;

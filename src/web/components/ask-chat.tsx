@@ -1,4 +1,12 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import {
   Alert02Icon,
   ArrowDown02Icon,
@@ -24,7 +32,8 @@ import {
   type Passage,
 } from "../../shared/contracts/ask.ts";
 import type { LibraryItem } from "../../shared/contracts/library.ts";
-import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
+import type { Transcript, TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
+import { transcriptPassages } from "../../shared/transcript-passages.ts";
 import {
   chatOptions,
   connectionsOptions,
@@ -245,6 +254,7 @@ function EditCard({
 function Answer({
   message,
   live,
+  liveTranscriptStarts,
   latest,
   chatId,
   mediaId,
@@ -252,6 +262,7 @@ function Answer({
 }: {
   message: ChatMessage;
   live: { text: string; activity: LiveActivity } | null;
+  liveTranscriptStarts: ReadonlySet<number> | null;
   latest: boolean;
   chatId: string;
   mediaId: string | null;
@@ -259,6 +270,11 @@ function Answer({
 }) {
   const answering = message.state === "answering";
   const moments = new Map(message.moments.map((moment) => [moment.startMs, moment.mediaId]));
+  const liveMoments = {
+    get: (startMs: number) =>
+      moments.get(startMs) ??
+      (liveTranscriptStarts?.has(startMs) ? (mediaId ?? undefined) : undefined),
+  };
   const titles = recordings
     ? new Map([...recordings].map(([id, item]) => [id, item.title]))
     : undefined;
@@ -297,7 +313,7 @@ function Answer({
           <EditCard key={index} part={part} chatId={chatId} mediaId={mediaId} />
         ) : null,
       )}
-      {live?.text ? <AskMarkdown text={live.text} moments={moments} live /> : null}
+      {live?.text ? <AskMarkdown text={live.text} moments={liveMoments} live /> : null}
       {runningLabel ? <ActivityLine text={runningLabel} /> : null}
       {recordings && !answering ? (
         <AskSources parts={message.parts} recordings={recordings} moments={moments} />
@@ -337,16 +353,26 @@ export function AskConversation({
   state,
   mediaId,
   recordings = null,
+  transcript,
 }: {
   state: AskChatState;
   mediaId: string | null;
   recordings?: ReadonlyMap<string, LibraryItem> | null;
+  transcript?: Transcript | null | undefined;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [shownSince] = useState(() => Date.now());
   const [awayFromLatest, setAwayFromLatest] = useState(false);
   const connections = useQuery(connectionsOptions);
   const { detail } = state;
+  const liveTranscript = detail?.messages.at(-1)?.liveTranscript ? transcript : null;
+  const liveTranscriptStarts = useMemo(
+    () =>
+      liveTranscript
+        ? new Set(transcriptPassages(liveTranscript.words).map((passage) => passage.startMs))
+        : null,
+    [liveTranscript],
+  );
   if (!detail) return null;
   const changes = modelChanges(detail.messages);
   const firstSeq = detail.messages[0]?.seq ?? 0;
@@ -397,6 +423,7 @@ export function AskConversation({
                   <Answer
                     message={message}
                     live={message.seq === lastSeq ? state.live : null}
+                    liveTranscriptStarts={message.seq === lastSeq ? liveTranscriptStarts : null}
                     latest={message.seq === lastSeq}
                     chatId={detail.chat.id}
                     mediaId={mediaId}

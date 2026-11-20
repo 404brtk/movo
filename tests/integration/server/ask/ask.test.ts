@@ -627,6 +627,14 @@ it(
       }
       expect(received).toContain("event: snapshot");
       expect(received).toContain('"Partial answer"');
+      const liveDetail = Schema.decodeUnknownSync(ChatDetail)(
+        await (await request(`/chats/${chatId}`)).json(),
+      );
+      expect(liveDetail.messages[1]).toMatchObject({
+        state: "answering",
+        liveTranscript: true,
+        moments: [],
+      });
       const stopped = Schema.decodeUnknownSync(ChatDetail)(
         await (await request(`/chats/${chatId}/stop`, { method: "POST" })).json(),
       );
