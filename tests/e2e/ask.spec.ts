@@ -1067,6 +1067,124 @@ test("opens an earlier chat about the recording from the panel's history", async
   await expect(panel.getByText("Anna presents.")).toHaveCount(0);
 });
 
+test("summarises the recording in a new chat with one click, keeping the current one", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  const media: { id: string } = await uploaded.json();
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
+  const current: ChatDetail = {
+    chat: summaryOf(randomUUID(), media.id, "Who presents?"),
+    messages: [
+      userMessage("Who presents?"),
+      answerMessage("done", [{ type: "text", text: "Anna presents." }]),
+    ],
+    hiddenBeforeSeq: 0,
+  };
+  const summaryId = randomUUID();
+  let summary: ChatDetail = {
+    chat: summaryOf(summaryId, media.id, "New chat"),
+    messages: [],
+    hiddenBeforeSeq: 0,
+  };
+  const created: unknown[] = [];
+  const asked: unknown[] = [];
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [current.chat] }));
+  await page.route(`**/api/ask/chats/${current.chat.id}`, (route) =>
+    route.fulfill({ json: current }),
+  );
+  await page.route("**/api/ask/chats", (route) => {
+    created.push(route.request().postDataJSON());
+    return route.fulfill({ status: 201, json: summary });
+  });
+  await page.route(`**/api/ask/chats/${summaryId}`, (route) => route.fulfill({ json: summary }));
+  await page.route(`**/api/ask/chats/${summaryId}/messages`, (route) => {
+    asked.push(route.request().postDataJSON());
+    summary = {
+      chat: { ...summary.chat, title: "Summarise this recording" },
+      messages: [
+        userMessage("Summarise this recording"),
+        {
+          ...answerMessage("done", [{ type: "text", text: "Anna presents the numbers." }]),
+          transcriptReading: "whole",
+        },
+      ],
+      hiddenBeforeSeq: 0,
+    };
+    return route.fulfill({ status: 202, json: summary });
+  });
+
+  await page.goto(`/media/${media.id}`);
+  await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
+  await page.keyboard.press("/");
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  await expect(panel.getByText("Anna presents.")).toBeVisible();
+  await panel.getByRole("button", { name: "Summarise", exact: true }).click();
+  await expect(panel.getByText("Anna presents the numbers.")).toBeVisible();
+  await expect(panel.getByText("Read the whole transcript")).toBeVisible();
+  await expect(panel.getByText("Anna presents.", { exact: true })).toHaveCount(0);
+  expect(created).toEqual([{ mediaId: media.id, scope: null }]);
+  expect(asked).toEqual([{ text: "Summarise this recording" }]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(panel.getByRole("button", { name: "Summarise", exact: true })).toBeVisible();
+  await expect.poll(() => noHorizontalScroll(page)).toBe(true);
+});
+
+test("summarises in the chat that is still empty", async ({ page, request }) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  const media: { id: string } = await uploaded.json();
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
+  const empty: ChatDetail = {
+    chat: summaryOf(randomUUID(), media.id, "New chat"),
+    messages: [],
+    hiddenBeforeSeq: 0,
+  };
+  const created: unknown[] = [];
+  const asked: unknown[] = [];
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [empty.chat] }));
+  await page.route("**/api/ask/chats", (route) => {
+    created.push(route.request().postDataJSON());
+    return route.fulfill({ status: 201, json: empty });
+  });
+  await page.route(`**/api/ask/chats/${empty.chat.id}`, (route) => route.fulfill({ json: empty }));
+  await page.route(`**/api/ask/chats/${empty.chat.id}/messages`, (route) => {
+    asked.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 202,
+      json: {
+        ...empty,
+        messages: [
+          userMessage("Summarise this recording"),
+          answerMessage("done", [{ type: "text", text: "A short meeting." }]),
+        ],
+      },
+    });
+  });
+
+  await page.goto(`/media/${media.id}`);
+  await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
+  await page.keyboard.press("/");
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  await expect(panel.getByRole("heading", { name: "Ask about this recording" })).toBeVisible();
+  await panel.getByRole("button", { name: "Summarise", exact: true }).click();
+  await expect(panel.getByText("A short meeting.")).toBeVisible();
+  expect(created).toEqual([]);
+  expect(asked).toEqual([{ text: "Summarise this recording" }]);
+});
+
 test("keeps long recording titles inside the Choose recordings dialog", async ({ page }) => {
   const titles = [
     "Short",
