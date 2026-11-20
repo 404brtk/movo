@@ -772,6 +772,7 @@ test("holds a queued question until the proposed change is decided", async ({ pa
   await page.keyboard.press("/");
   const panel = page.getByRole("complementary", { name: "Ask about this recording" });
   const composer = panel.getByRole("textbox", { name: "Ask about this recording…" });
+  await expect(panel.getByRole("button", { name: "Stop answering" })).toBeVisible();
   await composer.fill("And then?");
   await composer.press("Enter");
   await expect(panel.getByText("“And then?” is sent when this answer ends.")).toBeVisible();
