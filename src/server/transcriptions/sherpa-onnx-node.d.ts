@@ -9,6 +9,7 @@ declare module "sherpa-onnx-node" {
     constructor(config: OfflineSpeakerDiarizationConfig);
     readonly sampleRate: number;
     process(samples: Float32Array): unknown;
+    setConfig(config: Pick<OfflineSpeakerDiarizationConfig, "clustering">): void;
   }
 
   const sherpaOnnx: { OfflineSpeakerDiarization: typeof OfflineSpeakerDiarization };

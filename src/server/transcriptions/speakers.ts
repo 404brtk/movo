@@ -6,7 +6,7 @@ import {
 } from "../../shared/contracts/transcriptions.ts";
 
 const Seconds = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0));
-const SpeakerSegments = Schema.Array(
+export const SpeakerSegments = Schema.Array(
   Schema.Struct({
     start: Seconds,
     end: Seconds,
