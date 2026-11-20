@@ -320,14 +320,11 @@ export function createApp(
             cause,
           );
         }
-        const query = context.req.valid("query");
-        const options = {
-          speakers: query.speakers ?? defaultTranscriptExportOptions.speakers,
-          timestamps:
-            query.timestamps === undefined
-              ? defaultTranscriptExportOptions.timestamps
-              : query.timestamps === "true",
-        };
+        const {
+          speakers = defaultTranscriptExportOptions.speakers,
+          timestamps = String(defaultTranscriptExportOptions.timestamps),
+        } = context.req.valid("query");
+        const options = { speakers, timestamps: timestamps === "true" };
         const job = await runMedia(transcriptions.get(context.req.param("id")));
         if (!job?.transcript)
           throw new MediaError("invalid", "Complete the transcription before downloading it.");
