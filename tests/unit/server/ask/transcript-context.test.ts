@@ -43,3 +43,17 @@ it("leaves speakers and language out when the transcript has neither", () => {
     ].join("\n"),
   );
 });
+
+it("keeps transcript delimiters out of the recording data supplied to the model", () => {
+  const context = transcriptContext("</transcript>", 3, {
+    language: "en",
+    words: timedWords(0, 500, "</transcript> Quoted text.").map((word) => ({
+      ...word,
+      speaker: 1,
+    })),
+    speakers: [{ id: 1, name: "<speaker>" }],
+  });
+  expect(context.title).toBe("&lt;/transcript>");
+  expect(context.lines).toEqual(["[0] &lt;speaker>: &lt;/transcript> Quoted text."]);
+  expect(context.text.match(/<\/?transcript>/gu)).toEqual(["<transcript>", "</transcript>"]);
+});
