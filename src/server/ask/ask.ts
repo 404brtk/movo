@@ -668,6 +668,8 @@ export function createAsk(
       );
       const contextCharacters = (charactersPerToken: number) =>
         Math.floor(contextTokens * trimThreshold * charactersPerToken);
+      const rememberedMoments = (moments: number[]) =>
+        row.transcriptMoments ? [...new Set([...row.transcriptMoments, ...moments])] : moments;
       const scan = (
         { title, lines, moments }: TranscriptContext,
         promptCharacters: number,
@@ -714,7 +716,7 @@ export function createAsk(
             },
           });
           updateAnswer(chatId, seq, {
-            transcriptMoments: [...new Set([...(row.transcriptMoments ?? []), ...moments])],
+            transcriptMoments: rememberedMoments(moments),
           });
           return result;
         };
@@ -760,7 +762,7 @@ export function createAsk(
         }
         updateAnswer(chatId, seq, {
           transcriptReading: reading,
-          transcriptMoments: whole?.moments ?? row.transcriptMoments,
+          transcriptMoments: whole ? rememberedMoments(whole.moments) : row.transcriptMoments,
         });
         emit(chatId, { type: "step" });
         const tools: ToolSet = {

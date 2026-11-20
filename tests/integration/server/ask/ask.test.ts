@@ -551,6 +551,53 @@ it(
 );
 
 it(
+  "preserves citations when approvals resume an answer after a passage boundary changed",
+  withAsk(
+    (_options, index, { mediaId, revision }) => {
+      if (index === 0)
+        return stream([
+          ...text("Anna takes over at [600].").slice(0, -1),
+          ...call("edit_transcript", {
+            mediaId,
+            revision,
+            firstWord: 3,
+            wordCount: 1,
+            text: "starts",
+          }),
+        ]);
+      if (index === 1)
+        return stream(
+          call("replace_in_transcript", { mediaId, revision, find: "Anna", replacement: "Hanna" }),
+        );
+      return stream(text("Both changes are applied."));
+    },
+    async ({ request, mediaId, calls }) => {
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "Fix the punctuation and name" }));
+      for (const toolName of ["edit_transcript", "replace_in_transcript"]) {
+        const waiting = (await settled(request, chatId)).messages.at(-1);
+        expect(waiting?.state).toBe("waiting_approval");
+        const pending = waiting?.parts.find(
+          (part) =>
+            part.type === "tool" && part.toolName === toolName && part.state === "waiting_approval",
+        );
+        if (pending?.type !== "tool" || !pending.approvalId)
+          throw new Error("No approval request.");
+        const approved = await request(
+          `/chats/${chatId}/approval`,
+          json({ approvalId: pending.approvalId, approved: true }),
+        );
+        expect(approved.status).toBe(202);
+      }
+      const result = (await settled(request, chatId)).messages.at(-1);
+      expect(systemTexts(calls[2])[1]?.text).toContain("[0] The budget meeting starts Anna");
+      expect(systemTexts(calls[2])[1]?.text).not.toContain("[600]");
+      expect(result).toMatchObject({ state: "done", moments: [{ startMs: 600, mediaId }] });
+    },
+  ),
+);
+
+it(
   "stops an answer, keeping its partial text",
   withAsk(
     (options) => ({
