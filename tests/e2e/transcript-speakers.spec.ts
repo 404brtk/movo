@@ -81,6 +81,8 @@ const transcription = (page: Page) =>
   page.getByRole("region", { name: "Transcription", exact: true });
 const passages = (page: Page) =>
   transcription(page).getByRole("list", { name: "Timestamped passages" }).getByRole("listitem");
+const openExportMenu = (page: Page) =>
+  transcription(page).getByRole("button", { name: "Export transcript", exact: true }).click();
 const speakerHeadings = (page: Page) =>
   transcription(page).getByRole("button", { name: /, speaker options$/u });
 
@@ -180,6 +182,30 @@ test("remembers which details to include when copying and exporting the transcri
   await expect(timestamps).toHaveAttribute("aria-checked", "true");
   await placement("On every line").click();
   await expect(placement("On every line")).toHaveAttribute("aria-checked", "true");
+  const subtitles = await page
+    .getByRole("menuitem", { name: /^Download SRT/u })
+    .evaluate((link: HTMLAnchorElement) => link.href);
+  expect(new URL(subtitles).search).toBe("?speakers=line&timestamps=true");
+});
+
+test("keeps export choices from other open tabs when changing one in this tab", async ({
+  page,
+  context,
+  recording,
+}) => {
+  const otherTab = await context.newPage();
+  await otherTab.goto(recording.url);
+
+  await openExportMenu(otherTab);
+  await otherTab.getByRole("menuitemradio", { name: "On every line" }).click();
+  await otherTab.keyboard.press("Escape");
+
+  await openExportMenu(page);
+  await expect(page.getByRole("menuitemradio", { name: "On every line" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await page.getByRole("menuitemcheckbox", { name: "Timestamps in TXT" }).click();
   const subtitles = await page
     .getByRole("menuitem", { name: /^Download SRT/u })
     .evaluate((link: HTMLAnchorElement) => link.href);

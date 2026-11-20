@@ -22,10 +22,23 @@ function readStoredExportOptions(): TranscriptExportOptions {
 
 let exportOptions = readStoredExportOptions();
 
+function notifyExportOptionsListeners() {
+  exportOptionsListeners.forEach((listener) => listener());
+}
+
+function syncExportOptionsFromOtherTab(event: StorageEvent) {
+  if (event.key !== null && event.key !== exportOptionsKey) return;
+  exportOptions = readStoredExportOptions();
+  notifyExportOptionsListeners();
+}
+
 function subscribeToExportOptions(listener: () => void) {
   exportOptionsListeners.add(listener);
+  window.addEventListener("storage", syncExportOptionsFromOtherTab);
   return () => {
     exportOptionsListeners.delete(listener);
+    if (exportOptionsListeners.size === 0)
+      window.removeEventListener("storage", syncExportOptionsFromOtherTab);
   };
 }
 
@@ -40,7 +53,7 @@ function storeExportOptions(options: TranscriptExportOptions) {
 export function setExportOptions(change: Partial<TranscriptExportOptions>) {
   exportOptions = { ...exportOptions, ...change };
   storeExportOptions(exportOptions);
-  exportOptionsListeners.forEach((listener) => listener());
+  notifyExportOptionsListeners();
 }
 
 export const useTranscriptExportOptions = () =>
