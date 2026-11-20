@@ -1067,7 +1067,7 @@ test("opens an earlier chat about the recording from the panel's history", async
   await expect(panel.getByText("Anna presents.")).toHaveCount(0);
 });
 
-test("summarises the recording in a new chat with one click, keeping the current one", async ({
+test("waits for the current chat and uses the default model to summarise in a new chat", async ({
   page,
   request,
 }) => {
@@ -1080,7 +1080,7 @@ test("summarises the recording in a new chat with one click, keeping the current
     route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
   );
   const current: ChatDetail = {
-    chat: summaryOf(randomUUID(), media.id, "Who presents?"),
+    chat: { ...summaryOf(randomUUID(), media.id, "Who presents?"), connectionId: null },
     messages: [
       userMessage("Who presents?"),
       answerMessage("done", [{ type: "text", text: "Anna presents." }]),
@@ -1097,9 +1097,15 @@ test("summarises the recording in a new chat with one click, keeping the current
   const asked: unknown[] = [];
   await connectedModel(page);
   await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [current.chat] }));
-  await page.route(`**/api/ask/chats/${current.chat.id}`, (route) =>
-    route.fulfill({ json: current }),
-  );
+  const currentUrl = `**/api/ask/chats/${current.chat.id}`;
+  let loadCurrent: (() => void) | undefined;
+  const currentLoaded = new Promise<void>((resolve) => {
+    loadCurrent = resolve;
+  });
+  await page.route(currentUrl, async (route) => {
+    await currentLoaded;
+    await route.fulfill({ json: current });
+  });
   await page.route("**/api/ask/chats", (route) => {
     created.push(route.request().postDataJSON());
     return route.fulfill({ status: 201, json: summary });
@@ -1121,12 +1127,22 @@ test("summarises the recording in a new chat with one click, keeping the current
     return route.fulfill({ status: 202, json: summary });
   });
 
+  const currentRequested = page.waitForRequest(currentUrl);
   await page.goto(`/media/${media.id}`);
   await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
   await page.keyboard.press("/");
   const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const summarise = panel.getByRole("button", { name: "Summarise", exact: true });
+  try {
+    await currentRequested;
+    await expect(panel.getByRole("button", { name: "Model A", exact: true })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Timestamped passages" })).toBeVisible();
+    await expect(summarise).toBeDisabled();
+  } finally {
+    loadCurrent?.();
+  }
   await expect(panel.getByText("Anna presents.")).toBeVisible();
-  await panel.getByRole("button", { name: "Summarise", exact: true }).click();
+  await summarise.click();
   await expect(panel.getByText("Anna presents the numbers.")).toBeVisible();
   await expect(panel.getByText("Read the whole transcript")).toBeVisible();
   await expect(panel.getByText("Anna presents.", { exact: true })).toHaveCount(0);

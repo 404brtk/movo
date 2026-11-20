@@ -343,6 +343,15 @@ export function AskPanel({
   const block = transcriptBlock(transcription.isSuccess, transcription.data, item, transcribe);
   const hasMessages = (state.detail?.messages.length ?? 0) > 0;
   const cannotAsk = block !== null || state.model === null || state.send.isPending;
+  const summariseInNewChat = chatId === null || hasMessages || state.model === null;
+  const summaryModel = summariseInNewChat ? defaultModel.data : state.model;
+  const canSummarise =
+    transcription.isSuccess &&
+    block === null &&
+    !state.send.isPending &&
+    (selected !== undefined || chats.isSuccess) &&
+    (chatId === null || state.detail !== undefined) &&
+    Boolean(summaryModel);
   const closeOnSmallScreens = () => {
     if (window.matchMedia("(max-width: 699px)").matches) change(false, "pointer");
   };
@@ -368,9 +377,13 @@ export function AskPanel({
               <Button
                 variant="ghost"
                 size="sm"
-                disabled={cannotAsk}
+                disabled={!canSummarise}
                 onClick={() =>
-                  state.send.mutate({ text: summaryQuestion, passage: null, newChat: hasMessages })
+                  state.send.mutate({
+                    text: summaryQuestion,
+                    passage: null,
+                    newChat: summariseInNewChat,
+                  })
                 }
               >
                 <HugeiconsIcon
