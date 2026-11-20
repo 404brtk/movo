@@ -279,10 +279,11 @@ function Answer({
     ? new Map([...recordings].map(([id, item]) => [id, item.title]))
     : undefined;
   const receipt = stepReceipt(message.parts, recordings !== null);
-  const reading =
-    message.state === "failed"
-      ? null
-      : transcriptReceipt(message.transcriptReading, message.modelName);
+  const reading = transcriptReceipt(message, live?.text);
+  const scanFailed = message.parts.some(
+    (part) =>
+      part.type === "tool" && part.toolName === "scan_transcript" && part.state === "failed",
+  );
   const runningLabel = live?.activity
     ? toolLabel(live.activity, "now", titles)
     : answering && !live?.text
@@ -305,6 +306,9 @@ function Answer({
             </StatusLine>
           ))}
         </div>
+      ) : null}
+      {scanFailed ? (
+        <StatusLine icon={Alert02Icon}>Could not read the whole transcript</StatusLine>
       ) : null}
       {message.parts.map((part, index) =>
         part.type === "text" ? (

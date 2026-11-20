@@ -114,6 +114,7 @@ describe("answer receipts", () => {
     expect(stepReceipt([tool("scan_transcript", {}, { resultCount: 1 })], false)).toEqual([
       "Read the whole transcript",
     ]);
+    expect(stepReceipt([tool("scan_transcript", {}, { state: "failed" })], false)).toEqual([]);
   });
 
   it("names the step in progress and the finished steps", () => {
@@ -154,15 +155,21 @@ describe("answer receipts", () => {
     expect(stepReceipt([tool("read_transcript", {}, { state: "running" })], false)).toEqual([]);
   });
 
-  it("says whether the model held the whole transcript or read parts of it", () => {
-    expect(transcriptReceipt("whole", "Model A")).toBe("Read the whole transcript");
-    expect(transcriptReceipt("parts", "Model A")).toBe(
-      "Model A can't hold the whole transcript at once, so it read it in parts",
+  it("describes the model's transcript context when there is answer text", () => {
+    const whole: ChatMessage = {
+      ...message(2, "Model A"),
+      transcriptReading: "whole",
+      parts: [{ type: "text", text: "An answer." }],
+    };
+    expect(transcriptReceipt(whole)).toBe("Read the whole transcript");
+    expect(transcriptReceipt({ ...whole, transcriptReading: "parts" })).toBe(
+      "The whole transcript didn't fit in Model A's context",
     );
-    expect(transcriptReceipt("parts", null)).toBe(
-      "This model can't hold the whole transcript at once, so it read it in parts",
+    expect(transcriptReceipt({ ...whole, transcriptReading: null })).toBeNull();
+    expect(transcriptReceipt({ ...whole, state: "stopped", parts: [] })).toBeNull();
+    expect(transcriptReceipt({ ...whole, state: "answering", parts: [] }, "Live text")).toBe(
+      "Read the whole transcript",
     );
-    expect(transcriptReceipt(null, "Model A")).toBeNull();
   });
 
   it("describes what an approved or declined change did", () => {

@@ -6,7 +6,6 @@ import {
   type ChatMessage,
   type ChatPart,
   type FailureKind,
-  type TranscriptReading,
 } from "../../shared/contracts/ask.ts";
 import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
 import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
@@ -121,7 +120,7 @@ export const describeTool = (part: ToolPart) => toolLabel(part, "done");
 
 export function stepReceipt(parts: readonly ChatPart[], library: boolean) {
   const steps = parts.flatMap((part) =>
-    part.type === "tool" && !isEditTool(part) && part.state !== "running" ? [part] : [],
+    part.type === "tool" && !isEditTool(part) && part.state === "done" ? [part] : [],
   );
   if (steps.length === 0) return [];
   if (library) {
@@ -140,10 +139,13 @@ export function stepReceipt(parts: readonly ChatPart[], library: boolean) {
   return [...new Set(steps.map((part) => describeTool(part)))].slice(0, 3);
 }
 
-export function transcriptReceipt(reading: TranscriptReading | null, modelName: string | null) {
-  if (reading === "whole") return "Read the whole transcript";
-  if (reading === "parts")
-    return `${modelName ?? "This model"} can't hold the whole transcript at once, so it read it in parts`;
+export function transcriptReceipt(message: ChatMessage, liveText?: string) {
+  const hasText =
+    liveText?.trim() || message.parts.some((part) => part.type === "text" && part.text.trim());
+  if (message.state === "failed" || !hasText) return null;
+  if (message.transcriptReading === "whole") return "Read the whole transcript";
+  if (message.transcriptReading === "parts")
+    return `The whole transcript didn't fit in ${message.modelName ?? "this model"}'s context`;
   return null;
 }
 
