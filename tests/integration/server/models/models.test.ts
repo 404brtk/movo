@@ -177,6 +177,23 @@ it("uses only a verified speaker model for speaker labels and keeps the choice",
   });
 });
 
+it("saves concurrent speaker labels choices in the order they arrive", async () => {
+  await withModels(async ({ cacheDirectory, file, definition, create }) => {
+    const speakers = speakerFixture(cacheDirectory, file.url);
+    await mkdir(dirname(speakers.segmentationPath), { recursive: true });
+    await writeFile(speakers.segmentationPath, speakers.segmentation);
+    await mkdir(dirname(speakers.embeddingPath), { recursive: true });
+    await writeFile(speakers.embeddingPath, speakers.embedding);
+    const models = create(definition, speakers.definition);
+    await Effect.runPromise(
+      Effect.all([models.chooseSpeakerLabels(pyannoteModel.id), models.chooseSpeakerLabels(null)], {
+        concurrency: "unbounded",
+      }),
+    );
+    expect((await Effect.runPromise(models.list())).speakerModelId).toBeNull();
+  });
+});
+
 it("uses a speaker model for speaker labels once its download completes", async () => {
   await withModels(async ({ cacheDirectory, file, respond, create }) => {
     const speakers = speakerFixture(cacheDirectory, file.url);

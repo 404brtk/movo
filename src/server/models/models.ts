@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Schema, Semaphore } from "effect";
 import {
   ModelId,
   ModelStatus,
@@ -202,6 +202,7 @@ export function createModels({
       },
     ]),
   );
+  const choosing = Semaphore.makeUnsafe(1);
   const model = (id: string) => {
     const found = Schema.is(ModelId)(id) ? models.get(id) : undefined;
     return found
@@ -231,7 +232,7 @@ export function createModels({
         }
         yield* settingsStorage(() => saveSpeakerModelId(database, speakerModelId));
         return { speakerModelId };
-      }),
+      }).pipe(Semaphore.withPermit(choosing)),
     resolve: (id: string) => Effect.flatMap(model(id), (entry) => entry.resolve()),
     install: (id: string) => Effect.flatMap(model(id), (entry) => entry.install()),
     cancel: (id: string) => Effect.flatMap(model(id), (entry) => entry.cancel()),
