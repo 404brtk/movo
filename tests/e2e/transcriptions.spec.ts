@@ -32,6 +32,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
         modelId: "parakeet-ultra-q8",
         status: "running",
         phase: "transcribing",
+        phaseProgress: null,
         transcript: null,
         revision: 0,
         resultRevision: 0,
@@ -76,6 +77,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
     modelId: "parakeet-ultra-q8",
     status: "completed",
     phase: "finished",
+    phaseProgress: null,
     transcript: {
       language: "en",
       words: [
@@ -135,6 +137,7 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
     modelId: "parakeet-ultra-q8",
     status: "running",
     phase: "loading",
+    phaseProgress: null,
     transcript: null,
     revision: 0,
     resultRevision: 0,
@@ -179,10 +182,19 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Transcribing");
   await expect(device).toBeVisible();
+  job = { ...job, phase: "speakers", phaseProgress: 42 };
+  const speakerProgress = panel.getByRole("progressbar", {
+    name: "Identifying speakers",
+    exact: true,
+  });
+  await expect(speakerProgress).toHaveAttribute("aria-valuenow", "42");
+  await expect(panel.getByText("42%", { exact: true })).toBeVisible();
+  await expect(device).toHaveCount(0);
   job = {
     ...job,
     status: "completed",
     phase: "finished",
+    phaseProgress: null,
     transcript: { language: null, words: [] },
     cleanupError: "Could not remove temporary transcription files. Check folder permissions.",
   };
@@ -241,6 +253,7 @@ test("keeps retry progress when an older failed status arrives after retry succe
     modelId: "parakeet-ultra-q8",
     status: "failed",
     phase: "finished",
+    phaseProgress: null,
     transcript: null,
     revision: 0,
     resultRevision: 0,
@@ -318,6 +331,7 @@ test("transcribes a completed recording again while keeping the previous transcr
     modelId: "parakeet-ultra-q8",
     status: "completed",
     phase: "finished",
+    phaseProgress: null,
     transcript: previous,
     revision: 0,
     resultRevision: 0,
@@ -387,6 +401,7 @@ test("transcribes a completed recording again while keeping the previous transcr
     ...job,
     status: "completed",
     phase: "finished",
+    phaseProgress: null,
     transcript: {
       language: "en",
       words: timedWords(0, 1000, "The replacement transcript."),
@@ -424,6 +439,7 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
     modelId: "parakeet-ultra-q8",
     status: "cancelled",
     phase: "finished",
+    phaseProgress: null,
     transcript: { language: "en", words: timedWords(0, 1000, "The previous transcript.") },
     revision: 0,
     resultRevision: 0,

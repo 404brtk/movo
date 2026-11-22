@@ -1,10 +1,10 @@
 import { writeFile } from "node:fs/promises";
-import { Worker } from "node:worker_threads";
 import { Schema } from "effect";
 import { TranscribeModel } from "transcribe-cpp";
 import { TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
 import { readEngineTranscript } from "./engine-result.ts";
 import { readPreparedAudio } from "./prepared-audio.ts";
+import { diarizeSpeakers } from "./speaker-diarization.ts";
 import { assignSpeakers } from "./speakers.ts";
 
 const ownerDisconnected = () => process.kill(process.pid, "SIGKILL");
@@ -34,26 +34,14 @@ async function transcribe(modelPath: string, audioPath: string) {
   }
 }
 
-function speakerSegments(
-  segmentationPath: string,
-  embeddingPath: string,
-  pcm: Buffer<ArrayBuffer>,
-) {
+function speakerSegments(segmentationPath: string, embeddingPath: string, pcm: Buffer) {
   console.log("MOVO_PHASE:speakers");
-  const script = new URL(
-    import.meta.url.endsWith(".ts") ? "./speaker-worker.ts" : "./speaker-worker.js",
-    import.meta.url,
-  );
-  const worker = new Worker(script, {
-    workerData: { segmentationPath, embeddingPath, pcm },
-    transferList: [pcm.buffer],
-  });
-  return new Promise<unknown>((resolve, reject) => {
-    worker.once("message", resolve);
-    worker.once("error", reject);
-    worker.once("exit", (code) =>
-      reject(new Error(`The speaker worker exited without a result (code ${code}).`)),
-    );
+  let reportedPercent = -1;
+  return diarizeSpeakers(segmentationPath, embeddingPath, pcm, (fraction) => {
+    const percent = Math.floor(fraction * 100);
+    if (percent === reportedPercent) return;
+    reportedPercent = percent;
+    console.log(`MOVO_PROGRESS:${percent}`);
   });
 }
 

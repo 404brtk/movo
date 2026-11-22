@@ -23,6 +23,7 @@ async function openRecording(
       modelId: "parakeet-ultra-q8",
       status: "completed",
       phase: "finished",
+      phaseProgress: null,
       transcript,
       revision: 0,
       resultRevision: 0,

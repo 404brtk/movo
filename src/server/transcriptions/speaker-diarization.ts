@@ -10,26 +10,32 @@ export async function diarizeSpeakers(
   segmentationPath: string,
   embeddingPath: string,
   pcm: Uint8Array,
+  reportProgress: (fraction: number) => void,
 ) {
-  const { default: sherpaOnnx } = await import("sherpa-onnx-node");
+  const { default: sherpaOnnx } = await import("sherpa-onnx-node/addon.js");
   const numThreads = availableParallelism();
-  const diarization = new sherpaOnnx.OfflineSpeakerDiarization({
+  const diarization = sherpaOnnx.createOfflineSpeakerDiarization({
     segmentation: { pyannote: { model: segmentationPath }, numThreads },
     embedding: { model: embeddingPath, numThreads },
     clustering: { numClusters: detectSpeakerCount, threshold: speakerDistanceThreshold },
   });
-  if (diarization.sampleRate !== 16000)
+  if (sherpaOnnx.getOfflineSpeakerDiarizationSampleRate(diarization) !== 16000)
     throw new Error("The speaker models do not support 16 kHz audio.");
   const samples = new Float32Array(
     pcm.buffer,
     pcm.byteOffset,
     pcm.byteLength / Float32Array.BYTES_PER_ELEMENT,
   );
-  const readSegments = Schema.decodeUnknownSync(SpeakerSegments);
-  const segments = readSegments(diarization.process(samples));
+  const diarize = async () =>
+    Schema.decodeUnknownSync(SpeakerSegments)(
+      await sherpaOnnx.offlineSpeakerDiarizationProcessAsync(diarization, samples, (done, total) =>
+        reportProgress(done / total),
+      ),
+    );
+  const segments = await diarize();
   if (new Set(segments.map(({ speaker }) => speaker)).size <= maxSpeakers) return segments;
-  diarization.setConfig({
+  sherpaOnnx.offlineSpeakerDiarizationSetConfig(diarization, {
     clustering: { numClusters: maxSpeakers, threshold: speakerDistanceThreshold },
   });
-  return readSegments(diarization.process(samples));
+  return diarize();
 }

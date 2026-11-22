@@ -58,6 +58,7 @@ it.for(["tone.wav", "sample.webm"])(
         staging,
         (phase) => phases.push(phase),
         (device) => devices.push(device),
+        () => undefined,
       ),
     );
     expect(result).toEqual(expected);
@@ -137,6 +138,7 @@ it.for([
         directory,
         () => undefined,
         () => undefined,
+        () => undefined,
       ),
     ),
   ).rejects.toMatchObject({
@@ -146,7 +148,7 @@ it.for([
   });
 });
 
-it("hands the verified speaker models to the worker and accepts its speaker phase and result", async () => {
+it("hands the verified speaker models to the worker and accepts its speaker phase, progress and result", async () => {
   const directory = await mkdtemp(join(tmpdir(), "movo-transcription-speakers-"));
   onTestFinished(() =>
     rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }),
@@ -159,6 +161,7 @@ it("hands the verified speaker models to the worker and accepts its speaker phas
     ],
   };
   const phases: string[] = [];
+  const progress: number[] = [];
   const workerArguments: string[][] = [];
   const engine = createTranscriptionEngine(
     createMediaTools({ dataDirectory: directory }),
@@ -173,6 +176,9 @@ it("hands the verified speaker models to the worker and accepts its speaker phas
           workerArguments.push(args.slice(1));
           options.onLine?.(deviceReport);
           options.onLine?.("MOVO_PHASE:speakers");
+          options.onLine?.("MOVO_PROGRESS:0");
+          options.onLine?.("MOVO_PROGRESS:42");
+          options.onLine?.("MOVO_PROGRESS:100");
           await writeFile(args[3] ?? "", JSON.stringify(expected), { flag: "wx" });
         }
         return "";
@@ -184,10 +190,12 @@ it("hands the verified speaker models to the worker and accepts its speaker phas
       directory,
       (phase) => phases.push(phase),
       () => undefined,
+      (percent) => progress.push(percent),
     ),
   );
   expect(result).toEqual(expected);
   expect(phases).toEqual(["preparing", "speakers"]);
+  expect(progress).toEqual([0, 42, 100]);
   expect(workerArguments).toEqual([
     [
       "verified-model.gguf",

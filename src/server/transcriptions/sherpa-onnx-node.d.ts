@@ -1,17 +1,31 @@
-declare module "sherpa-onnx-node" {
+declare module "sherpa-onnx-node/addon.js" {
+  interface ClusteringConfig {
+    numClusters: number;
+    threshold: number;
+  }
+
   interface OfflineSpeakerDiarizationConfig {
     segmentation: { pyannote: { model: string }; numThreads: number };
     embedding: { model: string; numThreads: number };
-    clustering: { numClusters: number; threshold: number };
+    clustering: ClusteringConfig;
   }
 
-  class OfflineSpeakerDiarization {
-    constructor(config: OfflineSpeakerDiarizationConfig);
-    readonly sampleRate: number;
-    process(samples: Float32Array): unknown;
-    setConfig(config: Pick<OfflineSpeakerDiarizationConfig, "clustering">): void;
-  }
+  type OfflineSpeakerDiarizationHandle = object & { readonly brand: unique symbol };
 
-  const sherpaOnnx: { OfflineSpeakerDiarization: typeof OfflineSpeakerDiarization };
-  export default sherpaOnnx;
+  const addon: {
+    createOfflineSpeakerDiarization(
+      config: OfflineSpeakerDiarizationConfig,
+    ): OfflineSpeakerDiarizationHandle;
+    getOfflineSpeakerDiarizationSampleRate(handle: OfflineSpeakerDiarizationHandle): number;
+    offlineSpeakerDiarizationSetConfig(
+      handle: OfflineSpeakerDiarizationHandle,
+      config: { clustering: ClusteringConfig },
+    ): void;
+    offlineSpeakerDiarizationProcessAsync(
+      handle: OfflineSpeakerDiarizationHandle,
+      samples: Float32Array,
+      progress: (processedChunks: number, totalChunks: number) => void,
+    ): Promise<unknown>;
+  };
+  export default addon;
 }

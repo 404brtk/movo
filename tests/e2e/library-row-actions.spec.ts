@@ -33,6 +33,7 @@ const completedJob = (mediaId: string, text: string): TranscriptionJob => ({
   modelId: "parakeet-ultra-q8",
   status: "completed",
   phase: "finished",
+  phaseProgress: null,
   transcript: { language: "en", words: timedWords(0, 1800, text) },
   revision: 0,
   resultRevision: 0,

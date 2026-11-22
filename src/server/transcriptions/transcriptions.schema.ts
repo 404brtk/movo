@@ -19,6 +19,7 @@ export const transcriptionJobs = sqliteTable(
     modelId: text("model_id").notNull(),
     status: text("status", { enum: transcriptionStates }).notNull(),
     phase: text("phase", { enum: transcriptionPhases }).notNull(),
+    phaseProgress: integer("phase_progress"),
     transcript: text("transcript", { mode: "json" }).$type<Transcript>(),
     revision: integer("revision").notNull().default(0),
     resultRevision: integer("result_revision").notNull().default(0),

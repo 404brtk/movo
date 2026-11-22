@@ -12,6 +12,7 @@ it("loads the native speaker runtime without weights and rejects missing models"
       join(directory, "segmentation.onnx"),
       join(directory, "embedding.onnx"),
       Buffer.alloc(16000 * Float32Array.BYTES_PER_ELEMENT),
+      () => {},
     ),
   ).rejects.toThrow(/check your config/u);
 });

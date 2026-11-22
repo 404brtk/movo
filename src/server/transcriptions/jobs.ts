@@ -55,6 +55,7 @@ export interface TranscriptionEngine {
     directory: string,
     update: (phase: TranscriptionPhase) => void,
     reportDevice: (device: TranscriptionDevice) => void,
+    reportProgress: (percent: number) => void,
   ) => Effect.Effect<Transcript, MediaError>;
 }
 
@@ -97,7 +98,7 @@ export function createTranscriptions(
   ) =>
     executor
       .update(transcriptionJobs)
-      .set({ ...changes, updatedAt: Date.now() })
+      .set({ ...(changes.phase ? { phaseProgress: null } : {}), ...changes, updatedAt: Date.now() })
       .where(and(eq(transcriptionJobs.mediaId, id), eq(transcriptionJobs.status, "running")))
       .run();
   const interrupt = (id: string) =>
@@ -163,6 +164,7 @@ export function createTranscriptions(
             directory,
             (phase) => report({ phase }),
             (device) => report({ device }),
+            (phaseProgress) => report({ phaseProgress }),
           );
           yield* storage(() => {
             const transcript = Schema.decodeUnknownSync(Transcript)(result);
@@ -502,7 +504,13 @@ export function createTranscriptions(
         yield* storage(() =>
           database
             .update(transcriptionJobs)
-            .set({ status: "cancelled", phase: "finished", error: null, updatedAt: Date.now() })
+            .set({
+              status: "cancelled",
+              phase: "finished",
+              phaseProgress: null,
+              error: null,
+              updatedAt: Date.now(),
+            })
             .where(and(eq(transcriptionJobs.mediaId, id), eq(transcriptionJobs.status, job.status)))
             .run(),
         );
@@ -527,6 +535,7 @@ export function createTranscriptions(
             .set({
               status: "queued",
               phase: "queued",
+              phaseProgress: null,
               device: null,
               error: null,
               updatedAt: Date.now(),
@@ -549,6 +558,7 @@ export function createTranscriptions(
             .set({
               status: "interrupted",
               phase: "finished",
+              phaseProgress: null,
               error: "Movo stopped before transcription finished. Retry to start again.",
               updatedAt: Date.now(),
             })

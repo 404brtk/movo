@@ -208,6 +208,7 @@ function speakerJob(revision: number, words: TranscriptWord[]): TranscriptionJob
     modelId: "parakeet-ultra-q8",
     status: "completed",
     phase: "finished",
+    phaseProgress: null,
     transcript: { language: "en", words, speakers: [{ id: 2, name: "Bob" }] },
     revision,
     resultRevision: 1,

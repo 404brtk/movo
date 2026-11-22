@@ -151,7 +151,7 @@ it("queues once per recording, saves timestamped passages and preserves the medi
   );
 });
 
-it("stops active inference before cleanup, continues the queue and accepts only one concurrent retry", async ({
+it("reports speaker progress, stops active inference before cleanup, continues the queue and accepts only one concurrent retry", async ({
   signal,
 }) => {
   await withRecording(signal, (database, directory, tools, library, media) =>
@@ -162,13 +162,15 @@ it("stops active inference before cleanup, continues the queue and accepts only 
       let stopped = false;
       const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
         check: () => Effect.void,
-        transcribe: (_path, staging, update, reportDevice) =>
+        transcribe: (_path, staging, update, reportDevice, reportProgress) =>
           Effect.gen(function* () {
             attempts++;
             yield* Effect.promise(() => writeFile(join(staging, "audio.f32"), "partial audio"));
             reportDevice(device);
             update("transcribing");
             if (attempts === 1) {
+              update("speakers");
+              reportProgress(42);
               yield* Deferred.succeed(began, undefined);
               yield* Effect.never;
             }
@@ -185,10 +187,15 @@ it("stops active inference before cleanup, continues the queue and accepts only 
       yield* jobs.enqueue(second.id);
       const worker = yield* jobs.start();
       yield* Deferred.await(began);
+      expect(yield* jobs.get(media.id)).toMatchObject({ phase: "speakers", phaseProgress: 42 });
       expect((yield* jobs.get(second.id))?.status).toBe("queued");
       yield* jobs.cancel(media.id);
       expect(stopped).toBe(true);
-      expect(yield* jobs.get(media.id)).toMatchObject({ status: "cancelled", device });
+      expect(yield* jobs.get(media.id)).toMatchObject({
+        status: "cancelled",
+        device,
+        phaseProgress: null,
+      });
       expect(
         yield* Effect.promise(() =>
           stat(join(directory, "transcriptions", media.id)).catch(() => null),

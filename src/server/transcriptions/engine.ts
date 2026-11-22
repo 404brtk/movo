@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect, Schema } from "effect";
 import {
+  PhaseProgress,
   Transcript,
   TranscriptionDevice,
   type TranscriptionPhase,
@@ -48,6 +49,7 @@ export function createTranscriptionEngine(
       directory: string,
       update: (phase: TranscriptionPhase) => void,
       reportDevice: (device: TranscriptionDevice) => void,
+      reportProgress: (percent: number) => void,
     ) =>
       Effect.gen(function* () {
         const { ffmpeg, modelPath, speakerPaths } = yield* resources();
@@ -113,6 +115,14 @@ export function createTranscriptionEngine(
                   ),
                 );
                 deviceReported = true;
+                return;
+              }
+              if (line.startsWith("MOVO_PROGRESS:")) {
+                reportProgress(
+                  Schema.decodeUnknownSync(PhaseProgress)(
+                    Number(line.slice("MOVO_PROGRESS:".length)),
+                  ),
+                );
                 return;
               }
               if (!line.startsWith("MOVO_PHASE:")) return;

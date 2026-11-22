@@ -4,17 +4,23 @@ import { diarizeSpeakers } from "../../../../src/server/transcriptions/speaker-d
 import { assignSpeakers } from "../../../../src/server/transcriptions/speakers.ts";
 
 const { processAudio, setConfig } = vi.hoisted(() => ({
-  processAudio: vi.fn<(samples: Float32Array) => unknown>(),
-  setConfig: vi.fn<(config: unknown) => void>(),
+  processAudio:
+    vi.fn<
+      (
+        handle: object,
+        samples: Float32Array,
+        progress: (done: number, total: number) => void,
+      ) => Promise<unknown>
+    >(),
+  setConfig: vi.fn<(handle: object, config: unknown) => void>(),
 }));
 
-vi.mock("sherpa-onnx-node", () => ({
+vi.mock("sherpa-onnx-node/addon.js", () => ({
   default: {
-    OfflineSpeakerDiarization: class {
-      sampleRate = 16000;
-      process = processAudio;
-      setConfig = setConfig;
-    },
+    createOfflineSpeakerDiarization: () => ({}),
+    getOfflineSpeakerDiarizationSampleRate: () => 16000,
+    offlineSpeakerDiarizationSetConfig: setConfig,
+    offlineSpeakerDiarizationProcessAsync: processAudio,
   },
 }));
 
@@ -35,19 +41,33 @@ it.each([
     text: "Hello",
   }));
   processAudio
-    .mockReturnValueOnce(turns)
-    .mockReturnValueOnce(
+    .mockResolvedValueOnce(turns)
+    .mockResolvedValueOnce(
       turns.map((turn) => ({ ...turn, speaker: Math.min(turn.speaker, maxSpeakers - 1) })),
     );
   const actual = assignSpeakers(
     { language: "en", words },
-    await diarizeSpeakers("segmentation.onnx", "embedding.onnx", Buffer.alloc(4)),
+    await diarizeSpeakers("segmentation.onnx", "embedding.onnx", Buffer.alloc(4), () => {}),
   );
   expect(actual.words).toEqual(
     words.map((word, index) => ({ ...word, speaker: Math.min(index + 1, maxSpeakers) })),
   );
-  expect(setConfig.mock.calls).toEqual(
-    passes === 2 ? [[{ clustering: { numClusters: maxSpeakers, threshold: 0.5 } }]] : [],
+  expect(setConfig.mock.calls.map(([, config]) => config)).toEqual(
+    passes === 2 ? [{ clustering: { numClusters: maxSpeakers, threshold: 0.5 } }] : [],
   );
   expect(processAudio).toHaveBeenCalledTimes(passes);
+});
+
+it("reports the share of processed audio chunks", async () => {
+  processAudio.mockReset();
+  processAudio.mockImplementationOnce(async (_handle, _samples, progress) => {
+    progress(1, 4);
+    progress(4, 4);
+    return [];
+  });
+  const reported: number[] = [];
+  await diarizeSpeakers("segmentation.onnx", "embedding.onnx", Buffer.alloc(4), (fraction) =>
+    reported.push(fraction),
+  );
+  expect(reported).toEqual([0.25, 1]);
 });

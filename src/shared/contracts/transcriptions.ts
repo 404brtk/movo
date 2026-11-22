@@ -83,6 +83,10 @@ export const TranscriptionDevice = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
 });
 export type TranscriptionDevice = typeof TranscriptionDevice.Type;
+export const PhaseProgress = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isBetween({ minimum: 0, maximum: 100 }),
+);
 export const transcriptExportFormats = ["txt", "srt", "vtt"] as const;
 export const TranscriptExportFormat = Schema.Literals(transcriptExportFormats);
 export type TranscriptExportFormat = typeof TranscriptExportFormat.Type;
@@ -91,6 +95,7 @@ export const TranscriptionJob = Schema.Struct({
   modelId: ModelId,
   status: Schema.Literals(transcriptionStates),
   phase: Schema.Literals(transcriptionPhases),
+  phaseProgress: Schema.NullOr(PhaseProgress),
   transcript: Schema.NullOr(Transcript),
   revision: Count,
   resultRevision: Count,

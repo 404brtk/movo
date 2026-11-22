@@ -120,6 +120,13 @@
       "when": 1794924696292,
       "tag": "0016_transcript_dictionary",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795354736237,
+      "tag": "0017_transcription_phase_progress",
+      "breakpoints": true
     }
   ]
 }

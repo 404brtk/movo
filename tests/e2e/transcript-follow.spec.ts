@@ -36,6 +36,7 @@ async function openTranscribedVideo(
     modelId: "parakeet-ultra-q8",
     status: "completed",
     phase: "finished",
+    phaseProgress: null,
     transcript: {
       language: "en",
       words: Array.from({ length: passageCount }, (_, index) =>
