@@ -379,6 +379,44 @@ test("keeps showing the latest speaker labels choice when an earlier one is reje
   await expect(off).toBeChecked();
 });
 
+test("keeps showing a pending speaker labels choice while the catalog refreshes", async ({
+  page,
+}) => {
+  let current: ModelCatalog = {
+    models: [
+      { ...initial, installation: { phase: "downloading", downloadedBytes: 1024, error: null } },
+      sortformer,
+    ],
+    speakerModelId: "sortformer-4spk-q8",
+  };
+  let catalogReads = 0;
+  let finishSaving: (() => void) | undefined;
+  const saved = new Promise<void>((resolve) => {
+    finishSaving = resolve;
+  });
+  await page.route("**/api/models", (route) => {
+    catalogReads++;
+    return route.fulfill({ json: current });
+  });
+  await page.route("**/api/models/speaker-labels", async (route) => {
+    const choice = route.request().postDataJSON();
+    await saved;
+    current = { ...current, ...choice };
+    return route.fulfill({ json: choice });
+  });
+  await page.goto("/settings");
+  const labels = page.getByRole("radiogroup", { name: "Speaker labels", exact: true });
+  const off = labels.getByRole("radio", { name: "Off", exact: true });
+  await expect(labels.getByRole("radio", { name: "Up to 4 speakers", exact: true })).toBeChecked();
+  await off.click();
+  const readsBeforeRefresh = catalogReads;
+  await expect.poll(() => catalogReads, { timeout: 5000 }).toBeGreaterThan(readsBeforeRefresh);
+  await expect(off).toBeChecked();
+  finishSaving?.();
+  await expect.poll(() => current.speakerModelId).toBeNull();
+  await expect(off).toBeChecked();
+});
+
 test("lists the media tools and opens yt-dlp setup from the settings page", async ({ page }) => {
   await page.route("**/api/models", (route) => route.fulfill({ json: catalog(initial) }));
   await page.route("**/api/media-tools", (route) =>

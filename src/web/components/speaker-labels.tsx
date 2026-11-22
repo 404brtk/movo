@@ -1,7 +1,8 @@
 import { useId, type ReactNode } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useMutationState, useQueryClient } from "@tanstack/react-query";
 import { Schema } from "effect";
 import {
+  SpeakerLabels as SpeakerLabelsChoice,
   SpeakerModelId,
   type ModelCatalog,
   type ModelStatus,
@@ -106,30 +107,27 @@ function SpeakerModelOption({ model }: { model: ModelStatus }) {
 export function SpeakerLabels({ catalog }: { catalog: ModelCatalog }) {
   const headingId = useId();
   const queryClient = useQueryClient();
-  const showChoice = (speakerModelId: SpeakerModelId | null) =>
-    queryClient.setQueryData(
-      modelsOptions.queryKey,
-      (current) => current && { ...current, speakerModelId },
-    );
-  const isLatestChoice = () => queryClient.isMutating({ mutationKey: choosingSpeakerLabels }) === 1;
   const choice = useMutation({
     mutationKey: choosingSpeakerLabels,
     scope: { id: choosingSpeakerLabels.join() },
     mutationFn: chooseSpeakerLabels,
-    onMutate: async ({ speakerModelId }) => {
-      await queryClient.cancelQueries({ queryKey: modelsOptions.queryKey });
-      const previous = queryClient.getQueryData(modelsOptions.queryKey)?.speakerModelId ?? null;
-      showChoice(speakerModelId);
-      return previous;
-    },
-    onError: (_error, _choice, previous) => {
-      if (previous !== undefined && isLatestChoice()) showChoice(previous);
-    },
+    onSuccess: ({ speakerModelId }) =>
+      queryClient.setQueryData(
+        modelsOptions.queryKey,
+        (current) => current && { ...current, speakerModelId },
+      ),
     onSettled: () =>
-      isLatestChoice()
+      queryClient.isMutating({ mutationKey: choosingSpeakerLabels }) === 1
         ? queryClient.invalidateQueries({ queryKey: modelsOptions.queryKey })
         : undefined,
   });
+  const pendingChoice = useMutationState({
+    filters: { mutationKey: choosingSpeakerLabels, status: "pending" },
+    select: (mutation) => mutation.state.variables,
+  })
+    .filter(Schema.is(SpeakerLabelsChoice))
+    .at(-1);
+  const shownChoice = pendingChoice ? pendingChoice.speakerModelId : catalog.speakerModelId;
   const speakerModels = catalog.models.filter((model) => model.role === "speakers");
   return (
     <li aria-labelledby={headingId} className="ml-11 pt-1 pb-3 pl-4">
@@ -141,7 +139,7 @@ export function SpeakerLabels({ catalog }: { catalog: ModelCatalog }) {
       </div>
       <RadioGroup
         aria-labelledby={headingId}
-        value={catalog.speakerModelId ?? off}
+        value={shownChoice ?? off}
         onValueChange={(value) =>
           choice.mutate({ speakerModelId: Schema.is(SpeakerModelId)(value) ? value : null })
         }
