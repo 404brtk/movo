@@ -62,7 +62,7 @@ Movo recognizes these files under the shared cache.
     snapshots/a8055d6daef723a6a4ecf4de233708575bf4994f/wespeaker_en_voxceleb_resnet34_LM.onnx
 ```
 
-When the Settings page first discovers these files, Movo verifies each file’s exact length and SHA-256. For GGUF files, it also verifies the declared architecture using the official [`@huggingface/gguf` parser](https://huggingface.co/docs/huggingface.js/gguf/README). Checks are coalesced in memory and reused while file identity, size, modification time and change time remain unchanged. Restarting the server or changing a file causes verification again. Model downloads start only on request.
+When the Settings page first discovers these files, Movo verifies each file’s exact length and SHA-256. For GGUF files, it also verifies the declared architecture using the official [`@huggingface/gguf` parser](https://huggingface.co/docs/huggingface.js/gguf/README). Checks are coalesced in memory and reused while file identity, size, modification time and change time remain unchanged. A caller that stops waiting, such as a cancelled download, does not fail the others waiting for the same check, which stops only when no caller waits for it. Restarting the server or changing a file causes verification again. Model downloads start only on request.
 
 A failed check shows **Needs repair** and names the affected file. Repair or remove that file through your cache-management tool, then choose **Check again**. You can download missing files from Settings.
 

@@ -9,6 +9,7 @@ import type { ModelStatus } from "../../shared/contracts/models.ts";
 import { downloadFile } from "../files/download.ts";
 import { MediaError } from "../media/error.ts";
 import type { ModelFile } from "./catalog.ts";
+import { shareWork } from "./shared-work.ts";
 
 type Availability = Pick<ModelStatus, "state" | "message">;
 const ModelMetadata = Schema.Struct({ "general.architecture": Schema.String });
@@ -56,7 +57,7 @@ async function verifyHeader(path: string, file: ModelFile) {
 
 export function createModelCache(directory: string, file: ModelFile) {
   const path = modelCachePath(directory, file);
-  let verification: { fingerprint: string; result: Promise<void> } | undefined;
+  let verification: { fingerprint: string; work: ReturnType<typeof shareWork<void>> } | undefined;
   const verify = async (initial: Stats, signal: AbortSignal) => {
     if (!initial.isFile() || initial.size !== file.bytes)
       throw new MediaError(
@@ -90,16 +91,16 @@ export function createModelCache(directory: string, file: ModelFile) {
       return { state: "missing", message: null };
     }
     const key = fingerprint(cached);
-    if (verification?.fingerprint !== key)
-      verification = { fingerprint: key, result: verify(cached, signal) };
+    if (verification?.fingerprint !== key || verification.work.abandoned())
+      verification = {
+        fingerprint: key,
+        work: shareWork((verificationSignal) => verify(cached, verificationSignal)),
+      };
     try {
-      await verification.result;
+      await verification.work.join(signal);
       return { state: "ready", message: null };
     } catch (cause) {
-      if (signal.aborted) {
-        verification = undefined;
-        throw cause;
-      }
+      if (signal.aborted) throw cause;
       if (hasCode(cause, "ENOENT")) {
         verification = undefined;
         return { state: "missing", message: null };
@@ -148,7 +149,10 @@ export function createModelCache(directory: string, file: ModelFile) {
               "unavailable",
               "The model changed during publication. Check again.",
             );
-          verification = { fingerprint: fingerprint(published), result: Promise.resolve() };
+          verification = {
+            fingerprint: fingerprint(published),
+            work: shareWork(() => Promise.resolve()),
+          };
         } catch (cause) {
           if (!hasCode(cause, "EEXIST"))
             throw cause instanceof MediaError
