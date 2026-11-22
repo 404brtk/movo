@@ -390,7 +390,6 @@ test("removes the saved copy after confirmation while keeping the transcript rea
     await expect(page.getByRole("menuitem", { name: /^Transcribe again/u })).toHaveCount(0);
     await page.keyboard.press("Escape");
   }
-  await page.setViewportSize({ width: 320, height: 700 });
   await more.click();
   await page.getByRole("menuitem", { name: "Export transcript", exact: true }).click();
   const downloadPromise = page.waitForEvent("download");
