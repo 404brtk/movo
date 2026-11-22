@@ -66,6 +66,7 @@ function createModel(cacheDirectory: string, definition: ModelDefinition, onInst
     Schema.decodeUnknownSync(ModelStatus)({
       ...definition,
       bytes,
+      parts: files.map(({ file }) => ({ name: file.title, bytes: file.bytes })),
       ...(await availability()),
       installation,
     });

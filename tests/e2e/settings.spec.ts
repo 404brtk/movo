@@ -7,6 +7,7 @@ const initial: ModelStatus = {
   name: "Parakeet Ultra",
   description: "Local transcription for European languages.",
   bytes: 740363168,
+  parts: [{ name: "Parakeet Ultra Q8_0", bytes: 740363168 }],
   sourceUrl: "https://huggingface.co/handy-computer/parakeet-ultra-gguf",
   license: "CC BY 4.0",
   languages: ["en", "pl"],
@@ -36,7 +37,7 @@ test("opens the real model catalog without starting installation", async ({ page
   await expect(labels.getByRole("radio", { name: "Off", exact: true })).toBeChecked();
   for (const [option, model] of [
     ["Up to 4 speakers", "Sortformer"],
-    ["Up to 32 speakers", "Pyannote + WeSpeaker"],
+    ["Up to 32 speakers", "Pyannote"],
   ] as const) {
     await expect(labels.getByRole("radio", { name: option, exact: true })).toBeDisabled();
     await expect(speakers.getByText(model, { exact: true })).toBeVisible();
@@ -58,6 +59,12 @@ test("opens the real model catalog without starting installation", async ({ page
     .poll(() => details.evaluate((button) => getComputedStyle(button).backgroundColor))
     .toBe("rgba(0, 0, 0, 0)");
   await expect(speakers.getByText("MIT and CC BY 4.0", { exact: true })).toBeVisible();
+  await expect(speakers.getByRole("listitem").filter({ hasText: "segmentation" })).toHaveText(
+    "Pyannote segmentation 3.0 · 5.7 MiB",
+  );
+  await expect(speakers.getByRole("listitem").filter({ hasText: "WeSpeaker" })).toHaveText(
+    "WeSpeaker ResNet34-LM · 25.3 MiB",
+  );
   await expect(speakers.getByText("English", { exact: true })).toBeVisible();
   expect(writes).toEqual([]);
 });
@@ -193,8 +200,9 @@ test("chooses speaker labels, uses a speaker model once its download completes a
     ...speakerModel,
     id: "sortformer-4spk-q8",
     name: "Sortformer",
-    description: "Fast, for interviews and podcasts",
+    description: "GPU or CPU",
     bytes: 139310336,
+    parts: [{ name: "Streaming Sortformer 4spk v2.1 Q8_0", bytes: 139310336 }],
     sourceUrl: "https://huggingface.co/handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf",
     license: "NVIDIA Open Model License",
     maxSpeakers: 4,
@@ -203,9 +211,13 @@ test("chooses speaker labels, uses a speaker model once its download completes a
   let pyannote: ModelStatus = {
     ...speakerModel,
     id: "pyannote-wespeaker",
-    name: "Pyannote + WeSpeaker",
-    description: "Runs on the processor, for meetings and press conferences",
+    name: "Pyannote",
+    description: "CPU only",
     bytes: 32523463,
+    parts: [
+      { name: "Pyannote segmentation 3.0", bytes: 5992913 },
+      { name: "WeSpeaker ResNet34-LM", bytes: 26530550 },
+    ],
     sourceUrl: "https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html",
     license: "MIT and CC BY 4.0",
     maxSpeakers: 32,
@@ -245,9 +257,7 @@ test("chooses speaker labels, uses a speaker model once its download completes a
   const upToFour = labels.getByRole("radio", { name: "Up to 4 speakers", exact: true });
   const upToThirtyTwo = labels.getByRole("radio", { name: "Up to 32 speakers", exact: true });
   await expect(upToFour).toBeChecked();
-  await expect(upToFour).toHaveAccessibleDescription(
-    "Sortformer · Fast, for interviews and podcasts · 132.9 MiB",
-  );
+  await expect(upToFour).toHaveAccessibleDescription("Sortformer · GPU or CPU · 132.9 MiB");
   await expect(upToThirtyTwo).toBeDisabled();
   const speakers = page.getByRole("listitem", { name: "Speaker labels", exact: true });
   await expect(speakers.getByRole("status")).toHaveText(["Installed", "Not installed"]);
@@ -255,7 +265,7 @@ test("chooses speaker labels, uses a speaker model once its download completes a
   await expect(off).toBeChecked();
   await upToFour.click();
   await expect(upToFour).toBeChecked();
-  await page.getByRole("button", { name: "Download Pyannote + WeSpeaker", exact: true }).click();
+  await page.getByRole("button", { name: "Download Pyannote", exact: true }).click();
   await expect(
     page.getByRole("progressbar", { name: "Up to 32 speakers download", exact: true }),
   ).toHaveAttribute("aria-valuenow", String(8 * 1024 * 1024));

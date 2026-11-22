@@ -28,6 +28,12 @@ export const ModelStatus = Schema.Struct({
   name: Schema.String,
   description: Schema.String,
   bytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+  parts: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      bytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+    }),
+  ),
   sourceUrl: Schema.String,
   license: Schema.String,
   languages: Schema.Array(Schema.String),

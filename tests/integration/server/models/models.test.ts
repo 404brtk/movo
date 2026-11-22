@@ -122,7 +122,7 @@ it("keeps the optional speaker models separate and treats them as absent until e
       },
     ]);
     const missing =
-      /Speaker labels use Pyannote \+ WeSpeaker, which is not installed\. Download it in Settings/u;
+      /Speaker labels use Pyannote, which is not installed\. Download it in Settings/u;
     await expect(Effect.runPromise(models.resolve(pyannoteModel.id))).rejects.toThrow(missing);
     await mkdir(dirname(speakers.segmentationPath), { recursive: true });
     await writeFile(speakers.segmentationPath, speakers.segmentation);
@@ -155,7 +155,7 @@ it("uses only a verified speaker model for speaker labels and keeps the choice",
       Effect.runPromise(models.chooseSpeakerLabels(speakerModelId));
     await expect(choose(pyannoteModel.id)).rejects.toMatchObject({
       reason: "invalid",
-      message: "Download Pyannote + WeSpeaker before using it for speaker labels.",
+      message: "Download Pyannote before using it for speaker labels.",
     });
     await mkdir(dirname(speakers.segmentationPath), { recursive: true });
     await writeFile(speakers.segmentationPath, speakers.segmentation);
@@ -754,7 +754,7 @@ describe("shared transcription model cache", () => {
               );
               expect(missing.status).toBe(400);
               expect(await missing.json()).toEqual({
-                error: "Download Pyannote + WeSpeaker before using it for speaker labels.",
+                error: "Download Pyannote before using it for speaker labels.",
               });
               for (const body of [
                 JSON.stringify({ speakerModelId: transcriptionModel.id }),

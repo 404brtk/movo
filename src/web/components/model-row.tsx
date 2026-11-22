@@ -215,6 +215,23 @@ export function ModelDetails({
         <dl className="mt-2.5 grid grid-cols-[76px_1fr] gap-x-3 gap-y-1">
           <dt className="text-muted-foreground">Size</dt>
           <dd className="tabular-nums">{formatBytes(model.bytes)}</dd>
+          {model.parts.length > 1 ? (
+            <>
+              <dt className="text-muted-foreground">Includes</dt>
+              <dd>
+                <ul>
+                  {model.parts.map((part) => (
+                    <li key={part.name}>
+                      {part.name}{" "}
+                      <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+                        · {formatBytes(part.bytes)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </>
+          ) : null}
           <dt className="text-muted-foreground">License</dt>
           <dd>{model.license}</dd>
           <dt className="text-muted-foreground">Languages</dt>

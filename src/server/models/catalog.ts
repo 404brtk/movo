@@ -3,6 +3,7 @@ import { maxSpeakers } from "../../shared/contracts/transcriptions.ts";
 import type { DownloadSource } from "../files/download.ts";
 
 export interface ModelFile extends DownloadSource {
+  title: string;
   repository: string;
   revision: string;
   filename: string;
@@ -36,6 +37,7 @@ const huggingFaceFile = (file: Omit<ModelFile, "url">): ModelFile => ({
 });
 
 const parakeetFile = huggingFaceFile({
+  title: "Parakeet Ultra Q8_0",
   repository: "handy-computer/parakeet-ultra-gguf",
   revision: "39eeb55181f0d354fd934f06e92fd8d5037fed8e",
   filename: "parakeet-ultra-Q8_0.gguf",
@@ -82,6 +84,7 @@ export const transcriptionModel = {
 } satisfies ModelDefinition;
 
 const sortformerFile = huggingFaceFile({
+  title: "Streaming Sortformer 4spk v2.1 Q8_0",
   repository: "handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf",
   revision: "60ebab3ef7cae9869be0abcde13360347e96ba03",
   filename: "diar_streaming_sortformer_4spk-v2.1-Q8_0.gguf",
@@ -94,7 +97,7 @@ export const sortformerModel = {
   id: "sortformer-4spk-q8",
   role: "speakers",
   name: "Sortformer",
-  description: "Fast, for interviews and podcasts",
+  description: "GPU or CPU",
   sourceUrl: `https://huggingface.co/${sortformerFile.repository}/tree/${sortformerFile.revision}`,
   files: { diarization: sortformerFile },
   license: "NVIDIA Open Model License",
@@ -105,11 +108,12 @@ export const sortformerModel = {
 export const pyannoteModel = {
   id: "pyannote-wespeaker",
   role: "speakers",
-  name: "Pyannote + WeSpeaker",
-  description: "Runs on the processor, for meetings and press conferences",
+  name: "Pyannote",
+  description: "CPU only",
   sourceUrl: "https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html",
   files: {
     segmentation: huggingFaceFile({
+      title: "Pyannote segmentation 3.0",
       repository: "csukuangfj/sherpa-onnx-pyannote-segmentation-3-0",
       revision: "9403a6902bb58e3d5ae8c7e77c3422de279db2e0",
       filename: "model.onnx",
@@ -117,6 +121,7 @@ export const pyannoteModel = {
       sha256: "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
     }),
     embedding: huggingFaceFile({
+      title: "WeSpeaker ResNet34-LM",
       repository: "csukuangfj/speaker-embedding-models",
       revision: "a8055d6daef723a6a4ecf4de233708575bf4994f",
       filename: "wespeaker_en_voxceleb_resnet34_LM.onnx",
