@@ -241,9 +241,13 @@ test("moves passages between speakers, merges them, names the remaining speaker 
   await panel.getByRole("button", { name: "Change speaker of passage at 0:02" }).click();
   await page.getByRole("menuitemradio", { name: "Speaker 2" }).click();
   await expect(speakerHeadings(page)).toHaveText(["Speaker 1", "Speaker 2"]);
+  await expect(page.getByRole("menu")).toHaveCount(0);
 
   await panel.getByRole("button", { name: "Change speaker of passage at 0:00" }).click();
-  await page.getByRole("menuitem", { name: "New speaker" }).click();
+  await page
+    .getByRole("menu", { name: "Change speaker of passage at 0:00" })
+    .getByRole("menuitem", { name: "New speaker" })
+    .click();
   await expect(speakerHeadings(page)).toHaveText(["Speaker 3", "Speaker 2"]);
 
   await speakerHeadings(page).first().click();
