@@ -496,6 +496,14 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
     job = { ...job, status: "running", phase: "transcribing", error: null };
     return route.fulfill({ status: 202, json: job });
   });
+  let releaseModels: (() => void) | undefined;
+  const modelsReleased = new Promise<void>((resolve) => {
+    releaseModels = resolve;
+  });
+  await page.route("**/api/models", async (route) => {
+    await modelsReleased;
+    return route.fulfill({ status: 503, json: { error: "Model status is unavailable." } });
+  });
   await page.goto(`/media/${media.id}`);
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
   await expect(panel.getByText(/^Showing the previous transcript/u)).toHaveCount(0);
@@ -504,6 +512,13 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
   const noSpeakerLabels = page.getByRole("menuitem", { name: "No speaker labels", exact: true });
   await more.click();
   await transcribeAgain.click();
+  await expect(
+    page.getByRole("menuitem", { name: "Checking speaker models…", exact: true }),
+  ).toBeDisabled();
+  releaseModels?.();
+  await expect(
+    page.getByRole("menuitem", { name: "Could not check speaker models", exact: true }),
+  ).toBeDisabled({ timeout: 15_000 });
   await noSpeakerLabels.click();
   await expect(panel.getByRole("alert")).toHaveText(
     "Close apps using the recording and try again.",

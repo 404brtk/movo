@@ -165,6 +165,14 @@ export function useRecordingActions({
           <DropdownMenuSubContent className="w-60">
             <DropdownMenuGroup>
               <DropdownMenuLabel>Speaker labels</DropdownMenuLabel>
+              {models.isPending ? (
+                <DropdownMenuItem disabled>
+                  <Spinner />
+                  Checking speaker models…
+                </DropdownMenuItem>
+              ) : models.isError ? (
+                <DropdownMenuItem disabled>Could not check speaker models</DropdownMenuItem>
+              ) : null}
               {[
                 ...speakerModels.map((model) => ({
                   speakerModelId: model.id,
