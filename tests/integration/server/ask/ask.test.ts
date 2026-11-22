@@ -39,13 +39,14 @@ const words = [
   ...timedWords(600, 1100, "Anna presents the numbers."),
 ];
 
+const usage = () => ({
+  inputTokens: { total: 120, noCache: 120, cacheRead: undefined, cacheWrite: undefined },
+  outputTokens: { total: 10, text: 10, reasoning: undefined },
+});
 const finish = (unified: "stop" | "tool-calls"): LanguageModelV4StreamPart => ({
   type: "finish",
   finishReason: { unified, raw: undefined },
-  usage: {
-    inputTokens: { total: 120, noCache: 120, cacheRead: undefined, cacheWrite: undefined },
-    outputTokens: { total: 10, text: 10, reasoning: undefined },
-  },
+  usage: usage(),
 });
 const text = (value: string): LanguageModelV4StreamPart[] => [
   { type: "text-start", id: "t" },
@@ -79,9 +80,11 @@ function withAsk(
     otherMediaId: string;
     transcript: () => Promise<string>;
     calls: LanguageModelV4CallOptions[];
+    generated: LanguageModelV4CallOptions[];
     database: AppDatabase;
   }) => Promise<void>,
   modelOverride?: AskBoundaries["languageModel"],
+  fixtureWords = words,
 ) {
   return async () => {
     const directory = await mkdtemp(join(tmpdir(), "movo-ask-"));
@@ -95,7 +98,7 @@ function withAsk(
             const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
             const transcriptions = createTranscriptions(database, config, tools, {
               check: () => Effect.void,
-              transcribe: () => Effect.succeed({ language: "en", words }),
+              transcribe: () => Effect.succeed({ language: "en", words: fixtureWords }),
             });
             const downloads = createDownloads(database, config, tools, {
               preview: (url) => Effect.succeed({ url, title: "A source", durationSeconds: 2 }),
@@ -116,6 +119,7 @@ function withAsk(
             const worker = yield* transcriptions.start();
             let counter = 0;
             const calls: LanguageModelV4CallOptions[] = [];
+            const generated: LanguageModelV4CallOptions[] = [];
             const boundaries: AskBoundaries = {
               listModels: async (connection) => {
                 if (connection.apiKey !== validKey && connection.kind !== "server")
@@ -140,6 +144,15 @@ function withAsk(
                         revision,
                       });
                     },
+                    doGenerate: async (options) => {
+                      generated.push(options);
+                      return {
+                        content: [{ type: "text", text: "The budget meeting starts [0]." }],
+                        finishReason: { unified: "stop", raw: undefined },
+                        usage: usage(),
+                        warnings: [],
+                      };
+                    },
                   })),
             };
             const ask = yield* Effect.acquireRelease(
@@ -162,6 +175,7 @@ function withAsk(
                     .map((word) => word.text)
                     .join(" ") ?? "",
                 calls,
+                generated,
                 database,
               });
             });
@@ -179,7 +193,7 @@ async function connectAndCreateChat(
   request: (path: string, init?: RequestInit) => Promise<Response>,
   mediaId: string | null,
   scope: unknown = null,
-  { kind = "anthropic", modelId = "model-a" }: { kind?: string; modelId?: string } = {},
+  { kind = "anthropic", modelId = "model-a", contextTokens = 100_000 } = {},
 ) {
   const connection = Schema.decodeUnknownSync(AiConnection)(
     await (await request("/connections", json({ kind, apiKey: validKey }))).json(),
@@ -193,7 +207,7 @@ async function connectAndCreateChat(
             connectionId: connection.id,
             modelId,
             modelName: "Model A",
-            contextTokens: 100_000,
+            contextTokens,
           },
           "PUT",
         ),
@@ -315,6 +329,181 @@ it(
   ),
 );
 
+const systemTexts = (options: LanguageModelV4CallOptions | undefined) =>
+  (options?.prompt ?? []).flatMap((message) =>
+    message.role === "system" ? [{ text: message.content, options: message.providerOptions }] : [],
+  );
+
+it(
+  "gives the model the recording's whole transcript, cached, and links any moment of it",
+  withAsk(
+    () => stream(text("The meeting opens at [0].")),
+    async ({ request, mediaId, calls }) => {
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "How does it open?" }));
+      const detail = await settled(request, chatId);
+      expect(detail.messages[1]).toMatchObject({
+        state: "done",
+        transcriptReading: "whole",
+        moments: [{ startMs: 0, mediaId }],
+      });
+      expect(calls).toHaveLength(1);
+      const [instructions, transcript] = systemTexts(calls[0]);
+      expect(instructions?.text).toContain("whole transcript follows");
+      expect(instructions?.text).not.toContain("Read in pages");
+      expect(transcript?.text).toContain('The whole transcript of "meeting"');
+      expect(transcript?.text).toContain("Anna presents the numbers.");
+      expect(transcript?.options).toEqual({ anthropic: { cacheControl: { type: "ephemeral" } } });
+      expect(calls[0]?.tools).toHaveLength(9);
+    },
+  ),
+);
+
+const contextOverflow = () =>
+  new APICallError({
+    message: "prompt is too long: 250000 tokens > 199999 maximum",
+    url: "https://api.anthropic.com/v1/messages",
+    requestBodyValues: {},
+    statusCode: 400,
+    isRetryable: false,
+  });
+
+it(
+  "reads the transcript in parts when the provider says the whole one is too long",
+  withAsk(
+    (_options, index) => {
+      if (index === 0) throw contextOverflow();
+      if (index === 1)
+        return stream(call("scan_transcript", { instruction: "Note the main points" }));
+      return stream(text("It opens with the budget [0]."));
+    },
+    async ({ request, mediaId, calls, generated }) => {
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "Summarise it" }));
+      const detail = await settled(request, chatId);
+      expect(detail.messages[1]).toMatchObject({
+        state: "done",
+        error: null,
+        transcriptReading: "parts",
+        moments: [{ startMs: 0, mediaId }],
+        parts: [
+          { type: "tool", toolName: "scan_transcript", state: "done", resultCount: 1 },
+          { type: "text", text: "It opens with the budget [0]." },
+        ],
+      });
+      expect(calls).toHaveLength(3);
+      expect(systemTexts(calls[0])).toHaveLength(2);
+      expect(calls[0]?.tools?.map((tool) => tool.name)).not.toContain("scan_transcript");
+      const retried = systemTexts(calls[1]);
+      expect(retried).toHaveLength(1);
+      expect(retried[0]?.text).toContain("too long for you to hold at once");
+      expect(retried[0]?.text).not.toContain("Anna presents the numbers.");
+      expect(calls[1]?.tools?.map((tool) => tool.name)).toContain("scan_transcript");
+      expect(generated).toHaveLength(1);
+      const part = JSON.stringify(generated[0]?.prompt);
+      expect(part).toContain("Instruction: Note the main points");
+      expect(part).toContain("Anna presents the numbers.");
+      expect(JSON.stringify(calls[2]?.prompt.at(-1))).toContain("The budget meeting starts [0].");
+      await request(`/chats/${chatId}/messages`, json({ text: "Summarise it again" }));
+      expect((await settled(request, chatId)).messages.at(-1)?.transcriptReading).toBe("parts");
+      expect(calls).toHaveLength(4);
+      expect(systemTexts(calls[3])).toHaveLength(1);
+    },
+  ),
+);
+
+it(
+  "reuses the first transcript scan when the model asks to scan again",
+  withAsk(
+    (_options, index) => {
+      if (index === 0) throw contextOverflow();
+      if (index < 3) {
+        const [scan, finishStep] = call("scan_transcript", { instruction: `Scan ${index}` });
+        if (scan?.type !== "tool-call" || !finishStep) throw new Error("Missing scan step.");
+        return stream([{ ...scan, toolCallId: `scan-${index}` }, finishStep]);
+      }
+      return stream(text("The meeting opens at [0]."));
+    },
+    async ({ request, mediaId, calls, generated }) => {
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "Summarise it" }));
+      const detail = await settled(request, chatId);
+      expect(parts(detail)).toEqual(["done", "done", "text"]);
+      expect(generated).toHaveLength(1);
+      expect(JSON.stringify(calls[3]?.prompt.at(-1))).toContain("The budget meeting starts [0].");
+    },
+  ),
+);
+
+it(
+  "uses parts immediately when the estimated budget cannot hold the whole transcript",
+  withAsk(
+    () => stream(text("I'll look in parts.")),
+    async ({ request, mediaId, calls }) => {
+      const chatId = await connectAndCreateChat(request, mediaId, null, { contextTokens: 4096 });
+      await request(`/chats/${chatId}/messages`, json({ text: "Summarise it" }));
+      expect((await settled(request, chatId)).messages.at(-1)?.transcriptReading).toBe("parts");
+      expect(calls).toHaveLength(1);
+      expect(systemTexts(calls[0])).toHaveLength(1);
+    },
+    undefined,
+    timedWords(0, 1500, "A long recording has many passages of discussion. ".repeat(250).trim()),
+  ),
+);
+
+it(
+  "keeps partial text and does not retry a whole transcript after streaming has started",
+  withAsk(
+    () =>
+      stream([
+        ...text("The meeting opens.").slice(0, -1),
+        { type: "error", error: contextOverflow() },
+      ]),
+    async ({ request, mediaId, calls }) => {
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "How does it open?" }));
+      expect((await settled(request, chatId)).messages.at(-1)).toMatchObject({
+        state: "failed",
+        parts: [{ type: "text", text: "The meeting opens." }],
+      });
+      expect(calls).toHaveLength(1);
+    },
+  ),
+);
+
+it(
+  "keeps the history cut made by a rejected whole-transcript request",
+  withAsk(
+    (_options, index) => {
+      if (index === 0) throw contextOverflow();
+      return stream(text("It opens with a discussion."));
+    },
+    async ({ request, mediaId, calls, database }) => {
+      const chatId = await connectAndCreateChat(request, mediaId, null, { contextTokens: 6000 });
+      const earlier = "An earlier question. ".repeat(260);
+      database
+        .insert(chatMessages)
+        .values({
+          chatId,
+          seq: 1,
+          role: "user",
+          state: "done",
+          createdAt: Date.now(),
+          messages: [{ role: "user", content: earlier }],
+        })
+        .run();
+      await request(`/chats/${chatId}/messages`, json({ text: "Summarise it" }));
+      const detail = await settled(request, chatId);
+      expect(calls).toHaveLength(2);
+      expect(systemTexts(calls[0])).toHaveLength(2);
+      expect(detail.hiddenBeforeSeq).toBe(2);
+      expect(JSON.stringify(calls[1]?.prompt)).not.toContain("An earlier question");
+    },
+    undefined,
+    timedWords(0, 1500, "The budget meeting opens with a discussion. ".repeat(70).trim()),
+  ),
+);
+
 it(
   "waits for approval before editing and records the change as made by Ask",
   withAsk(
@@ -362,6 +551,53 @@ it(
 );
 
 it(
+  "preserves citations when approvals resume an answer after a passage boundary changed",
+  withAsk(
+    (_options, index, { mediaId, revision }) => {
+      if (index === 0)
+        return stream([
+          ...text("Anna takes over at [600].").slice(0, -1),
+          ...call("edit_transcript", {
+            mediaId,
+            revision,
+            firstWord: 3,
+            wordCount: 1,
+            text: "starts",
+          }),
+        ]);
+      if (index === 1)
+        return stream(
+          call("replace_in_transcript", { mediaId, revision, find: "Anna", replacement: "Hanna" }),
+        );
+      return stream(text("Both changes are applied."));
+    },
+    async ({ request, mediaId, calls }) => {
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "Fix the punctuation and name" }));
+      for (const toolName of ["edit_transcript", "replace_in_transcript"]) {
+        const waiting = (await settled(request, chatId)).messages.at(-1);
+        expect(waiting?.state).toBe("waiting_approval");
+        const pending = waiting?.parts.find(
+          (part) =>
+            part.type === "tool" && part.toolName === toolName && part.state === "waiting_approval",
+        );
+        if (pending?.type !== "tool" || !pending.approvalId)
+          throw new Error("No approval request.");
+        const approved = await request(
+          `/chats/${chatId}/approval`,
+          json({ approvalId: pending.approvalId, approved: true }),
+        );
+        expect(approved.status).toBe(202);
+      }
+      const result = (await settled(request, chatId)).messages.at(-1);
+      expect(systemTexts(calls[2])[1]?.text).toContain("[0] The budget meeting starts Anna");
+      expect(systemTexts(calls[2])[1]?.text).not.toContain("[600]");
+      expect(result).toMatchObject({ state: "done", moments: [{ startMs: 600, mediaId }] });
+    },
+  ),
+);
+
+it(
   "stops an answer, keeping its partial text",
   withAsk(
     (options) => ({
@@ -391,6 +627,14 @@ it(
       }
       expect(received).toContain("event: snapshot");
       expect(received).toContain('"Partial answer"');
+      const liveDetail = Schema.decodeUnknownSync(ChatDetail)(
+        await (await request(`/chats/${chatId}`)).json(),
+      );
+      expect(liveDetail.messages[1]).toMatchObject({
+        state: "answering",
+        liveTranscript: true,
+        moments: [],
+      });
       const stopped = Schema.decodeUnknownSync(ChatDetail)(
         await (await request(`/chats/${chatId}/stop`, { method: "POST" })).json(),
       );
@@ -444,6 +688,8 @@ it(
       const chosen = await settled(request, chatId);
       expect(chosen.chat.scope).toEqual({ mediaIds: [otherMediaId] });
       expect(parts(chosen)).toEqual(["failed", "done", "text"]);
+      expect(chosen.messages[1]?.transcriptReading).toBeNull();
+      expect(systemTexts(calls[0])).toHaveLength(1);
       expect(JSON.stringify(calls[1]?.prompt.at(-1))).toContain("outside the chat's scope");
       expect(JSON.stringify(calls[2]?.prompt.at(-1))).toContain('"total":0');
       expect(calls[0]?.tools?.map((tool) => tool.name)).not.toContain("edit_transcript");
@@ -651,6 +897,11 @@ describe("requests sent to providers", () => {
         expect((await settled(request, chatId)).messages[1]?.state).toBe("done");
         const sent = await sentTo(provider("anthropic"), "/v1/messages");
         expect(lastMessage(sent)).toContain(ephemeral);
+        const system = Array.isArray(sent.system) ? sent.system : [];
+        expect(system).toHaveLength(2);
+        expect(JSON.stringify(system[0])).not.toContain("cache_control");
+        expect(JSON.stringify(system[1])).toContain("Anna presents the numbers.");
+        expect(JSON.stringify(system[1])).toContain(ephemeral);
         expect(JSON.stringify(sent.tools)).toContain("read_transcript");
         const stored = database
           .select({ inputTokens: chatMessages.inputTokens })
@@ -680,6 +931,9 @@ describe("requests sent to providers", () => {
         const sent = await sentTo(provider("openrouter"), "/chat/completions");
         expect(sent.model).toBe("anthropic/claude-sonnet");
         expect(lastMessage(sent)).toContain(ephemeral);
+        const transcript = Array.isArray(sent.messages) ? sent.messages[1] : null;
+        expect(JSON.stringify(transcript)).toContain("Anna presents the numbers.");
+        expect(JSON.stringify(transcript)).toContain(ephemeral);
       },
       (_connection, modelId) =>
         createOpenRouter({ apiKey: validKey, baseURL: provider("openrouter").baseUrl })(modelId),

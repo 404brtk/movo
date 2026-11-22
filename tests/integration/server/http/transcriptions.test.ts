@@ -191,6 +191,19 @@ it("downloads saved transcripts as UTF-8 attachments, including during a replace
               expect(response.headers.get("x-content-type-options")).toBe("nosniff");
               expect(await response.text()).toBe(exported.text);
             }
+            const timed = await app.request(`${base}/export/txt?speakers=off&timestamps=true`);
+            expect(timed.status).toBe(200);
+            expect(await timed.text()).toBe(
+              "[00:00:00] Zażółć.\n[00:00:01] Second & <b>passage</b>.",
+            );
+            for (const query of ["timestamps=yes", "speakers=true"]) {
+              const rejected = await app.request(`${base}/export/txt?${query}`);
+              expect(rejected.status).toBe(400);
+              expect(await rejected.json()).toMatchObject({
+                error:
+                  "Place speaker names at each turn, on every line or nowhere, and choose true or false for timestamps.",
+              });
+            }
             expect(
               (
                 await app.request(`${base}/export/txt`, {

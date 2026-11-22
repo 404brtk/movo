@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "975070a0-5c19-42d1-9a56-28d939c3da3c",
+  "id": "0cb6df90-14c6-4ac8-ac01-1481c956f96e",
   "prevId": "bc51ef23-fbac-4fd2-be69-8c07b065a816",
   "tables": {
     "ai_connections": {
@@ -191,6 +191,20 @@
         },
         "passage": {
           "name": "passage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "transcript_reading": {
+          "name": "transcript_reading",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "transcript_moments": {
+          "name": "transcript_moments",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -866,13 +880,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "phase_progress": {
-          "name": "phase_progress",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "transcript": {

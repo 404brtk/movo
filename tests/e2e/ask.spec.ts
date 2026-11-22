@@ -75,6 +75,7 @@ const userMessage = (text: string): ChatMessage => ({
   error: null,
   errorKind: null,
   passage: null,
+  transcriptReading: null,
   parts: [{ type: "text", text }],
   moments: [],
   createdAt: Date.now(),
@@ -103,6 +104,7 @@ const answerMessage = (
   error: null,
   errorKind: null,
   passage: null,
+  transcriptReading: null,
   parts: state === "answering" ? [] : parts,
   moments,
   createdAt: Date.now(),
@@ -204,8 +206,8 @@ test("asks about a recording in the side panel, streams the answer and applies a
   const chatId = randomUUID();
   const summary = summaryOf(chatId, media.id, "Who presents?");
   const question = userMessage("Who presents?");
-  const answer = (state: ChatMessage["state"], approval: "pending" | "done") =>
-    answerMessage(
+  const answer = (state: ChatMessage["state"], approval: "pending" | "done"): ChatMessage => ({
+    ...answerMessage(
       state,
       [
         tool("read_transcript", { mediaId: media.id }),
@@ -222,7 +224,9 @@ test("asks about a recording in the side panel, streams the answer and applies a
         ),
       ],
       [{ startMs: 1000, mediaId: media.id }],
-    );
+    ),
+    transcriptReading: "whole",
+  });
   let detail: ChatDetail = {
     chat: summary,
     messages: [],
@@ -283,6 +287,7 @@ test("asks about a recording in the side panel, streams the answer and applies a
   await expect(panel.getByText("Who presents?", { exact: true })).toBeVisible();
   const moment = panel.getByRole("link", { name: "0:01" });
   await expect(moment).toHaveAttribute("href", `/media/${media.id}?startMs=1000`);
+  await expect(panel.getByText("Read the whole transcript")).toBeVisible();
   await expect(panel.getByText("Read the transcript")).toBeVisible();
   await expect(panel.getByText("Change the transcript?")).toBeVisible();
   await expect(composer).toHaveAttribute("placeholder", "Answer the question above to continue");
@@ -548,6 +553,7 @@ test("keeps long steps, failures and model names inside the panel, one step per 
         ]),
         seq: 4,
         modelName: longModel,
+        transcriptReading: "parts",
       },
     ],
     hiddenBeforeSeq: 0,
@@ -570,9 +576,13 @@ test("keeps long steps, failures and model names inside the panel, one step per 
   const searched = panel.getByText(`Searched for “${query}”`, { exact: true });
   const read = panel.getByText("Read the transcript", { exact: true });
   const failed = panel.getByText(failure, { exact: true });
+  const parts = panel.getByText(`The whole transcript didn't fit in ${longModel}'s context`, {
+    exact: true,
+  });
   await expect(searched).toBeVisible();
   await expect(read).toBeVisible();
   await expect(failed).toBeVisible();
+  await expect(parts).toBeVisible();
   await expect(async () => {
     const panelBox = await box(panel);
     const panelRight = panelBox.x + panelBox.width;
@@ -580,6 +590,7 @@ test("keeps long steps, failures and model names inside the panel, one step per 
       searched,
       read,
       failed,
+      parts,
       panel.getByText(`${longModel} answers from here`, { exact: true }),
       panel.getByText("Who presents the numbers?", { exact: true }),
     ]) {
@@ -587,7 +598,9 @@ test("keeps long steps, failures and model names inside the panel, one step per 
       expect(lineBox.x + lineBox.width).toBeLessThanOrEqual(panelRight);
     }
     expect((await box(read)).y).toBeGreaterThan((await box(searched)).y);
+    expect((await box(searched)).y).toBeGreaterThan((await box(parts)).y);
     expect((await box(failed)).x).toBe((await box(searched)).x);
+    expect((await box(parts)).x).toBe((await box(searched)).x);
   }).toPass();
 });
 
@@ -762,6 +775,7 @@ test("holds a queued question until the proposed change is decided", async ({ pa
   await page.keyboard.press("/");
   const panel = page.getByRole("complementary", { name: "Ask about this recording" });
   const composer = panel.getByRole("textbox", { name: "Ask about this recording…" });
+  await expect(panel.getByRole("button", { name: "Stop answering" })).toBeVisible();
   await composer.fill("And then?");
   await composer.press("Enter");
   await expect(panel.getByText("“And then?” is sent when this answer ends.")).toBeVisible();
@@ -1052,6 +1066,140 @@ test("opens an earlier chat about the recording from the panel's history", async
   await page.getByRole("menuitem", { name: "What is shown?" }).click();
   await expect(panel.getByText("The numbers are shown.")).toBeVisible();
   await expect(panel.getByText("Anna presents.")).toHaveCount(0);
+});
+
+test("waits for the current chat and uses the default model to summarise in a new chat", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  const media: { id: string } = await uploaded.json();
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
+  const current: ChatDetail = {
+    chat: { ...summaryOf(randomUUID(), media.id, "Who presents?"), connectionId: null },
+    messages: [
+      userMessage("Who presents?"),
+      answerMessage("done", [{ type: "text", text: "Anna presents." }]),
+    ],
+    hiddenBeforeSeq: 0,
+  };
+  const summaryId = randomUUID();
+  let summary: ChatDetail = {
+    chat: summaryOf(summaryId, media.id, "New chat"),
+    messages: [],
+    hiddenBeforeSeq: 0,
+  };
+  const created: unknown[] = [];
+  const asked: unknown[] = [];
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [current.chat] }));
+  const currentUrl = `**/api/ask/chats/${current.chat.id}`;
+  let loadCurrent: (() => void) | undefined;
+  const currentLoaded = new Promise<void>((resolve) => {
+    loadCurrent = resolve;
+  });
+  await page.route(currentUrl, async (route) => {
+    await currentLoaded;
+    await route.fulfill({ json: current });
+  });
+  await page.route("**/api/ask/chats", (route) => {
+    created.push(route.request().postDataJSON());
+    return route.fulfill({ status: 201, json: summary });
+  });
+  await page.route(`**/api/ask/chats/${summaryId}`, (route) => route.fulfill({ json: summary }));
+  await page.route(`**/api/ask/chats/${summaryId}/messages`, (route) => {
+    asked.push(route.request().postDataJSON());
+    summary = {
+      chat: { ...summary.chat, title: "Summarise this recording" },
+      messages: [
+        userMessage("Summarise this recording"),
+        {
+          ...answerMessage("done", [{ type: "text", text: "Anna presents the numbers." }]),
+          transcriptReading: "whole",
+        },
+      ],
+      hiddenBeforeSeq: 0,
+    };
+    return route.fulfill({ status: 202, json: summary });
+  });
+
+  const currentRequested = page.waitForRequest(currentUrl);
+  await page.goto(`/media/${media.id}`);
+  await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
+  await page.keyboard.press("/");
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const summarise = panel.getByRole("button", { name: "Summarise", exact: true });
+  try {
+    await currentRequested;
+    await expect(panel.getByRole("button", { name: "Model A", exact: true })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Timestamped passages" })).toBeVisible();
+    await expect(summarise).toBeDisabled();
+  } finally {
+    loadCurrent?.();
+  }
+  await expect(panel.getByText("Anna presents.")).toBeVisible();
+  await summarise.click();
+  await expect(panel.getByText("Anna presents the numbers.")).toBeVisible();
+  await expect(panel.getByText("Read the whole transcript")).toBeVisible();
+  await expect(panel.getByText("Anna presents.", { exact: true })).toHaveCount(0);
+  expect(created).toEqual([{ mediaId: media.id, scope: null }]);
+  expect(asked).toEqual([{ text: "Summarise this recording" }]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(panel.getByRole("button", { name: "Summarise", exact: true })).toBeVisible();
+  await expect.poll(() => noHorizontalScroll(page)).toBe(true);
+});
+
+test("summarises in the chat that is still empty", async ({ page, request }) => {
+  const uploaded = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/sample.webm", import.meta.url)),
+    headers: { "x-file-name": `${randomUUID()}.webm` },
+  });
+  const media: { id: string } = await uploaded.json();
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({ json: completedJob(media.id, "Anna presents the numbers.") }),
+  );
+  const empty: ChatDetail = {
+    chat: summaryOf(randomUUID(), media.id, "New chat"),
+    messages: [],
+    hiddenBeforeSeq: 0,
+  };
+  const created: unknown[] = [];
+  const asked: unknown[] = [];
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [empty.chat] }));
+  await page.route("**/api/ask/chats", (route) => {
+    created.push(route.request().postDataJSON());
+    return route.fulfill({ status: 201, json: empty });
+  });
+  await page.route(`**/api/ask/chats/${empty.chat.id}`, (route) => route.fulfill({ json: empty }));
+  await page.route(`**/api/ask/chats/${empty.chat.id}/messages`, (route) => {
+    asked.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 202,
+      json: {
+        ...empty,
+        messages: [
+          userMessage("Summarise this recording"),
+          answerMessage("done", [{ type: "text", text: "A short meeting." }]),
+        ],
+      },
+    });
+  });
+
+  await page.goto(`/media/${media.id}`);
+  await expect(page.getByRole("button", { name: /^Ask/u })).toBeVisible();
+  await page.keyboard.press("/");
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  await expect(panel.getByRole("heading", { name: "Ask about this recording" })).toBeVisible();
+  await panel.getByRole("button", { name: "Summarise", exact: true }).click();
+  await expect(panel.getByText("A short meeting.")).toBeVisible();
+  expect(created).toEqual([]);
+  expect(asked).toEqual([{ text: "Summarise this recording" }]);
 });
 
 test("keeps long recording titles inside the Choose recordings dialog", async ({ page }) => {

@@ -1,4 +1,4 @@
-export type MomentIndex = ReadonlyMap<number, string>;
+export type MomentIndex = Pick<ReadonlyMap<number, string>, "get">;
 
 interface Citation {
   mediaId: string;

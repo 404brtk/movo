@@ -81,6 +81,7 @@ export function buildPrompt(input: PromptInput) {
   return {
     messages,
     cuts,
+    fits: tokens(messages) <= budget,
     promptCharacters: input.prefixCharacters + messageCharacters(messages),
     pagePassages,
   };

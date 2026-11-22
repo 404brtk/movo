@@ -160,10 +160,52 @@ const runners = (
     ),
 });
 
-async function settle(operation: Effect.Effect<unknown, MediaError>, signal?: AbortSignal) {
+async function settle<A>(operation: Effect.Effect<A, MediaError>, signal?: AbortSignal) {
   const result = await Effect.runPromise(Effect.result(operation), { signal });
   if (Result.isFailure(result)) throw new Error(result.failure.message, { cause: result.failure });
   return result.success;
+}
+
+export const maxScanInstructionCharacters = 2000;
+
+export const scanTranscriptDefinition = Tool.make("scan_transcript", {
+  description:
+    "Read this recording's whole transcript part by part with your instruction and get back notes in the recording's order, each ending with the startMs of its passage in square brackets. Use it for anything that needs the whole recording, such as a summary, decisions, open questions or what someone said throughout, not for finding particular words. It makes one model call per part, so call it once with an instruction that covers everything you need. Cite the startMs values from its notes.",
+  parameters: Schema.Struct({
+    instruction: Schema.String.check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(maxScanInstructionCharacters),
+    ),
+  }),
+  success: Schema.Struct({
+    partCount: Schema.Number,
+    notes: Schema.String,
+  }),
+  failure: Schema.instanceOf(MediaError),
+});
+
+export const toolDefinitionCharacters = (definition: Tool.Any) =>
+  definition.name.length +
+  (Tool.getDescription(definition) ?? "").length +
+  JSON.stringify(Tool.getJsonSchema(definition)).length;
+
+export function scanTranscriptTool(
+  scan: (
+    instruction: string,
+    signal: AbortSignal | undefined,
+  ) => Promise<{ partCount: number; notes: string }>,
+) {
+  return tool({
+    description: Tool.getDescription(scanTranscriptDefinition) ?? scanTranscriptDefinition.name,
+    inputSchema: jsonSchema(Tool.getJsonSchema(scanTranscriptDefinition)),
+    execute: async (input, { abortSignal }) => {
+      const { instruction } = await settle(
+        decodeInput(scanTranscriptDefinition.parametersSchema, input),
+        abortSignal,
+      );
+      return scan(instruction, abortSignal);
+    },
+  });
 }
 
 export function chatToolNames(mediaId: string | null): readonly ChatToolName[] {

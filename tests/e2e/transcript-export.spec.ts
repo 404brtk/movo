@@ -116,6 +116,8 @@ test("labels transcript icons on hover and keyboard focus without blocking the e
   await expect(copyLabel).toBeHidden();
   await exportMenu.click();
   await expect(page.getByRole("menu")).toBeVisible();
+  await expect(page.getByRole("menuitemcheckbox")).toHaveText(["Timestamps in TXT"]);
+  await expect(page.getByRole("menuitemradio")).toHaveCount(0);
   await expect(exportLabel).toBeHidden();
   await page.keyboard.press("Escape");
   await expect(exportMenu).toBeFocused();

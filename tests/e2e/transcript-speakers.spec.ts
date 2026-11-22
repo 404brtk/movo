@@ -81,6 +81,8 @@ const transcription = (page: Page) =>
   page.getByRole("region", { name: "Transcription", exact: true });
 const passages = (page: Page) =>
   transcription(page).getByRole("list", { name: "Timestamped passages" }).getByRole("listitem");
+const openExportMenu = (page: Page) =>
+  transcription(page).getByRole("button", { name: "Export transcript", exact: true }).click();
 const speakerHeadings = (page: Page) =>
   transcription(page).getByRole("button", { name: /, speaker options$/u });
 
@@ -122,6 +124,114 @@ test("names a speaker everywhere in the transcript and keeps the name after relo
   await renaming.fill("");
   await renaming.press("Enter");
   await expect(speakerHeadings(page)).toHaveText(["Speaker 1", "Speaker 2", "Speaker 1"]);
+});
+
+test("remembers which details to include when copying and exporting the transcript", async ({
+  page,
+}, testInfo) => {
+  await page.evaluate(() => {
+    let text = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          text = value;
+        },
+        readText: async () => text,
+      },
+    });
+  });
+  const included =
+    "[00:00:00] Good morning everyone.\n[00:00:01] Thanks for having me.\n[00:00:02] Let us begin.";
+  const exportMenu = transcription(page).getByRole("button", {
+    name: "Export transcript",
+    exact: true,
+  });
+  const speakerNames = page.getByRole("group", { name: "Speaker names" });
+  const placement = (name: string) => speakerNames.getByRole("menuitemradio", { name });
+  const timestamps = page.getByRole("menuitemcheckbox", { name: "Timestamps in TXT" });
+
+  await exportMenu.click();
+  await expect(page.getByRole("menuitemradio")).toHaveText([
+    "At each turn",
+    "On every line",
+    "Off",
+  ]);
+  await expect(placement("At each turn")).toHaveAttribute("aria-checked", "true");
+  await expect(timestamps).toHaveAttribute("aria-checked", "false");
+  await placement("Off").click();
+  await timestamps.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menu")).toBeVisible();
+  await expect(placement("At each turn")).toHaveAttribute("aria-checked", "false");
+  await expect(placement("Off")).toHaveAttribute("aria-checked", "true");
+  await expect(timestamps).toHaveAttribute("aria-checked", "true");
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: /^Download TXT/u }).click();
+  const path = testInfo.outputPath("included.txt");
+  await (await downloadPromise).saveAs(path);
+  expect(readFileSync(path, "utf8")).toBe(included);
+
+  await transcription(page).getByRole("button", { name: "Copy transcript", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(included);
+
+  await page.reload();
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Export transcript", exact: true }).click();
+  await expect(placement("Off")).toHaveAttribute("aria-checked", "true");
+  await expect(timestamps).toHaveAttribute("aria-checked", "true");
+  await placement("On every line").click();
+  await expect(placement("On every line")).toHaveAttribute("aria-checked", "true");
+  const subtitles = await page
+    .getByRole("menuitem", { name: /^Download SRT/u })
+    .evaluate((link: HTMLAnchorElement) => link.href);
+  expect(new URL(subtitles).search).toBe("?speakers=line&timestamps=true");
+});
+
+test("keeps export choices from other open tabs when changing one in this tab", async ({
+  page,
+  context,
+  recording,
+}) => {
+  const otherTab = await context.newPage();
+  await otherTab.goto(recording.url);
+
+  await openExportMenu(otherTab);
+  await otherTab.getByRole("menuitemradio", { name: "On every line" }).click();
+  await otherTab.keyboard.press("Escape");
+
+  await openExportMenu(page);
+  await expect(page.getByRole("menuitemradio", { name: "On every line" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await page.getByRole("menuitemcheckbox", { name: "Timestamps in TXT" }).click();
+  const subtitles = await page
+    .getByRole("menuitem", { name: /^Download SRT/u })
+    .evaluate((link: HTMLAnchorElement) => link.href);
+  expect(new URL(subtitles).search).toBe("?speakers=line&timestamps=true");
+});
+
+test("starts from the default export choices when the remembered ones are unreadable", async ({
+  page,
+}) => {
+  for (const stored of ["{", JSON.stringify({ speakers: true, timestamps: true })]) {
+    await page.evaluate(
+      (value) => localStorage.setItem("movo.transcript.exportOptions", value),
+      stored,
+    );
+    await page.reload();
+    await openExportMenu(page);
+    await expect(page.getByRole("menuitemradio", { name: "At each turn" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(page.getByRole("menuitemcheckbox", { name: "Timestamps in TXT" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    await page.keyboard.press("Escape");
+  }
 });
 
 test("moves passages between speakers, merges them, names the remaining speaker and undoes the merge from history", async ({

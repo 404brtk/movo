@@ -1,6 +1,6 @@
 import { APICallError } from "ai";
 import { describe, expect, it } from "vitest";
-import { describeFailure } from "../../../../src/server/ask/ask.ts";
+import { describeFailure, isContextOverflow } from "../../../../src/server/ask/ask.ts";
 
 const apiError = (statusCode: number, message = "failed") =>
   new APICallError({
@@ -37,6 +37,16 @@ describe("describeFailure", () => {
       { kind: "server", message: "Ollama isn't running." },
     ],
     [
+      apiError(400, "prompt is too long: 345320 tokens > 199999 maximum"),
+      anthropic,
+      { kind: "other", message: "This chat is too long for Model A. Start a new chat." },
+    ],
+    [
+      apiError(400, "the request exceeds the available context size, try increasing it"),
+      ollama,
+      { kind: "other", message: "This chat is too long for Model A. Start a new chat." },
+    ],
+    [
       apiError(400, "max_tokens is too large"),
       anthropic,
       { kind: "other", message: "Anthropic didn't answer: max_tokens is too large" },
@@ -48,5 +58,30 @@ describe("describeFailure", () => {
     ],
   ])("names %s", (error, connection, expected) => {
     expect(describeFailure(error, connection, "Model A")).toEqual(expected);
+  });
+});
+
+describe("isContextOverflow", () => {
+  it.each([
+    [apiError(400, "prompt is too long: 345320 tokens > 199999 maximum"), true],
+    [apiError(400, "This model's maximum context length is 128000 tokens."), true],
+    [apiError(400, "the request exceeds the available context size, try increasing it"), true],
+    [apiError(413, "Request exceeds the context window"), true],
+    [apiError(400, "max_tokens is too large"), false],
+    [apiError(429, "maximum context length reached for this minute"), false],
+    [new Error("prompt is too long"), false],
+  ])("recognizes %s", (error, expected) => {
+    expect(isContextOverflow(error)).toBe(expected);
+  });
+
+  it("reads the provider's code from the response body", () => {
+    const error = new APICallError({
+      message: "Bad Request",
+      url: "https://api.openai.com/v1/responses",
+      requestBodyValues: {},
+      statusCode: 400,
+      responseBody: JSON.stringify({ error: { code: "context_length_exceeded" } }),
+    });
+    expect(isContextOverflow(error)).toBe(true);
   });
 });

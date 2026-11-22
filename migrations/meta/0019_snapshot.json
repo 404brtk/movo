@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "697bbbba-438d-4746-bff7-c625bbf4de63",
-  "prevId": "ef7f776d-1888-4b72-aff0-7c97c40f6ba1",
+  "id": "ef7f776d-1888-4b72-aff0-7c97c40f6ba1",
+  "prevId": "975070a0-5c19-42d1-9a56-28d939c3da3c",
   "tables": {
     "ai_connections": {
       "name": "ai_connections",
@@ -201,6 +201,20 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "transcript_reading": {
+          "name": "transcript_reading",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "transcript_moments": {
+          "name": "transcript_moments",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -885,13 +899,6 @@
         },
         "speaker_model_id": {
           "name": "speaker_model_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "result_speaker_model_id": {
-          "name": "result_speaker_model_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

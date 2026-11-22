@@ -216,7 +216,7 @@ test("copies and exports a transcript from the row menu", async ({ page }) => {
   await page.getByRole("menuitem", { name: "Export transcript" }).hover();
   await expect(page.getByRole("menuitem", { name: /^Download SRT/u })).toHaveAttribute(
     "href",
-    `/api/media/${done.id}/transcription/export/srt`,
+    `/api/media/${done.id}/transcription/export/srt?speakers=turn&timestamps=false`,
   );
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");

@@ -123,7 +123,7 @@ export function useRecordingActions({
           Checking the transcript…
         </DropdownMenuItem>
       ) : null}
-      {hasWords ? (
+      {transcript && hasWords ? (
         <>
           <DropdownMenuItem
             disabled={copy.state === "copying"}
@@ -138,7 +138,7 @@ export function useRecordingActions({
               Export transcript
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="w-56">
-              <TranscriptExportItems mediaId={item.id} />
+              <TranscriptExportItems mediaId={item.id} transcript={transcript} />
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         </>

@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ef7f776d-1888-4b72-aff0-7c97c40f6ba1",
-  "prevId": "975070a0-5c19-42d1-9a56-28d939c3da3c",
+  "id": "975070a0-5c19-42d1-9a56-28d939c3da3c",
+  "prevId": "0cb6df90-14c6-4ac8-ac01-1481c956f96e",
   "tables": {
     "ai_connections": {
       "name": "ai_connections",
@@ -201,6 +201,20 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "transcript_reading": {
+          "name": "transcript_reading",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "transcript_moments": {
+          "name": "transcript_moments",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -696,35 +710,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "model_settings": {
-      "name": "model_settings",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "speaker_model_id": {
-          "name": "speaker_model_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "model_settings_single_row": {
-          "name": "model_settings_single_row",
-          "value": "\"model_settings\".\"id\" = 1"
-        }
-      }
-    },
     "dictionary_entries": {
       "name": "dictionary_entries",
       "columns": {
@@ -881,13 +866,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "speaker_model_id": {
-          "name": "speaker_model_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "status": {

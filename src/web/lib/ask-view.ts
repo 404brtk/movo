@@ -1,6 +1,7 @@
 import {
   localServerName,
   providerNames,
+  type ActivityProgress,
   type AiConnection,
   type ChatMessage,
   type ChatPart,
@@ -72,6 +73,22 @@ const toolLabels: Record<string, { now: string; done: string }> = {
   rename_speaker: { now: "Preparing a change", done: "Prepared a change" },
 };
 
+function scanLabel(
+  tense: "now" | "done",
+  progress: ActivityProgress | null | undefined,
+  partCount: number | null | undefined,
+) {
+  if (tense === "done")
+    return partCount && partCount > 1
+      ? `Read the whole transcript in ${partCount} parts`
+      : "Read the whole transcript";
+  if (progress && progress.total > 0 && progress.done === progress.total)
+    return "Bringing the notes together";
+  if (progress && progress.total > 1)
+    return `Reading the whole transcript, part ${progress.done + 1} of ${progress.total}`;
+  return "Reading the whole transcript";
+}
+
 const speakerReceipts: Record<string, string> = {
   assign_speaker: "Changed the speaker",
   merge_speakers: "Merged speakers",
@@ -79,10 +96,17 @@ const speakerReceipts: Record<string, string> = {
 };
 
 export function toolLabel(
-  activity: { toolName: string; input: unknown },
+  activity: {
+    toolName: string;
+    input: unknown;
+    progress?: ActivityProgress | null;
+    resultCount?: number | null;
+  },
   tense: "now" | "done",
   titles?: ReadonlyMap<string, string>,
 ) {
+  if (activity.toolName === "scan_transcript")
+    return scanLabel(tense, activity.progress, activity.resultCount);
   const query = textField(activity.input, "q").trim();
   if (activity.toolName === "search_library" && query)
     return tense === "now" ? `Searching for “${query}”` : `Searched for “${query}”`;
@@ -96,7 +120,7 @@ export const describeTool = (part: ToolPart) => toolLabel(part, "done");
 
 export function stepReceipt(parts: readonly ChatPart[], library: boolean) {
   const steps = parts.flatMap((part) =>
-    part.type === "tool" && !isEditTool(part) && part.state !== "running" ? [part] : [],
+    part.type === "tool" && !isEditTool(part) && part.state === "done" ? [part] : [],
   );
   if (steps.length === 0) return [];
   if (library) {
@@ -113,6 +137,16 @@ export function stepReceipt(parts: readonly ChatPart[], library: boolean) {
     return summary ? [summary] : [];
   }
   return [...new Set(steps.map((part) => describeTool(part)))].slice(0, 3);
+}
+
+export function transcriptReceipt(message: ChatMessage, liveText?: string) {
+  const hasText =
+    liveText?.trim() || message.parts.some((part) => part.type === "text" && part.text.trim());
+  if (message.state === "failed" || !hasText) return null;
+  if (message.transcriptReading === "whole") return "Read the whole transcript";
+  if (message.transcriptReading === "parts")
+    return `The whole transcript didn't fit in ${message.modelName ?? "this model"}'s context`;
+  return null;
 }
 
 export function editReceipt(part: ToolPart) {
