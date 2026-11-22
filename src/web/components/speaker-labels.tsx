@@ -116,10 +116,10 @@ export function SpeakerLabels({ catalog }: { catalog: ModelCatalog }) {
         modelsOptions.queryKey,
         (current) => current && { ...current, speakerModelId },
       ),
-    onSettled: () =>
-      queryClient.isMutating({ mutationKey: choosingSpeakerLabels }) === 1
-        ? queryClient.invalidateQueries({ queryKey: modelsOptions.queryKey })
-        : undefined,
+    onSettled: () => {
+      if (queryClient.isMutating({ mutationKey: choosingSpeakerLabels }) === 1)
+        void queryClient.invalidateQueries({ queryKey: modelsOptions.queryKey });
+    },
   });
   const pendingChoice = useMutationState({
     filters: { mutationKey: choosingSpeakerLabels, status: "pending" },

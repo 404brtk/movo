@@ -229,7 +229,11 @@ test("chooses speaker labels, uses a speaker model once its download completes a
   };
   const choices: unknown[] = [];
   let rejectChoice = false;
-  await page.route("**/api/models", (route) => route.fulfill({ json: current }));
+  let catalogResponse = Promise.resolve();
+  await page.route("**/api/models", async (route) => {
+    await catalogResponse;
+    return route.fulfill({ json: current });
+  });
   await page.route("**/api/models/speaker-labels", async (route) => {
     expect(route.request().method()).toBe("PUT");
     const choice = route.request().postDataJSON();
@@ -295,12 +299,17 @@ test("chooses speaker labels, uses a speaker model once its download completes a
   );
   await page.screenshot({ path: testInfo.outputPath("speaker-labels-mobile.png"), fullPage: true });
   rejectChoice = true;
+  let releaseCatalog: (() => void) | undefined;
+  catalogResponse = new Promise((resolve) => {
+    releaseCatalog = resolve;
+  });
   await upToFour.focus();
   await page.keyboard.press("Space");
   await expect(page.getByRole("alert")).toHaveText(
     "Download Sortformer before using it for speaker labels.",
   );
   await expect(upToThirtyTwo).toBeChecked();
+  releaseCatalog?.();
   expect(choices).toEqual([
     { speakerModelId: null },
     { speakerModelId: "sortformer-4spk-q8" },
