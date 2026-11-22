@@ -15,6 +15,7 @@ import { Collapsible } from "./ui/collapsible.tsx";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group.tsx";
 
 const off = "off";
+const choosingSpeakerLabels = ["speaker-labels"];
 
 function SpeakerOption({
   value,
@@ -106,6 +107,8 @@ export function SpeakerLabels({ catalog }: { catalog: ModelCatalog }) {
   const headingId = useId();
   const queryClient = useQueryClient();
   const choice = useMutation({
+    mutationKey: choosingSpeakerLabels,
+    scope: { id: choosingSpeakerLabels.join() },
     mutationFn: chooseSpeakerLabels,
     onMutate: async ({ speakerModelId }) => {
       await queryClient.cancelQueries({ queryKey: modelsOptions.queryKey });
@@ -118,7 +121,10 @@ export function SpeakerLabels({ catalog }: { catalog: ModelCatalog }) {
     },
     onError: (_error, _choice, previous) =>
       queryClient.setQueryData(modelsOptions.queryKey, previous),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: modelsOptions.queryKey }),
+    onSettled: () =>
+      queryClient.isMutating({ mutationKey: choosingSpeakerLabels }) === 1
+        ? queryClient.invalidateQueries({ queryKey: modelsOptions.queryKey })
+        : undefined,
   });
   const speakerModels = catalog.models.filter((model) => model.role === "speakers");
   return (

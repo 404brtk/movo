@@ -16,6 +16,39 @@ const initial: ModelStatus = {
   installation: { phase: "idle", downloadedBytes: 0, error: null },
 };
 const catalog = (...models: ModelStatus[]): ModelCatalog => ({ models, speakerModelId: null });
+const speakerModel = {
+  role: "speakers",
+  languages: ["en"],
+  state: "missing",
+  message: null,
+  installation: { phase: "idle", downloadedBytes: 0, error: null },
+} as const;
+const sortformer: ModelStatus = {
+  ...speakerModel,
+  id: "sortformer-4spk-q8",
+  name: "Sortformer",
+  description: "GPU or CPU",
+  bytes: 139310336,
+  parts: [{ name: "Streaming Sortformer 4spk v2.1 Q8_0", bytes: 139310336 }],
+  sourceUrl: "https://huggingface.co/handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf",
+  license: "NVIDIA Open Model License",
+  maxSpeakers: 4,
+  state: "ready",
+};
+const pyannoteModel: ModelStatus = {
+  ...speakerModel,
+  id: "pyannote-wespeaker",
+  name: "Pyannote",
+  description: "CPU only",
+  bytes: 32523463,
+  parts: [
+    { name: "Pyannote segmentation 3.0", bytes: 5992913 },
+    { name: "WeSpeaker ResNet34-LM", bytes: 26530550 },
+  ],
+  sourceUrl: "https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html",
+  license: "MIT and CC BY 4.0",
+  maxSpeakers: 32,
+};
 
 test("opens the real model catalog without starting installation", async ({ page }) => {
   const writes: string[] = [];
@@ -189,39 +222,7 @@ test("cancels verification and reports a failed verification with an explicit re
 test("chooses speaker labels, uses a speaker model once its download completes and keeps the choice after a rejected change", async ({
   page,
 }, testInfo) => {
-  const speakerModel = {
-    role: "speakers",
-    languages: ["en"],
-    state: "missing",
-    message: null,
-    installation: { phase: "idle", downloadedBytes: 0, error: null },
-  } as const;
-  const sortformer: ModelStatus = {
-    ...speakerModel,
-    id: "sortformer-4spk-q8",
-    name: "Sortformer",
-    description: "GPU or CPU",
-    bytes: 139310336,
-    parts: [{ name: "Streaming Sortformer 4spk v2.1 Q8_0", bytes: 139310336 }],
-    sourceUrl: "https://huggingface.co/handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf",
-    license: "NVIDIA Open Model License",
-    maxSpeakers: 4,
-    state: "ready",
-  };
-  let pyannote: ModelStatus = {
-    ...speakerModel,
-    id: "pyannote-wespeaker",
-    name: "Pyannote",
-    description: "CPU only",
-    bytes: 32523463,
-    parts: [
-      { name: "Pyannote segmentation 3.0", bytes: 5992913 },
-      { name: "WeSpeaker ResNet34-LM", bytes: 26530550 },
-    ],
-    sourceUrl: "https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html",
-    license: "MIT and CC BY 4.0",
-    maxSpeakers: 32,
-  };
+  let pyannote = pyannoteModel;
   let current: ModelCatalog = {
     models: [{ ...initial, state: "ready" }, sortformer, pyannote],
     speakerModelId: "sortformer-4spk-q8",
@@ -305,6 +306,39 @@ test("chooses speaker labels, uses a speaker model once its download completes a
     { speakerModelId: "sortformer-4spk-q8" },
     { speakerModelId: "sortformer-4spk-q8" },
   ]);
+});
+
+test("saves quick speaker labels choices in the order they were made", async ({ page }) => {
+  let current: ModelCatalog = {
+    models: [{ ...initial, state: "ready" }, sortformer, { ...pyannoteModel, state: "ready" }],
+    speakerModelId: null,
+  };
+  const choices: unknown[] = [];
+  let finishVerification: (() => void) | undefined;
+  const verified = new Promise<void>((resolve) => (finishVerification = resolve));
+  await page.route("**/api/models", (route) => route.fulfill({ json: current }));
+  await page.route("**/api/models/speaker-labels", async (route) => {
+    const choice = route.request().postDataJSON();
+    choices.push(choice);
+    if (choice.speakerModelId !== null) await verified;
+    current = { ...current, ...choice };
+    return route.fulfill({ json: choice });
+  });
+  await page.goto("/settings");
+  const labels = page.getByRole("radiogroup", { name: "Speaker labels", exact: true });
+  const off = labels.getByRole("radio", { name: "Off", exact: true });
+  await expect(off).toBeChecked();
+  await labels.getByRole("radio", { name: "Up to 32 speakers", exact: true }).click();
+  await expect.poll(() => choices).toEqual([{ speakerModelId: "pyannote-wespeaker" }]);
+  await off.click();
+  await expect(off).toBeChecked();
+  finishVerification?.();
+  await expect
+    .poll(() => choices)
+    .toEqual([{ speakerModelId: "pyannote-wespeaker" }, { speakerModelId: null }]);
+  await expect.poll(() => current.speakerModelId).toBeNull();
+  await page.reload();
+  await expect(off).toBeChecked();
 });
 
 test("lists the media tools and opens yt-dlp setup from the settings page", async ({ page }) => {
