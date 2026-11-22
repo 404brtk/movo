@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { ModelStatus } from "../../src/shared/contracts/models.ts";
+import type { ModelCatalog, ModelStatus } from "../../src/shared/contracts/models.ts";
 
 const initial: ModelStatus = {
   id: "parakeet-ultra-q8",
@@ -14,6 +14,7 @@ const initial: ModelStatus = {
   message: null,
   installation: { phase: "idle", downloadedBytes: 0, error: null },
 };
+const catalog = (...models: ModelStatus[]): ModelCatalog => ({ models, speakerModelId: null });
 
 test("opens the real model catalog without starting installation", async ({ page }) => {
   const writes: string[] = [];
@@ -26,21 +27,31 @@ test("opens the real model catalog without starting installation", async ({ page
   await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
   const transcription = page.getByRole("listitem", { name: "Parakeet Ultra", exact: true });
   const speakers = page.getByRole("listitem", { name: "Speaker labels", exact: true });
-  for (const card of [transcription, speakers]) {
-    await expect(card.getByRole("button", { name: "Download model", exact: true })).toBeEnabled();
-    await expect(card.getByText("Not installed", { exact: true })).toBeVisible();
-  }
+  await expect(
+    transcription.getByRole("button", { name: "Download model", exact: true }),
+  ).toBeEnabled();
+  await expect(transcription.getByText("Not installed", { exact: true })).toBeVisible();
   await expect(transcription).toContainText("Download it once to transcribe on this computer.");
-  await expect(speakers).toContainText(
-    "Optional. Download it to label who speaks in new transcripts.",
-  );
-  await expect(speakers).toContainText("Pyannote · optional");
+  const labels = speakers.getByRole("radiogroup", { name: "Speaker labels", exact: true });
+  await expect(labels.getByRole("radio", { name: "Off", exact: true })).toBeChecked();
+  for (const [option, model] of [
+    ["Up to 4 speakers", "Sortformer"],
+    ["Up to 32 speakers", "Pyannote"],
+  ] as const) {
+    await expect(labels.getByRole("radio", { name: option, exact: true })).toBeDisabled();
+    await expect(speakers.getByText(model, { exact: true })).toBeVisible();
+    await expect(
+      speakers.getByRole("button", { name: `Download ${model}`, exact: true }),
+    ).toBeEnabled();
+  }
+  await expect(speakers.getByText("Not installed", { exact: true })).toHaveCount(0);
   await expect(
     page
       .getByRole("listitem", { name: "Dictionary", exact: true })
       .getByRole("button", { name: "Manage", exact: true }),
   ).toBeEnabled();
-  await speakers.getByRole("button", { name: "Speaker labels details", exact: true }).click();
+  await speakers.getByRole("button", { name: "Up to 32 speakers details", exact: true }).click();
+  await expect(speakers.getByText("MIT and CC BY 4.0", { exact: true })).toBeVisible();
   await expect(speakers.getByText("English", { exact: true })).toBeVisible();
   expect(writes).toEqual([]);
 });
@@ -52,7 +63,7 @@ test("requires an explicit download, retries a failed request and discovers inst
   let attempts = 0;
   await page.route("**/api/models", (route) => {
     expect(route.request().method()).toBe("GET");
-    return route.fulfill({ json: [model] });
+    return route.fulfill({ json: catalog(model) });
   });
   await page.route(`**/api/models/${initial.id}/install`, async (route) => {
     expect(route.request().method()).toBe("POST");
@@ -128,7 +139,7 @@ test("cancels verification and reports a failed verification with an explicit re
     ...initial,
     installation: { phase: "verifying", downloadedBytes: initial.bytes, error: null },
   };
-  await page.route("**/api/models", (route) => route.fulfill({ json: [model] }));
+  await page.route("**/api/models", (route) => route.fulfill({ json: catalog(model) }));
   await page.route(`**/api/models/${initial.id}/cancel`, async (route) => {
     expect(route.request().method()).toBe("POST");
     model = {
@@ -162,8 +173,124 @@ test("cancels verification and reports a failed verification with an explicit re
   await page.screenshot({ path: testInfo.outputPath("settings-mobile.png"), fullPage: true });
 });
 
+test("chooses speaker labels, uses a speaker model once its download completes and keeps the choice after a rejected change", async ({
+  page,
+}, testInfo) => {
+  const speakerModel = {
+    role: "speakers",
+    languages: ["en"],
+    state: "missing",
+    message: null,
+    installation: { phase: "idle", downloadedBytes: 0, error: null },
+  } as const;
+  const sortformer: ModelStatus = {
+    ...speakerModel,
+    id: "sortformer-4spk-q8",
+    name: "Sortformer",
+    description: "Fast, for interviews and podcasts",
+    bytes: 139310336,
+    sourceUrl: "https://huggingface.co/handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf",
+    license: "NVIDIA Open Model License",
+    maxSpeakers: 4,
+    state: "ready",
+  };
+  let pyannote: ModelStatus = {
+    ...speakerModel,
+    id: "pyannote-wespeaker",
+    name: "Pyannote",
+    description: "Slower, for meetings and press conferences",
+    bytes: 32523463,
+    sourceUrl: "https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html",
+    license: "MIT and CC BY 4.0",
+    maxSpeakers: 32,
+  };
+  let current: ModelCatalog = {
+    models: [{ ...initial, state: "ready" }, sortformer, pyannote],
+    speakerModelId: "sortformer-4spk-q8",
+  };
+  const choices: unknown[] = [];
+  let rejectChoice = false;
+  await page.route("**/api/models", (route) => route.fulfill({ json: current }));
+  await page.route("**/api/models/speaker-labels", async (route) => {
+    expect(route.request().method()).toBe("PUT");
+    const choice = route.request().postDataJSON();
+    choices.push(choice);
+    if (rejectChoice)
+      return route.fulfill({
+        status: 400,
+        json: { error: "Download Sortformer before using it for speaker labels." },
+      });
+    current = { ...current, ...choice };
+    return route.fulfill({ json: choice });
+  });
+  await page.route(`**/api/models/${pyannote.id}/install`, async (route) => {
+    expect(route.request().method()).toBe("POST");
+    pyannote = {
+      ...pyannote,
+      installation: { phase: "downloading", downloadedBytes: 8 * 1024 * 1024, error: null },
+    };
+    current = { ...current, models: [current.models[0] ?? initial, sortformer, pyannote] };
+    await route.fulfill({ status: 202, json: pyannote });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/settings");
+  const labels = page.getByRole("radiogroup", { name: "Speaker labels", exact: true });
+  const off = labels.getByRole("radio", { name: "Off", exact: true });
+  const upToFour = labels.getByRole("radio", { name: "Up to 4 speakers", exact: true });
+  const upToThirtyTwo = labels.getByRole("radio", { name: "Up to 32 speakers", exact: true });
+  await expect(upToFour).toBeChecked();
+  await expect(upToFour).toHaveAccessibleDescription(
+    "Sortformer · Fast, for interviews and podcasts · 132.9 MiB",
+  );
+  await expect(upToThirtyTwo).toBeDisabled();
+  await page.getByText("Off", { exact: true }).click();
+  await expect(off).toBeChecked();
+  await upToFour.click();
+  await expect(upToFour).toBeChecked();
+  await page.getByRole("button", { name: "Download Pyannote", exact: true }).click();
+  await expect(
+    page.getByRole("progressbar", { name: "Up to 32 speakers download", exact: true }),
+  ).toHaveAttribute("aria-valuenow", String(8 * 1024 * 1024));
+  await expect(
+    page.getByText(
+      "New transcripts use it once the download is verified. You can keep using Movo.",
+      {
+        exact: true,
+      },
+    ),
+  ).toBeVisible();
+  await expect(upToFour).toBeChecked();
+  pyannote = {
+    ...pyannote,
+    state: "ready",
+    installation: { phase: "complete", downloadedBytes: pyannote.bytes, error: null },
+  };
+  current = {
+    models: [current.models[0] ?? initial, sortformer, pyannote],
+    speakerModelId: "pyannote-wespeaker",
+  };
+  await expect(upToThirtyTwo).toBeChecked();
+  await expect(upToThirtyTwo).toBeEnabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({ path: testInfo.outputPath("speaker-labels-mobile.png"), fullPage: true });
+  rejectChoice = true;
+  await upToFour.focus();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Download Sortformer before using it for speaker labels.",
+  );
+  await expect(upToThirtyTwo).toBeChecked();
+  expect(choices).toEqual([
+    { speakerModelId: null },
+    { speakerModelId: "sortformer-4spk-q8" },
+    { speakerModelId: "sortformer-4spk-q8" },
+  ]);
+});
+
 test("lists the media tools and opens yt-dlp setup from the settings page", async ({ page }) => {
-  await page.route("**/api/models", (route) => route.fulfill({ json: [initial] }));
+  await page.route("**/api/models", (route) => route.fulfill({ json: catalog(initial) }));
   await page.route("**/api/media-tools", (route) =>
     route.fulfill({
       json: {

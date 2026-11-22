@@ -1,6 +1,8 @@
 import { Schema } from "effect";
 
-export const ModelId = Schema.Literals(["parakeet-ultra-q8", "pyannote-wespeaker"]);
+export const SpeakerModelId = Schema.Literals(["sortformer-4spk-q8", "pyannote-wespeaker"]);
+export type SpeakerModelId = typeof SpeakerModelId.Type;
+export const ModelId = Schema.Literals(["parakeet-ultra-q8", ...SpeakerModelId.literals]);
 export type ModelId = typeof ModelId.Type;
 export const ModelRole = Schema.Literals(["transcription", "speakers"]);
 export type ModelRole = typeof ModelRole.Type;
@@ -29,9 +31,16 @@ export const ModelStatus = Schema.Struct({
   sourceUrl: Schema.String,
   license: Schema.String,
   languages: Schema.Array(Schema.String),
+  maxSpeakers: Schema.optionalKey(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
   state: Schema.Literals(["missing", "ready", "broken"]),
   message: Schema.NullOr(Schema.String),
   installation: ModelInstallation,
 });
 export type ModelStatus = typeof ModelStatus.Type;
-export const ModelList = Schema.Array(ModelStatus);
+export const SpeakerLabels = Schema.Struct({ speakerModelId: Schema.NullOr(SpeakerModelId) });
+export type SpeakerLabels = typeof SpeakerLabels.Type;
+export const ModelCatalog = Schema.Struct({
+  models: Schema.Array(ModelStatus),
+  ...SpeakerLabels.fields,
+});
+export type ModelCatalog = typeof ModelCatalog.Type;

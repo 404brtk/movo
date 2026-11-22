@@ -39,6 +39,7 @@ const rejection =
 const completedJob = (mediaId: string, text: string): TranscriptionJob => ({
   mediaId,
   modelId: "parakeet-ultra-q8",
+  speakerModelId: null,
   status: "completed",
   phase: "finished",
   phaseProgress: null,

@@ -83,9 +83,9 @@ const completing = (
 ) =>
   createTranscriptions(database, { dataDirectory: directory }, tools, {
     check: () => Effect.void,
-    transcribe: (_path, _staging, _update, reportDevice) =>
+    transcribe: (_request, report) =>
       Effect.andThen(
-        Effect.sync(() => reportDevice(device)),
+        Effect.sync(() => report.device(device)),
         transcribe(),
       ),
   });

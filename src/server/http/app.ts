@@ -23,6 +23,7 @@ import {
 } from "../../shared/contracts/dictionary.ts";
 import { DownloadPreviewRequest, DownloadRequest } from "../../shared/contracts/downloads.ts";
 import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
+import { SpeakerLabels } from "../../shared/contracts/models.ts";
 import { ImportMediaQuery, RenameMediaRequest } from "../../shared/contracts/media.ts";
 import {
   defaultHistoryPage,
@@ -139,7 +140,7 @@ export function createApp(
       tools,
       createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools),
     ),
-    models = createModels(),
+    models = createModels({ database }),
     transcriptions = createTranscriptions(
       database,
       config,
@@ -216,6 +217,22 @@ export function createApp(
       context.header("Cache-Control", "no-store");
       return context.json(await runMedia(models.list()));
     })
+    .put(
+      "/models/speaker-labels",
+      bodyLimit({
+        maxSize: 4096,
+        onError: (context) =>
+          context.json({ error: "Speaker label requests must be 4 KiB or smaller." }, 413),
+      }),
+      async (context) => {
+        const { speakerModelId } = await readJson(
+          context.req.json(),
+          SpeakerLabels,
+          "Choose a speaker model from Settings, or turn speaker labels off.",
+        );
+        return context.json(await runMedia(models.chooseSpeakerLabels(speakerModelId)));
+      },
+    )
     .post("/models/:id/install", async (context) =>
       context.json(await runMedia(models.install(context.req.param("id"))), 202),
     )

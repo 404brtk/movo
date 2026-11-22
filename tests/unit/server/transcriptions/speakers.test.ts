@@ -6,11 +6,7 @@ const transcript = (...spans: [number, number][]): Transcript => ({
   language: "pl",
   words: spans.map(([startMs, endMs], index) => ({ startMs, endMs, text: `w${index}` })),
 });
-const turn = (speaker: number, startMs: number, endMs: number) => ({
-  start: startMs / 1000,
-  end: endMs / 1000,
-  speaker,
-});
+const turn = (speaker: number, startMs: number, endMs: number) => ({ startMs, endMs, speaker });
 const speakers = (result: Transcript) => result.words.map((word) => word.speaker);
 
 describe("speaker assignment", () => {
@@ -66,21 +62,5 @@ describe("speaker assignment", () => {
   it("keeps a transcript without speakers when no turns were found", () => {
     const original = transcript([0, 100]);
     expect(assignSpeakers(original, [])).toBe(original);
-  });
-
-  it.each([
-    { name: "a reversed turn", turns: [turn(1, 500, 100)], cause: /ends before it starts/u },
-    {
-      name: "a negative speaker",
-      turns: [turn(-1, 0, 100)],
-      cause: /greater than or equal to 0/u,
-    },
-    {
-      name: "an unreadable value",
-      turns: [{ speaker: 1, start: "0", end: 0.1 }],
-      cause: /Expected number/u,
-    },
-  ])("rejects $name from the engine", ({ turns, cause }) => {
-    expect(() => assignSpeakers(transcript([0, 100]), turns)).toThrow(cause);
   });
 });

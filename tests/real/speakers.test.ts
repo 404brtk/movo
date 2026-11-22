@@ -7,24 +7,27 @@ import { fileURLToPath } from "node:url";
 import { Effect, Schema } from "effect";
 import { expect, it, onTestFinished } from "vitest";
 import { createMediaTools } from "../../src/server/media-tools/tools.ts";
-import { speakerModel, transcriptionModel } from "../../src/server/models/catalog.ts";
+import { transcriptionModel } from "../../src/server/models/catalog.ts";
 import { createModels } from "../../src/server/models/models.ts";
 import { runCommand } from "../../src/server/process/command.ts";
+import type { SpeakerModelId } from "../../src/shared/contracts/models.ts";
 import { Transcript } from "../../src/shared/contracts/transcriptions.ts";
+import { openTestDatabase } from "../helpers/test-database.ts";
 
-async function startWorker(repetitions: number) {
+async function startWorker(speakerModelId: SpeakerModelId, repetitions: number) {
   const directory = await mkdtemp(join(tmpdir(), "movo-real-speakers-"));
-  const models = createModels();
+  const { database, close } = await openTestDatabase(directory);
+  const models = createModels({ database });
   let stopWorker: (() => Promise<void>) | undefined;
   onTestFinished(async () => {
     await stopWorker?.();
     await Effect.runPromise(models.close());
+    await close();
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   });
   const { transcription } = await Effect.runPromise(models.resolve(transcriptionModel.id));
-  const { segmentation, embedding } = await Effect.runPromise(models.resolve(speakerModel.id));
-  if (!transcription || !segmentation || !embedding)
-    throw new Error("The real speaker test needs all three model files.");
+  const speakerFiles = await Effect.runPromise(models.resolve(speakerModelId));
+  if (!transcription) throw new Error("The real speaker test needs the transcription model.");
   const pcm = join(directory, "audio.f32");
   const resultPath = join(directory, "result.json");
   const tools = createMediaTools({ dataDirectory: directory });
@@ -50,7 +53,7 @@ async function startWorker(repetitions: number) {
   );
   const worker = fork(
     fileURLToPath(new URL("../../src/server/transcriptions/worker.ts", import.meta.url)),
-    [transcription, pcm, resultPath, segmentation, embedding],
+    [transcription, pcm, resultPath, JSON.stringify({ model: speakerModelId, ...speakerFiles })],
     { silent: true, execArgv: [] },
   );
   let stdout = "";
@@ -73,24 +76,28 @@ async function startWorker(repetitions: number) {
   return { worker, exited, resultPath, stdout: () => stdout, stderr: () => stderr };
 }
 
-it("labels synthetic speech with the pinned Pyannote and WeSpeaker files", async () => {
-  const { exited, resultPath, stderr } = await startWorker(1);
-  const code = await exited;
-  if (code !== 0) throw new Error(`The transcription worker exited with code ${code}. ${stderr()}`);
-  const transcript = Schema.decodeUnknownSync(Transcript)(
-    JSON.parse(await readFile(resultPath, "utf8")),
-  );
-  expect(
-    transcript.words
-      .map((word) => word.text)
-      .join(" ")
-      .toLowerCase(),
-  ).toContain("transcription");
-  expect([...new Set(transcript.words.map((word) => word.speaker))]).toEqual([1]);
-});
+it.for(["sortformer-4spk-q8", "pyannote-wespeaker"] as const)(
+  "labels synthetic speech with the pinned %s files",
+  async (speakerModelId) => {
+    const { exited, resultPath, stderr } = await startWorker(speakerModelId, 1);
+    const code = await exited;
+    if (code !== 0)
+      throw new Error(`The transcription worker exited with code ${code}. ${stderr()}`);
+    const transcript = Schema.decodeUnknownSync(Transcript)(
+      JSON.parse(await readFile(resultPath, "utf8")),
+    );
+    expect(
+      transcript.words
+        .map((word) => word.text)
+        .join(" ")
+        .toLowerCase(),
+    ).toContain("transcription");
+    expect([...new Set(transcript.words.map((word) => word.speaker))]).toEqual([1]);
+  },
+);
 
-it("stops promptly when the worker loses its owner during real speaker inference", async () => {
-  const { worker, resultPath, stdout, stderr } = await startWorker(23);
+it("stops promptly when the worker loses its owner during real Pyannote inference", async () => {
+  const { worker, resultPath, stdout, stderr } = await startWorker("pyannote-wespeaker", 23);
   await expect
     .poll(() => stdout(), { timeout: 180000, interval: 100 })
     .toContain("MOVO_PHASE:speakers");

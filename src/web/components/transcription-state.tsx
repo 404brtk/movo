@@ -53,7 +53,7 @@ export function NoTranscriptCard({
   onStart: () => void;
 }) {
   const models = useQuery(modelsOptions);
-  const model = models.data?.find((entry) => entry.role === "transcription");
+  const model = models.data?.models.find((entry) => entry.role === "transcription");
   return (
     <section
       aria-labelledby="transcription-state"
@@ -115,11 +115,9 @@ export function TranscribingCard({
   cancelling: boolean;
   onCancel: () => void;
 }) {
-  const models = useQuery(modelsOptions);
-  const identifiesSpeakers =
-    job.phase === "speakers" ||
-    models.data?.some((model) => model.role === "speakers" && model.state === "ready") === true;
-  const shownSteps = steps.filter((step) => step.phase !== "speakers" || identifiesSpeakers);
+  const shownSteps = steps.filter(
+    (step) => step.phase !== "speakers" || job.speakerModelId !== null,
+  );
   const position = phaseOrder.indexOf(job.phase);
   const queued = job.phase === "queued";
   const currentStep = steps[position - 1]?.label;

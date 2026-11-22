@@ -33,7 +33,9 @@ const test = base.extend<{
               (manager) => manager.close(),
             );
             const models = yield* Effect.acquireRelease(
-              Effect.sync(() => createModels({ cacheDirectory: join(directory, "hf-cache") })),
+              Effect.sync(() =>
+                createModels({ database, cacheDirectory: join(directory, "hf-cache") }),
+              ),
               (manager) => manager.close(),
             );
             const finish = yield* Deferred.make<void>();
@@ -45,9 +47,9 @@ const test = base.extend<{
                   : Effect.fail(
                       new MediaError("unavailable", "Install Parakeet Ultra before transcribing."),
                     ),
-              transcribe: (_path, _staging, update) =>
+              transcribe: (_request, report) =>
                 Effect.gen(function* () {
-                  update("transcribing");
+                  report.phase("transcribing");
                   yield* Deferred.await(finish);
                   return {
                     language: "en",

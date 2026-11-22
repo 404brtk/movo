@@ -48,7 +48,7 @@ const program = Effect.gen(function* () {
     createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools),
   );
   const models = yield* Effect.acquireRelease(
-    Effect.sync(() => createModels()),
+    Effect.sync(() => createModels({ database })),
     (manager) => manager.close(),
   );
   const transcriptions = createTranscriptions(

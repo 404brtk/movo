@@ -4,7 +4,7 @@ import { TranscribeModel } from "transcribe-cpp";
 import { TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
 import { readEngineTranscript } from "./engine-result.ts";
 import { readPreparedAudio } from "./prepared-audio.ts";
-import { diarizeSpeakers } from "./speaker-diarization.ts";
+import { diarizeSpeakers, SpeakerDiarizer } from "./speaker-diarization.ts";
 import { assignSpeakers } from "./speakers.ts";
 
 const ownerDisconnected = () => process.kill(process.pid, "SIGKILL");
@@ -34,10 +34,10 @@ async function transcribe(modelPath: string, audioPath: string) {
   }
 }
 
-function speakerSegments(segmentationPath: string, embeddingPath: string, pcm: Buffer) {
+function speakerTurns(diarizer: SpeakerDiarizer, pcm: Buffer) {
   console.log("MOVO_PHASE:speakers");
   let reportedPercent = -1;
-  return diarizeSpeakers(segmentationPath, embeddingPath, pcm, (fraction) => {
+  return diarizeSpeakers(diarizer, pcm, (fraction) => {
     const percent = Math.floor(fraction * 100);
     if (percent === reportedPercent) return;
     reportedPercent = percent;
@@ -47,15 +47,18 @@ function speakerSegments(segmentationPath: string, embeddingPath: string, pcm: B
 
 try {
   if (!process.connected) throw new Error("The transcription worker must be started by Movo.");
-  const [, , modelPath, audioPath, resultPath, ...speakerPaths] = process.argv;
-  const [segmentationPath, embeddingPath] = speakerPaths;
-  if (!modelPath || !audioPath || !resultPath || ![0, 2].includes(speakerPaths.length))
+  const [, , modelPath, audioPath, resultPath, speakerModel, ...unexpected] = process.argv;
+  if (!modelPath || !audioPath || !resultPath || unexpected.length > 0)
     throw new Error("Missing transcription worker arguments.");
+  const diarizer =
+    speakerModel === undefined
+      ? null
+      : Schema.decodeUnknownSync(Schema.fromJsonString(SpeakerDiarizer))(speakerModel);
   console.log("MOVO_PHASE:loading");
   const { pcm, transcript } = await transcribe(modelPath, audioPath);
   const result =
-    segmentationPath && embeddingPath && transcript.words.length > 0
-      ? assignSpeakers(transcript, await speakerSegments(segmentationPath, embeddingPath, pcm))
+    diarizer && transcript.words.length > 0
+      ? assignSpeakers(transcript, await speakerTurns(diarizer, pcm))
       : transcript;
   await writeFile(resultPath, JSON.stringify(result), { flag: "wx" });
 } catch (cause) {

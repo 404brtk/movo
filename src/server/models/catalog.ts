@@ -1,4 +1,5 @@
-import type { ModelId, ModelRole } from "../../shared/contracts/models.ts";
+import type { ModelId, ModelRole, SpeakerModelId } from "../../shared/contracts/models.ts";
+import { maxSpeakers } from "../../shared/contracts/transcriptions.ts";
 import type { DownloadSource } from "../files/download.ts";
 
 export interface ModelFile extends DownloadSource {
@@ -8,7 +9,7 @@ export interface ModelFile extends DownloadSource {
   ggufArchitecture?: string;
 }
 
-type ModelFileRole = "transcription" | "segmentation" | "embedding";
+type ModelFileRole = "transcription" | "diarization" | "segmentation" | "embedding";
 export type ModelPaths = Partial<Record<ModelFileRole, string>>;
 
 export interface ModelDefinition {
@@ -19,7 +20,14 @@ export interface ModelDefinition {
   sourceUrl: string;
   license: string;
   languages: string[];
+  maxSpeakers?: number;
   files: Readonly<Partial<Record<ModelFileRole, ModelFile>>>;
+}
+
+interface SpeakerModelDefinition extends ModelDefinition {
+  id: SpeakerModelId;
+  role: "speakers";
+  maxSpeakers: number;
 }
 
 const huggingFaceFile = (file: Omit<ModelFile, "url">): ModelFile => ({
@@ -73,11 +81,32 @@ export const transcriptionModel = {
   ],
 } satisfies ModelDefinition;
 
-export const speakerModel = {
+const sortformerFile = huggingFaceFile({
+  repository: "handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf",
+  revision: "60ebab3ef7cae9869be0abcde13360347e96ba03",
+  filename: "diar_streaming_sortformer_4spk-v2.1-Q8_0.gguf",
+  bytes: 139310336,
+  sha256: "a5dacdc650790266c7a362e54e6bf51952015487edaa606c4e11632bc32442a9",
+  ggufArchitecture: "sortformer",
+});
+
+export const sortformerModel = {
+  id: "sortformer-4spk-q8",
+  role: "speakers",
+  name: "Sortformer",
+  description: "Fast, for interviews and podcasts",
+  sourceUrl: `https://huggingface.co/${sortformerFile.repository}/tree/${sortformerFile.revision}`,
+  files: { diarization: sortformerFile },
+  license: "NVIDIA Open Model License",
+  languages: ["en"],
+  maxSpeakers: 4,
+} satisfies SpeakerModelDefinition;
+
+export const pyannoteModel = {
   id: "pyannote-wespeaker",
   role: "speakers",
   name: "Pyannote",
-  description: "Labels who speaks when and counts the speakers",
+  description: "Slower, for meetings and press conferences",
   sourceUrl: "https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html",
   files: {
     segmentation: huggingFaceFile({
@@ -97,6 +126,8 @@ export const speakerModel = {
   },
   license: "MIT and CC BY 4.0",
   languages: ["en"],
-} satisfies ModelDefinition;
+  maxSpeakers,
+} satisfies SpeakerModelDefinition;
 
-export const modelCatalog = [transcriptionModel, speakerModel];
+export const speakerModels = [sortformerModel, pyannoteModel];
+export const modelCatalog = [transcriptionModel, ...speakerModels];

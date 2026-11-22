@@ -34,6 +34,7 @@ async function openTranscribedVideo(
   const job: TranscriptionJob = {
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: null,
     status: "completed",
     phase: "finished",
     phaseProgress: null,

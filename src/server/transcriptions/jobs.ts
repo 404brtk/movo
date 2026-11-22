@@ -30,7 +30,9 @@ import type { DictionaryEntry } from "../../shared/contracts/dictionary.ts";
 import { dictionaryFixes } from "../../shared/transcript-dictionary.ts";
 import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
+import type { SpeakerModelId } from "../../shared/contracts/models.ts";
 import type { AppDatabase } from "../db/database.ts";
+import { readSpeakerModelId } from "../models/speaker-labels.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
@@ -48,14 +50,23 @@ import { addFixes, applyDictionary } from "./dictionary-store.ts";
 import { queueTranscription } from "./queue.ts";
 import { transcriptionJobs, type transcriptChanges } from "./transcriptions.schema.ts";
 
+export interface TranscriptionRequest {
+  path: string;
+  directory: string;
+  speakerModelId: SpeakerModelId | null;
+}
+
+export interface TranscriptionReport {
+  phase: (phase: TranscriptionPhase) => void;
+  device: (device: TranscriptionDevice) => void;
+  progress: (percent: number) => void;
+}
+
 export interface TranscriptionEngine {
   check: () => Effect.Effect<void, MediaError>;
   transcribe: (
-    path: string,
-    directory: string,
-    update: (phase: TranscriptionPhase) => void,
-    reportDevice: (device: TranscriptionDevice) => void,
-    reportProgress: (percent: number) => void,
+    request: TranscriptionRequest,
+    report: TranscriptionReport,
   ) => Effect.Effect<Transcript, MediaError>;
 }
 
@@ -160,11 +171,12 @@ export function createTranscriptions(
             updateRunning(job.mediaId, changes);
           };
           const result = yield* engine.transcribe(
-            path,
-            directory,
-            (phase) => report({ phase }),
-            (device) => report({ device }),
-            (phaseProgress) => report({ phaseProgress }),
+            { path, directory, speakerModelId: job.speakerModelId },
+            {
+              phase: (phase) => report({ phase }),
+              device: (device) => report({ device }),
+              progress: (phaseProgress) => report({ phaseProgress }),
+            },
           );
           yield* storage(() => {
             const transcript = Schema.decodeUnknownSync(Transcript)(result);
@@ -533,6 +545,7 @@ export function createTranscriptions(
           database
             .update(transcriptionJobs)
             .set({
+              speakerModelId: readSpeakerModelId(database),
               status: "queued",
               phase: "queued",
               phaseProgress: null,

@@ -26,13 +26,13 @@ const test = base.extend<{
             const database = yield* openDatabase(join(directory, "app.sqlite"));
             const config = { dataDirectory: directory };
             const tools = createMediaTools(config);
-            const models = createModels({ cacheDirectory: join(directory, "hf-cache") });
+            const models = createModels({ database, cacheDirectory: join(directory, "hf-cache") });
             yield* Effect.addFinalizer(() => models.close());
             const transcriptions = createTranscriptions(database, config, tools, {
               check: () => Effect.void,
-              transcribe: (_path, _staging, _update, reportDevice) =>
+              transcribe: (_request, report) =>
                 Effect.sync(() => {
-                  reportDevice({ backend: "cpu", name: "Test CPU" });
+                  report.device({ backend: "cpu", name: "Test CPU" });
                   return {
                     language: "en",
                     words: [

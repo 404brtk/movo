@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { MediaId } from "./media.ts";
-import { ModelId } from "./models.ts";
+import { ModelId, SpeakerModelId } from "./models.ts";
 
 export const transcriptionStates = [
   "queued",
@@ -93,6 +93,7 @@ export type TranscriptExportFormat = typeof TranscriptExportFormat.Type;
 export const TranscriptionJob = Schema.Struct({
   mediaId: MediaId,
   modelId: ModelId,
+  speakerModelId: Schema.NullOr(SpeakerModelId),
   status: Schema.Literals(transcriptionStates),
   phase: Schema.Literals(transcriptionPhases),
   phaseProgress: Schema.NullOr(PhaseProgress),

@@ -30,6 +30,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
       job = {
         mediaId: media.id,
         modelId: "parakeet-ultra-q8",
+        speakerModelId: null,
         status: "running",
         phase: "transcribing",
         phaseProgress: null,
@@ -68,6 +69,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   ).toBeVisible();
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Transcribing");
+  await expect(panel.getByText("Identifying speakers", { exact: true })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Export transcript", exact: true })).toHaveCount(
     0,
   );
@@ -75,6 +77,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   job = {
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: null,
     status: "completed",
     phase: "finished",
     phaseProgress: null,
@@ -135,6 +138,7 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   let job: TranscriptionJob = {
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: "pyannote-wespeaker",
     status: "running",
     phase: "loading",
     phaseProgress: null,
@@ -182,6 +186,7 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Transcribing");
   await expect(device).toBeVisible();
+  await expect(panel.getByText("Identifying speakers", { exact: true })).toBeVisible();
   job = { ...job, phase: "speakers", phaseProgress: 42 };
   const speakerProgress = panel.getByRole("progressbar", {
     name: "Identifying speakers",
@@ -251,6 +256,7 @@ test("keeps retry progress when an older failed status arrives after retry succe
   const failed: TranscriptionJob = {
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: null,
     status: "failed",
     phase: "finished",
     phaseProgress: null,
@@ -329,6 +335,7 @@ test("transcribes a completed recording again while keeping the previous transcr
   let job: TranscriptionJob = {
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: null,
     status: "completed",
     phase: "finished",
     phaseProgress: null,
@@ -437,6 +444,7 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
   let job: TranscriptionJob = {
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: null,
     status: "cancelled",
     phase: "finished",
     phaseProgress: null,

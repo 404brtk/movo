@@ -43,5 +43,5 @@ export const hasEdits = (job: TranscriptionJob) => job.revision > job.resultRevi
 
 export function useModelName(modelId: TranscriptionJob["modelId"] | undefined) {
   const models = useQuery(modelsOptions);
-  return models.data?.find((model) => model.id === modelId)?.name ?? "Parakeet Ultra";
+  return models.data?.models.find((model) => model.id === modelId)?.name ?? "Parakeet Ultra";
 }

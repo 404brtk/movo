@@ -8,33 +8,35 @@ import { transcriptionModel } from "../../src/server/models/catalog.ts";
 import { createModels } from "../../src/server/models/models.ts";
 import { modelCachePath } from "../../src/server/models/cache.ts";
 import { validateModel } from "../../src/server/models/validation.ts";
+import { openTestDatabase } from "../helpers/test-database.ts";
 
 const transcriptionFile = transcriptionModel.files.transcription;
 
 it("installs the pinned real model, loads it in an isolated CPU worker and discovers it after restart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "movo-real-model-"));
-  const models = createModels({ cacheDirectory: directory });
+  const { database, close } = await openTestDatabase(directory);
+  const models = createModels({ database, cacheDirectory: directory });
   try {
-    expect((await Effect.runPromise(models.list()))[0]?.state).toBe("missing");
+    expect((await Effect.runPromise(models.list())).models[0]?.state).toBe("missing");
     await Effect.runPromise(models.install(transcriptionModel.id));
     await expect
       .poll(
         async () =>
           activeModelPhases.includes(
-            (await Effect.runPromise(models.list()))[0]?.installation.phase ?? "",
+            (await Effect.runPromise(models.list())).models[0]?.installation.phase ?? "",
           ),
         { timeout: 9 * 60 * 1000, interval: 500 },
       )
       .toBe(false);
-    const installed = (await Effect.runPromise(models.list()))[0];
+    const installed = (await Effect.runPromise(models.list())).models[0];
     if (installed?.installation.error) throw new Error(installed.installation.error);
     expect(installed?.state).toBe("ready");
     await validateModel(modelCachePath(directory, transcriptionFile), AbortSignal.timeout(120000));
     expect(installed?.installation.downloadedBytes).toBe(transcriptionFile.bytes);
     await Effect.runPromise(models.close());
-    const reopened = createModels({ cacheDirectory: directory });
+    const reopened = createModels({ database, cacheDirectory: directory });
     try {
-      expect((await Effect.runPromise(reopened.list()))[0]?.state).toBe("ready");
+      expect((await Effect.runPromise(reopened.list())).models[0]?.state).toBe("ready");
     } finally {
       await Effect.runPromise(reopened.close());
     }
@@ -50,6 +52,7 @@ it("installs the pinned real model, loads it in an isolated CPU worker and disco
     ).toEqual([transcriptionFile.filename]);
   } finally {
     await Effect.runPromise(models.close());
+    await close();
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 });

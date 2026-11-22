@@ -12,8 +12,10 @@ import type { MediaItem } from "../../../../src/shared/contracts/media.ts";
 import type { Transcript } from "../../../../src/shared/contracts/transcriptions.ts";
 import {
   createTranscriptions,
+  type TranscriptionRequest,
   type Transcriptions,
 } from "../../../../src/server/transcriptions/jobs.ts";
+import { saveSpeakerModelId } from "../../../../src/server/models/speaker-labels.ts";
 import { blockCleanup } from "../../../helpers/block-cleanup.ts";
 import { eq } from "drizzle-orm";
 import {
@@ -127,7 +129,7 @@ it("queues once per recording, saves timestamped passages and preserves the medi
     Effect.gen(function* () {
       const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
         check: () => Effect.void,
-        transcribe: (_path, staging) =>
+        transcribe: ({ directory: staging }) =>
           Effect.promise(async () => {
             await writeFile(join(staging, "audio.f32"), "prepared audio");
             return transcript;
@@ -151,6 +153,35 @@ it("queues once per recording, saves timestamped passages and preserves the medi
   );
 });
 
+it("keeps the speaker labels chosen when a job was queued and takes the current choice on retry", async ({
+  signal,
+}) => {
+  await withRecording(signal, (database, directory, tools, _library, media) =>
+    Effect.gen(function* () {
+      const requested: (string | null)[] = [];
+      const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
+        check: () => Effect.void,
+        transcribe: ({ speakerModelId }) =>
+          Effect.sync(() => {
+            requested.push(speakerModelId);
+            return transcript;
+          }),
+      });
+      saveSpeakerModelId(database, "sortformer-4spk-q8");
+      expect(yield* jobs.enqueue(media.id)).toMatchObject({ speakerModelId: "sortformer-4spk-q8" });
+      saveSpeakerModelId(database, "pyannote-wespeaker");
+      const worker = yield* jobs.start();
+      yield* waitFor(jobs, media.id, "completed");
+      expect(requested).toEqual(["sortformer-4spk-q8"]);
+      saveSpeakerModelId(database, null);
+      expect(yield* jobs.retry(media.id)).toMatchObject({ speakerModelId: null });
+      yield* waitFor(jobs, media.id, "completed");
+      expect(requested).toEqual(["sortformer-4spk-q8", null]);
+      yield* Fiber.interrupt(worker);
+    }),
+  );
+});
+
 it("reports speaker progress, stops active inference before cleanup, continues the queue and accepts only one concurrent retry", async ({
   signal,
 }) => {
@@ -162,15 +193,15 @@ it("reports speaker progress, stops active inference before cleanup, continues t
       let stopped = false;
       const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
         check: () => Effect.void,
-        transcribe: (_path, staging, update, reportDevice, reportProgress) =>
+        transcribe: ({ directory: staging }, report) =>
           Effect.gen(function* () {
             attempts++;
             yield* Effect.promise(() => writeFile(join(staging, "audio.f32"), "partial audio"));
-            reportDevice(device);
-            update("transcribing");
+            report.device(device);
+            report.phase("transcribing");
             if (attempts === 1) {
-              update("speakers");
-              reportProgress(42);
+              report.phase("speakers");
+              report.progress(42);
               yield* Deferred.succeed(began, undefined);
               yield* Effect.never;
             }
@@ -317,10 +348,10 @@ it("keeps the previous transcript through failed, cancelled and interrupted repl
         });
       const first = createTranscriptions(database, { dataDirectory: directory }, tools, {
         check: () => Effect.void,
-        transcribe: (_path, _staging, _update, reportDevice) =>
+        transcribe: (_request, report) =>
           Effect.gen(function* () {
             attempts++;
-            reportDevice(device);
+            report.device(device);
             if (attempts === 1) return transcript;
             if (attempts === 2)
               return yield* Effect.fail(new MediaError("unavailable", "The engine stopped."));
@@ -359,9 +390,9 @@ it("keeps the previous transcript through failed, cancelled and interrupted repl
       const reopened = yield* openDatabase(join(directory, "app.sqlite"));
       const restarted = createTranscriptions(reopened, { dataDirectory: directory }, tools, {
         check: () => Effect.void,
-        transcribe: (_path, _staging, _update, reportDevice) =>
+        transcribe: (_request, report) =>
           Effect.sync(() => {
-            reportDevice(device);
+            report.device(device);
             return replacement;
           }),
       });
@@ -397,7 +428,7 @@ it.for(["completed", "failed"])(
         let attempts = 0;
         const engine = {
           check: () => Effect.void,
-          transcribe: (_path: string, staging: string) =>
+          transcribe: ({ directory: staging }: TranscriptionRequest) =>
             Effect.gen(function* () {
               if (++attempts === 1) {
                 release = yield* Effect.promise(() => blockCleanup(staging));
@@ -450,9 +481,9 @@ const wordTexts = (job: { transcript: { words: readonly { text: string }[] } | n
 const completingJobs = (database: AppDatabase, directory: string, tools: MediaTools) =>
   createTranscriptions(database, { dataDirectory: directory }, tools, {
     check: () => Effect.void,
-    transcribe: (_path, _staging, _update, reportDevice) =>
+    transcribe: (_request, report) =>
       Effect.sync(() => {
-        reportDevice(device);
+        report.device(device);
         return transcript;
       }),
   });
@@ -609,10 +640,10 @@ it("rejects edits during a new attempt and never reuses a revision after it comp
       let attempts = 0;
       const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
         check: () => Effect.void,
-        transcribe: (_path, _staging, _update, reportDevice) =>
+        transcribe: (_request, report) =>
           Effect.gen(function* () {
             if (++attempts > 1) yield* Deferred.await(release);
-            reportDevice(device);
+            report.device(device);
             return transcript;
           }),
       });
@@ -661,9 +692,9 @@ it("assigns, merges and names speakers, keeping names apart from the history it 
       };
       const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
         check: () => Effect.void,
-        transcribe: (_path, _staging, _update, reportDevice) =>
+        transcribe: (_request, report) =>
           Effect.sync(() => {
-            reportDevice(device);
+            report.device(device);
             return spoken;
           }),
       });

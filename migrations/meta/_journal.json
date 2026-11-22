@@ -127,6 +127,13 @@
       "when": 1795354736237,
       "tag": "0017_transcription_phase_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1795355438942,
+      "tag": "0018_speaker_model_choice",
+      "breakpoints": true
     }
   ]
 }

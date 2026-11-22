@@ -17,18 +17,23 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { Effect, Schema } from "effect";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { activeModelPhases, ModelStatus } from "../../../../src/shared/contracts/models.ts";
-import { openDatabase } from "../../../../src/server/db/database.ts";
+import {
+  activeModelPhases,
+  ModelCatalog,
+  ModelStatus,
+} from "../../../../src/shared/contracts/models.ts";
+import type { AppDatabase } from "../../../../src/server/db/database.ts";
 import { createApp } from "../../../../src/server/http/app.ts";
 import { huggingFaceCacheDirectory, modelCachePath } from "../../../../src/server/models/cache.ts";
 import {
-  speakerModel,
+  pyannoteModel,
   transcriptionModel,
   type ModelDefinition,
   type ModelFile,
 } from "../../../../src/server/models/catalog.ts";
 import { createModels, type Models } from "../../../../src/server/models/models.ts";
 import { validateModel } from "../../../../src/server/models/validation.ts";
+import { openTestDatabase } from "../../../helpers/test-database.ts";
 
 const execute = promisify(execFile);
 
@@ -57,11 +62,11 @@ it("resolves only verified cached weights without starting a download", async ()
 });
 
 function speakerFixture(cacheDirectory: string, url: string) {
-  const { segmentation: segmentationFile, embedding: embeddingFile } = speakerModel.files;
+  const { segmentation: segmentationFile, embedding: embeddingFile } = pyannoteModel.files;
   const segmentation = Buffer.from("segmentation weights");
   const embedding = Buffer.from("speaker embedding weights");
   const definition = {
-    ...speakerModel,
+    ...pyannoteModel,
     files: {
       segmentation: {
         ...segmentationFile,
@@ -83,56 +88,111 @@ function speakerFixture(cacheDirectory: string, url: string) {
 }
 
 it("keeps the optional speaker models separate and treats them as absent until every file is verified", async () => {
-  await withModels(async ({ cacheDirectory, file, definition, requests }) => {
+  await withModels(async ({ cacheDirectory, file, definition, create, requests }) => {
     const speakers = speakerFixture(cacheDirectory, file.url);
     const { embedding, segmentation } = speakers.definition.files;
-    const models = createModels({
-      cacheDirectory,
-      definitions: [definition, { ...speakers.definition, files: { embedding, segmentation } }],
+    const models = create(definition, {
+      ...speakers.definition,
+      files: { embedding, segmentation },
     });
-    try {
-      expect(
-        (await Effect.runPromise(models.list())).map(({ id, role, state, bytes }) => ({
-          id,
-          role,
-          state,
-          bytes,
-        })),
-      ).toEqual([
-        { id: transcriptionModel.id, role: "transcription", state: "missing", bytes: file.bytes },
-        {
-          id: speakerModel.id,
-          role: "speakers",
-          state: "missing",
-          bytes: speakers.segmentation.length + speakers.embedding.length,
-        },
-      ]);
-      expect(await Effect.runPromise(models.installed(speakerModel.id))).toBeNull();
-      await mkdir(dirname(speakers.segmentationPath), { recursive: true });
-      await writeFile(speakers.segmentationPath, speakers.segmentation);
-      expect(await Effect.runPromise(models.installed(speakerModel.id))).toBeNull();
-      await mkdir(dirname(speakers.embeddingPath), { recursive: true });
-      await writeFile(speakers.embeddingPath, Buffer.alloc(speakers.embedding.length, 1));
-      await expect(Effect.runPromise(models.installed(speakerModel.id))).rejects.toThrow(
-        /wespeaker_en_voxceleb_resnet34_LM\.onnx.*integrity/u,
-      );
-      await writeFile(speakers.embeddingPath, speakers.embedding);
-      const repairedAt = new Date(Date.now() + 60000);
-      await utimes(speakers.embeddingPath, repairedAt, repairedAt);
-      expect(await Effect.runPromise(models.installed(speakerModel.id))).toEqual({
-        segmentation: speakers.segmentationPath,
-        embedding: speakers.embeddingPath,
-      });
-      await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
-        /Download Parakeet Ultra/u,
-      );
-      await expect(Effect.runPromise(models.installed("unknown"))).rejects.toThrow(
-        /Model not found/u,
-      );
-      expect(requests()).toBe(0);
-    } finally {
-      await Effect.runPromise(models.close());
-    }
+    const catalog = await Effect.runPromise(models.list());
+    expect(catalog.speakerModelId).toBeNull();
+    expect(
+      catalog.models.map(({ id, role, state, bytes, maxSpeakers }) => ({
+        id,
+        role,
+        state,
+        bytes,
+        maxSpeakers,
+      })),
+    ).toEqual([
+      {
+        id: transcriptionModel.id,
+        role: "transcription",
+        state: "missing",
+        bytes: file.bytes,
+        maxSpeakers: undefined,
+      },
+      {
+        id: pyannoteModel.id,
+        role: "speakers",
+        state: "missing",
+        bytes: speakers.segmentation.length + speakers.embedding.length,
+        maxSpeakers: 32,
+      },
+    ]);
+    const missing =
+      /Speaker labels use Pyannote, which is not installed\. Download it in Settings/u;
+    await expect(Effect.runPromise(models.resolve(pyannoteModel.id))).rejects.toThrow(missing);
+    await mkdir(dirname(speakers.segmentationPath), { recursive: true });
+    await writeFile(speakers.segmentationPath, speakers.segmentation);
+    await expect(Effect.runPromise(models.resolve(pyannoteModel.id))).rejects.toThrow(missing);
+    await mkdir(dirname(speakers.embeddingPath), { recursive: true });
+    await writeFile(speakers.embeddingPath, Buffer.alloc(speakers.embedding.length, 1));
+    await expect(Effect.runPromise(models.resolve(pyannoteModel.id))).rejects.toThrow(
+      /wespeaker_en_voxceleb_resnet34_LM\.onnx.*integrity/u,
+    );
+    await writeFile(speakers.embeddingPath, speakers.embedding);
+    const repairedAt = new Date(Date.now() + 60000);
+    await utimes(speakers.embeddingPath, repairedAt, repairedAt);
+    expect(await Effect.runPromise(models.resolve(pyannoteModel.id))).toEqual({
+      segmentation: speakers.segmentationPath,
+      embedding: speakers.embeddingPath,
+    });
+    await expect(Effect.runPromise(models.resolve(transcriptionModel.id))).rejects.toThrow(
+      /Download Parakeet Ultra/u,
+    );
+    await expect(Effect.runPromise(models.resolve("unknown"))).rejects.toThrow(/Model not found/u);
+    expect(requests()).toBe(0);
+  });
+});
+
+it("uses only a verified speaker model for speaker labels and keeps the choice", async () => {
+  await withModels(async ({ cacheDirectory, file, definition, create, requests }) => {
+    const speakers = speakerFixture(cacheDirectory, file.url);
+    const models = create(definition, speakers.definition);
+    const choose = (speakerModelId: typeof pyannoteModel.id | null) =>
+      Effect.runPromise(models.chooseSpeakerLabels(speakerModelId));
+    await expect(choose(pyannoteModel.id)).rejects.toMatchObject({
+      reason: "invalid",
+      message: "Download Pyannote before using it for speaker labels.",
+    });
+    await mkdir(dirname(speakers.segmentationPath), { recursive: true });
+    await writeFile(speakers.segmentationPath, speakers.segmentation);
+    await mkdir(dirname(speakers.embeddingPath), { recursive: true });
+    await writeFile(speakers.embeddingPath, Buffer.alloc(speakers.embedding.length, 1));
+    await expect(choose(pyannoteModel.id)).rejects.toMatchObject({
+      reason: "invalid",
+      message: expect.stringMatching(/integrity/u),
+    });
+    await writeFile(speakers.embeddingPath, speakers.embedding);
+    const repairedAt = new Date(Date.now() + 60000);
+    await utimes(speakers.embeddingPath, repairedAt, repairedAt);
+    expect(await choose(pyannoteModel.id)).toEqual({ speakerModelId: pyannoteModel.id });
+    const reopened = create(definition, speakers.definition);
+    expect((await Effect.runPromise(reopened.list())).speakerModelId).toBe(pyannoteModel.id);
+    expect(await Effect.runPromise(reopened.speakerLabels())).toBe(pyannoteModel.id);
+    expect(await choose(null)).toEqual({ speakerModelId: null });
+    expect(await Effect.runPromise(reopened.speakerLabels())).toBeNull();
+    expect(requests()).toBe(0);
+  });
+});
+
+it("uses a speaker model for speaker labels once its download completes", async () => {
+  await withModels(async ({ cacheDirectory, file, respond, create }) => {
+    const speakers = speakerFixture(cacheDirectory, file.url);
+    respond((request, response) =>
+      response.end(
+        request.url === "/weights/segmentation" ? speakers.segmentation : speakers.embedding,
+      ),
+    );
+    const models = create(speakers.definition);
+    await Effect.runPromise(models.install(pyannoteModel.id));
+    expect(await finished(models)).toMatchObject({
+      state: "ready",
+      installation: { phase: "complete" },
+    });
+    expect(await Effect.runPromise(models.speakerLabels())).toBe(pyannoteModel.id);
   });
 });
 
@@ -151,7 +211,7 @@ it("counts the cached second file while downloading and verifying the first", as
     await writeFile(speakers.embeddingPath, speakers.embedding);
     const models = create(speakers.definition);
     const total = speakers.segmentation.length + speakers.embedding.length;
-    await Effect.runPromise(models.install(speakerModel.id));
+    await Effect.runPromise(models.install(pyannoteModel.id));
     await expect
       .poll(async () => (await status(models)).installation, { timeout: 10000 })
       .toMatchObject({
@@ -195,12 +255,12 @@ it.each(["cancelled", "failed"] as const)(
         }
       });
       const models = create(speakers.definition);
-      await Effect.runPromise(models.install(speakerModel.id));
+      await Effect.runPromise(models.install(pyannoteModel.id));
       await expect
         .poll(async () => (await status(models)).installation.downloadedBytes, { timeout: 10000 })
         .toBe(speakers.segmentation.length + firstChunk);
       if (!transfer) throw new Error("The embedding download did not start.");
-      if (phase === "cancelled") await Effect.runPromise(models.cancel(speakerModel.id));
+      if (phase === "cancelled") await Effect.runPromise(models.cancel(pyannoteModel.id));
       else transfer.end();
       expect(await finished(models)).toMatchObject({
         state: "missing",
@@ -212,7 +272,7 @@ it.each(["cancelled", "failed"] as const)(
         requested.push(request.url ?? "");
         response.end(speakers.embedding);
       });
-      await Effect.runPromise(models.install(speakerModel.id));
+      await Effect.runPromise(models.install(pyannoteModel.id));
       expect(await finished(models)).toMatchObject({
         state: "ready",
         installation: {
@@ -260,15 +320,17 @@ async function withModels(
     cacheDirectory: string;
     path: string;
     file: ModelFile;
+    database: AppDatabase;
     definition: ModelDefinition;
     withFile: (changes: Partial<ModelFile>) => ModelDefinition;
-    create: (definition?: ModelDefinition) => Models;
+    create: (...definitions: ModelDefinition[]) => Models;
     requests: () => number;
     respond: (handler: RequestListener) => void;
   }) => Promise<void>,
 ) {
   const directory = await mkdtemp(join(tmpdir(), "movo-models-"));
   const cacheDirectory = join(directory, "hf-cache");
+  const { database, close } = await openTestDatabase(directory);
   const instances: Models[] = [];
   let requests = 0;
   let handler: RequestListener = (_request, response) => response.end(weights);
@@ -278,6 +340,7 @@ async function withModels(
   });
   onTestFinished(async () => {
     for (const model of instances) await Effect.runPromise(model.close());
+    await close();
     server.closeAllConnections();
     if (server.listening)
       await new Promise<void>((resolve, reject) =>
@@ -299,8 +362,12 @@ async function withModels(
     files: { transcription: { ...file, ...changes } },
   });
   const definition = withFile({});
-  const create = (entry = definition) => {
-    const manager = createModels({ cacheDirectory, definitions: [entry] });
+  const create = (...definitions: ModelDefinition[]) => {
+    const manager = createModels({
+      database,
+      cacheDirectory,
+      definitions: definitions.length > 0 ? definitions : [definition],
+    });
     instances.push(manager);
     return manager;
   };
@@ -309,6 +376,7 @@ async function withModels(
     cacheDirectory,
     path: modelCachePath(cacheDirectory, file),
     file,
+    database,
     definition,
     withFile,
     create,
@@ -319,7 +387,7 @@ async function withModels(
   });
 }
 async function status(models: Models) {
-  const [entry] = await Effect.runPromise(models.list());
+  const [entry] = (await Effect.runPromise(models.list())).models;
   if (!entry) throw new Error("Model catalog is empty.");
   return entry;
 }
@@ -351,14 +419,14 @@ describe("shared transcription model cache", () => {
   });
 
   it("lists a missing model without network access, private paths or cache writes", async () => {
-    await withModels(async ({ directory, create, requests }) => {
+    await withModels(async ({ directory, cacheDirectory, create, requests }) => {
       const models = create();
       expect(await status(models)).toMatchObject({
         state: "missing",
         installation: { phase: "idle" },
       });
       expect(requests()).toBe(0);
-      expect(await readdir(directory)).toEqual([]);
+      await expect(readdir(cacheDirectory)).rejects.toMatchObject({ code: "ENOENT" });
       expect(JSON.stringify(await status(models))).not.toContain(directory);
     });
   });
@@ -438,55 +506,70 @@ describe("shared transcription model cache", () => {
   });
 
   it("publishes safely when two independent Node processes download to the same cache", async (context) => {
-    await withModels(async ({ cacheDirectory, path, file, definition, respond, requests }) => {
-      const responses: ServerResponse[] = [];
-      respond((_request, response) => {
-        response.write(weights.subarray(0, 8));
-        responses.push(response);
-        if (responses.length === 2)
-          for (const pending of responses) pending.end(weights.subarray(8));
-      });
-      const script = `
-        import { Effect } from "effect";
+    await withModels(
+      async ({ directory, cacheDirectory, path, file, definition, respond, requests }) => {
+        const responses: ServerResponse[] = [];
+        respond((_request, response) => {
+          response.write(weights.subarray(0, 8));
+          responses.push(response);
+          if (responses.length === 2)
+            for (const pending of responses) pending.end(weights.subarray(8));
+        });
+        const script = `
+        import { Effect, Exit, Scope } from "effect";
+        import { openDatabase } from ${JSON.stringify(new URL("../../../../src/server/db/database.ts", import.meta.url).href)};
         import { createModels } from ${JSON.stringify(new URL("../../../../src/server/models/models.ts", import.meta.url).href)};
         const definition = JSON.parse(process.argv[1]);
-        const models = createModels({ definitions: [definition], cacheDirectory: process.argv[2] });
+        const scope = Scope.makeUnsafe();
+        const database = await Effect.runPromise(Scope.provide(openDatabase(process.argv[3]), scope));
+        const models = createModels({ database, definitions: [definition], cacheDirectory: process.argv[2] });
         try {
           await Effect.runPromise(models.install(definition.id));
           let entry;
           for (let attempt = 0; attempt < 1000; attempt++) {
-            [entry] = await Effect.runPromise(models.list());
+            [entry] = (await Effect.runPromise(models.list())).models;
             if (["complete", "failed", "cancelled"].includes(entry.installation.phase)) break;
             await new Promise(resolve => setTimeout(resolve, 10));
           }
           console.log(JSON.stringify(entry));
           if (entry.state !== "ready" || entry.installation.phase !== "complete") process.exitCode = 1;
-        } finally { await Effect.runPromise(models.close()); }
+        } finally {
+          await Effect.runPromise(models.close());
+          await Effect.runPromise(Scope.close(scope, Exit.void));
+        }
       `;
-      const results = await Promise.allSettled(
-        [1, 2].map(() =>
-          execute(
-            process.execPath,
-            ["--input-type=module", "-e", script, JSON.stringify(definition), cacheDirectory],
-            { timeout: 15000, windowsHide: true, signal: context.signal },
+        const results = await Promise.allSettled(
+          [1, 2].map((writer) =>
+            execute(
+              process.execPath,
+              [
+                "--input-type=module",
+                "-e",
+                script,
+                JSON.stringify(definition),
+                cacheDirectory,
+                join(directory, `writer-${writer}.sqlite`),
+              ],
+              { timeout: 15000, windowsHide: true, signal: context.signal },
+            ),
           ),
-        ),
-      );
-      for (const result of results) {
-        if (result.status === "rejected") {
-          const error = result.reason;
-          throw new Error(
-            error instanceof Error && "stdout" in error ? String(error.stdout) : String(error),
+        );
+        for (const result of results) {
+          if (result.status === "rejected") {
+            const error = result.reason;
+            throw new Error(
+              error instanceof Error && "stdout" in error ? String(error.stdout) : String(error),
+            );
+          }
+          expect(Schema.decodeUnknownSync(ModelStatus)(JSON.parse(result.value.stdout)).state).toBe(
+            "ready",
           );
         }
-        expect(Schema.decodeUnknownSync(ModelStatus)(JSON.parse(result.value.stdout)).state).toBe(
-          "ready",
-        );
-      }
-      expect(requests()).toBe(2);
-      expect(await readFile(path)).toEqual(weights);
-      expect(await readdir(dirname(path))).toEqual([file.filename]);
-    });
+        expect(requests()).toBe(2);
+        expect(await readFile(path)).toEqual(weights);
+        expect(await readdir(dirname(path))).toEqual([file.filename]);
+      },
+    );
   });
 
   it("preserves an existing file that appears while a download is running", async () => {
@@ -638,21 +721,56 @@ describe("shared transcription model cache", () => {
     });
   });
 
-  it("serves uncached status and asynchronous install/cancel through the real HTTP app", async () => {
-    await withModels(async ({ directory, definition, create, respond }) => {
-      respond((_request, response) => {
-        response.write(weights.subarray(0, 8));
-      });
-      const models = create();
-      await Effect.runPromise(
-        Effect.scoped(
+  it("serves uncached status, speaker labels and asynchronous install/cancel through the real HTTP app", async () => {
+    await withModels(
+      async ({ directory, cacheDirectory, file, database, definition, create, respond }) => {
+        respond((_request, response) => {
+          response.write(weights.subarray(0, 8));
+        });
+        const models = create(definition, speakerFixture(cacheDirectory, file.url).definition);
+        await Effect.runPromise(
           Effect.gen(function* () {
-            const database = yield* openDatabase(join(directory, "app.sqlite"));
             const app = createApp(database, { dataDirectory: directory }, undefined, { models });
             yield* Effect.promise(async () => {
               const response = await app.request("http://localhost/api/models");
               expect(response.status).toBe(200);
               expect(response.headers.get("cache-control")).toBe("no-store");
+              const catalog = Schema.decodeUnknownSync(ModelCatalog)(await response.json());
+              expect(catalog.speakerModelId).toBeNull();
+              expect(catalog.models.map(({ id }) => id)).toEqual([
+                transcriptionModel.id,
+                pyannoteModel.id,
+              ]);
+              const chooseSpeakers = (body: string) =>
+                app.request("http://localhost/api/models/speaker-labels", {
+                  method: "PUT",
+                  headers: { "content-type": "application/json" },
+                  body,
+                });
+              const off = await chooseSpeakers(JSON.stringify({ speakerModelId: null }));
+              expect(off.status).toBe(200);
+              expect(await off.json()).toEqual({ speakerModelId: null });
+              const missing = await chooseSpeakers(
+                JSON.stringify({ speakerModelId: pyannoteModel.id }),
+              );
+              expect(missing.status).toBe(400);
+              expect(await missing.json()).toEqual({
+                error: "Download Pyannote before using it for speaker labels.",
+              });
+              for (const body of [
+                JSON.stringify({ speakerModelId: transcriptionModel.id }),
+                JSON.stringify({}),
+                "{",
+              ]) {
+                const rejected = await chooseSpeakers(body);
+                expect(rejected.status).toBe(400);
+                expect(await rejected.json()).toEqual({
+                  error: "Choose a speaker model from Settings, or turn speaker labels off.",
+                });
+              }
+              expect(
+                (await chooseSpeakers(JSON.stringify({ speakerModelId: "x".repeat(5000) }))).status,
+              ).toBe(413);
               const base = `http://localhost/api/models/${definition.id}`;
               expect(
                 (
@@ -681,9 +799,9 @@ describe("shared transcription model cache", () => {
               ).toBe("cancelled");
             });
           }),
-        ),
-      );
-    });
+        );
+      },
+    );
   });
 
   it("initializes the real engine without weights and rejects an invalid GGUF", async () => {
