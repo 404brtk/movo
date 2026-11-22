@@ -55,8 +55,8 @@ function createModel(cacheDirectory: string, definition: ModelDefinition, onInst
   let running: Promise<void> | undefined;
   let controller: AbortController | undefined;
   let closed = false;
-  const availability = async () => {
-    const states = await Promise.all(files.map(({ cache }) => cache.inspect(lifetime.signal)));
+  const availability = async (signal = lifetime.signal) => {
+    const states = await Promise.all(files.map(({ cache }) => cache.inspect(signal)));
     return (
       states.find((entry) => entry.state === "broken") ??
       states.find((entry) => entry.state === "missing") ?? { state: "ready", message: null }
@@ -93,7 +93,8 @@ function createModel(cacheDirectory: string, definition: ModelDefinition, onInst
       });
       completedBytes += file.bytes;
     }
-    const installed = await availability();
+    const installed = await availability(signal);
+    signal.throwIfAborted();
     if (installed.state !== "ready")
       throw new MediaError(
         "unavailable",
