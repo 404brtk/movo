@@ -498,7 +498,7 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
   });
   await page.goto(`/media/${media.id}`);
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
-  await expect(panel.getByText("Showing the previous transcript.", { exact: true })).toBeVisible();
+  await expect(panel.getByText(/^Showing the previous transcript/u)).toHaveCount(0);
   const more = page.getByRole("button", { name: "More actions", exact: true });
   const transcribeAgain = page.getByRole("menuitem", { name: "Transcribe again", exact: true });
   const noSpeakerLabels = page.getByRole("menuitem", { name: "No speaker labels", exact: true });

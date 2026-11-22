@@ -343,7 +343,7 @@ export function TranscriptionPanel({
           {job.cleanupError}
         </p>
       ) : null}
-      {transcript && job?.status !== "completed" ? (
+      {transcript && job && !["completed", "cancelled"].includes(job.status) ? (
         <p className="text-xs text-muted-foreground">
           {active
             ? "Showing the previous transcript until the new one completes."
