@@ -19,6 +19,7 @@ export const transcriptionJobs = sqliteTable(
       .references(() => mediaItems.id),
     modelId: text("model_id").notNull(),
     speakerModelId: text("speaker_model_id", { enum: SpeakerModelId.literals }),
+    resultSpeakerModelId: text("result_speaker_model_id", { enum: SpeakerModelId.literals }),
     status: text("status", { enum: transcriptionStates }).notNull(),
     phase: text("phase", { enum: transcriptionPhases }).notNull(),
     phaseProgress: integer("phase_progress"),

@@ -192,7 +192,13 @@ export function createTranscriptions(
             database.transaction((transaction) => {
               const completed = updateRunning(
                 job.mediaId,
-                { status: "completed", phase: "finished", transcript, error: null },
+                {
+                  status: "completed",
+                  phase: "finished",
+                  transcript,
+                  resultSpeakerModelId: job.speakerModelId,
+                  error: null,
+                },
                 transaction,
               );
               if (completed.changes === 0) return;

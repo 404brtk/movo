@@ -94,6 +94,7 @@ export const TranscriptionJob = Schema.Struct({
   mediaId: MediaId,
   modelId: ModelId,
   speakerModelId: Schema.NullOr(SpeakerModelId),
+  resultSpeakerModelId: Schema.NullOr(SpeakerModelId),
   status: Schema.Literals(transcriptionStates),
   phase: Schema.Literals(transcriptionPhases),
   phaseProgress: Schema.NullOr(PhaseProgress),

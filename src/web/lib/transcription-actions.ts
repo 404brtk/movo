@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ModelId } from "../../shared/contracts/models.ts";
 import type {
   TranscriptionJob,
   TranscriptionRetry,
@@ -44,7 +45,21 @@ export type TranscriptionActionMutation = ReturnType<typeof useTranscriptionActi
 
 export const hasEdits = (job: TranscriptionJob) => job.revision > job.resultRevision;
 
-export function useModelName(modelId: TranscriptionJob["modelId"] | undefined) {
+function useModelNames() {
   const models = useQuery(modelsOptions);
-  return models.data?.models.find((model) => model.id === modelId)?.name ?? "Parakeet Ultra";
+  return (modelId: ModelId) => models.data?.models.find((model) => model.id === modelId)?.name;
+}
+
+export function useModelName(modelId: TranscriptionJob["modelId"] | undefined) {
+  const modelName = useModelNames();
+  return (modelId && modelName(modelId)) ?? "Parakeet Ultra";
+}
+
+export function useResultModels(job: TranscriptionJob | null | undefined) {
+  const modelName = useModelNames();
+  const transcriber = (job && modelName(job.modelId)) ?? "Parakeet Ultra";
+  const speakers = job?.resultSpeakerModelId;
+  return speakers
+    ? `${transcriber} · ${modelName(speakers) ?? speakers} speaker labels`
+    : transcriber;
 }

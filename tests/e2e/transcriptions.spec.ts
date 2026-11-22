@@ -31,6 +31,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
         mediaId: media.id,
         modelId: "parakeet-ultra-q8",
         speakerModelId: null,
+        resultSpeakerModelId: null,
         status: "running",
         phase: "transcribing",
         phaseProgress: null,
@@ -78,6 +79,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
     speakerModelId: null,
+    resultSpeakerModelId: null,
     status: "completed",
     phase: "finished",
     phaseProgress: null,
@@ -139,6 +141,7 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
     speakerModelId: "pyannote-wespeaker",
+    resultSpeakerModelId: null,
     status: "running",
     phase: "loading",
     phaseProgress: null,
@@ -257,6 +260,7 @@ test("keeps retry progress when an older failed status arrives after retry succe
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
     speakerModelId: null,
+    resultSpeakerModelId: null,
     status: "failed",
     phase: "finished",
     phaseProgress: null,
@@ -336,6 +340,7 @@ test("transcribes a completed recording again while keeping the previous transcr
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
     speakerModelId: null,
+    resultSpeakerModelId: "sortformer-4spk-q8",
     status: "completed",
     phase: "finished",
     phaseProgress: null,
@@ -380,6 +385,10 @@ test("transcribes a completed recording again while keeping the previous transcr
   const previousText = panel.getByText("The previous transcript.", { exact: true });
   const notice = panel.getByText(/^Showing the previous transcript/u);
   await expect(previousText).toBeVisible();
+  const resultModels = page.getByText("Parakeet Ultra · Sortformer speaker labels", {
+    exact: true,
+  });
+  await expect(resultModels).toBeVisible();
   await expect(notice).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Retry transcription", exact: true })).toHaveCount(
     0,
@@ -399,6 +408,7 @@ test("transcribes a completed recording again while keeping the previous transcr
   await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
   expect(retryBodies).toEqual([{ speakerModelId: null }]);
   await expect(previousText).toBeVisible();
+  await expect(resultModels).toBeVisible();
   await expect(notice).toBeVisible();
   await expect(panel.getByRole("button", { name: "Copy transcript", exact: true })).toBeVisible();
   await page.reload();
@@ -458,6 +468,7 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
     speakerModelId: null,
+    resultSpeakerModelId: null,
     status: "cancelled",
     phase: "finished",
     phaseProgress: null,

@@ -207,6 +207,7 @@ function speakerJob(revision: number, words: TranscriptWord[]): TranscriptionJob
     mediaId: id,
     modelId: "parakeet-ultra-q8",
     speakerModelId: null,
+    resultSpeakerModelId: null,
     status: "completed",
     phase: "finished",
     phaseProgress: null,

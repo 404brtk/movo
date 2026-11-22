@@ -35,6 +35,7 @@ async function openTranscribedVideo(
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
     speakerModelId: null,
+    resultSpeakerModelId: null,
     status: "completed",
     phase: "finished",
     phaseProgress: null,
