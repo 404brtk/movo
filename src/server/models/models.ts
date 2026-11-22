@@ -93,6 +93,13 @@ function createModel(cacheDirectory: string, definition: ModelDefinition, onInst
       });
       completedBytes += file.bytes;
     }
+    const installed = await availability();
+    if (installed.state !== "ready")
+      throw new MediaError(
+        "unavailable",
+        installed.message ??
+          `A file of ${definition.name} was removed during the download. Download it again.`,
+      );
   };
   const failure = (cause: unknown) => (closed ? shutdownError(cause) : modelError(cause));
   return {

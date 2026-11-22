@@ -212,6 +212,35 @@ it("uses a speaker model for speaker labels once its download completes", async 
   });
 });
 
+it("fails the download and keeps speaker labels off when a cached file disappears meanwhile", async () => {
+  await withModels(async ({ cacheDirectory, file, respond, create }) => {
+    const speakers = speakerFixture(cacheDirectory, file.url);
+    let transfer: ServerResponse | undefined;
+    respond((_request, response) => {
+      response.write(speakers.embedding.subarray(0, 8));
+      transfer = response;
+    });
+    await mkdir(dirname(speakers.segmentationPath), { recursive: true });
+    await writeFile(speakers.segmentationPath, speakers.segmentation);
+    const models = create(speakers.definition);
+    await Effect.runPromise(models.install(pyannoteModel.id));
+    await expect
+      .poll(async () => (await status(models)).installation.phase, { timeout: 10000 })
+      .toBe("downloading");
+    if (!transfer) throw new Error("The embedding download did not start.");
+    await rm(speakers.segmentationPath);
+    transfer.end(speakers.embedding.subarray(8));
+    expect(await finished(models)).toMatchObject({
+      state: "missing",
+      installation: {
+        phase: "failed",
+        error: "A file of Pyannote was removed during the download. Download it again.",
+      },
+    });
+    expect((await Effect.runPromise(models.list())).speakerModelId).toBeNull();
+  });
+});
+
 it("counts the cached second file while downloading and verifying the first", async () => {
   await withModels(async ({ cacheDirectory, file, respond, create, requests }) => {
     const speakers = speakerFixture(cacheDirectory, file.url);

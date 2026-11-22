@@ -76,7 +76,7 @@ Movo publishes the completed file with an exclusive filesystem hard link, then r
 
 Separate processes can download concurrently without sharing partial files. If another process publishes first, Movo verifies the existing destination and leaves it intact. Concurrent transfers can duplicate network work; they do not require Redis or a cross-client lock. Movo does not use the JS SDK's shared `.incomplete` writer.
 
-**Cancel installation** aborts the transfer and waits for its temporary file to be removed. Failure and graceful shutdown also clean owned partials. A retry reuses verified files and starts each missing file from the beginning. A forced process termination can leave an unused `.movo-*.partial` file. Movo only recognizes files published to their final cache paths.
+A model made of several files completes only when every file still verifies after the last transfer; if another tool removed or changed one meanwhile, the download fails with that reason and a speaker model does not become the choice. **Cancel installation** aborts the transfer and waits for its temporary file to be removed. Failure and graceful shutdown also clean owned partials. A retry reuses verified files and starts each missing file from the beginning. A forced process termination can leave an unused `.movo-*.partial` file. Movo only recognizes files published to their final cache paths.
 
 The complete download is bounded at thirty minutes. Publication already in progress finishes before cancellation is reported. Cleanup errors are reported as failures.
 
