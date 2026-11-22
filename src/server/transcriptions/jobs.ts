@@ -196,7 +196,9 @@ export function createTranscriptions(
                   status: "completed",
                   phase: "finished",
                   transcript,
-                  resultSpeakerModelId: job.speakerModelId,
+                  resultSpeakerModelId: transcript.words.some((word) => word.speaker !== undefined)
+                    ? job.speakerModelId
+                    : null,
                   error: null,
                 },
                 transaction,
