@@ -84,7 +84,6 @@ function SpeakerModelOption({ model }: { model: ModelStatus }) {
           title={title}
           installation={installation}
           downloadLabel="Download"
-          showInstalled={false}
           subject={model.name}
         />
       </SpeakerOption>

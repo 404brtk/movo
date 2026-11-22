@@ -36,7 +36,7 @@ test("opens the real model catalog without starting installation", async ({ page
   await expect(labels.getByRole("radio", { name: "Off", exact: true })).toBeChecked();
   for (const [option, model] of [
     ["Up to 4 speakers", "Sortformer"],
-    ["Up to 32 speakers", "Pyannote"],
+    ["Up to 32 speakers", "Pyannote + WeSpeaker"],
   ] as const) {
     await expect(labels.getByRole("radio", { name: option, exact: true })).toBeDisabled();
     await expect(speakers.getByText(model, { exact: true })).toBeVisible();
@@ -44,13 +44,19 @@ test("opens the real model catalog without starting installation", async ({ page
       speakers.getByRole("button", { name: `Download ${model}`, exact: true }),
     ).toBeEnabled();
   }
-  await expect(speakers.getByText("Not installed", { exact: true })).toHaveCount(0);
+  await expect(speakers.getByText("Not installed", { exact: true })).toHaveCount(2);
   await expect(
     page
       .getByRole("listitem", { name: "Dictionary", exact: true })
       .getByRole("button", { name: "Manage", exact: true }),
   ).toBeEnabled();
-  await speakers.getByRole("button", { name: "Up to 32 speakers details", exact: true }).click();
+  const details = speakers.getByRole("button", { name: "Up to 32 speakers details", exact: true });
+  await details.click();
+  await expect(details).toHaveAttribute("aria-expanded", "true");
+  await page.mouse.move(0, 0);
+  await expect
+    .poll(() => details.evaluate((button) => getComputedStyle(button).backgroundColor))
+    .toBe("rgba(0, 0, 0, 0)");
   await expect(speakers.getByText("MIT and CC BY 4.0", { exact: true })).toBeVisible();
   await expect(speakers.getByText("English", { exact: true })).toBeVisible();
   expect(writes).toEqual([]);
@@ -197,8 +203,8 @@ test("chooses speaker labels, uses a speaker model once its download completes a
   let pyannote: ModelStatus = {
     ...speakerModel,
     id: "pyannote-wespeaker",
-    name: "Pyannote",
-    description: "Slower, for meetings and press conferences",
+    name: "Pyannote + WeSpeaker",
+    description: "Runs on the processor, for meetings and press conferences",
     bytes: 32523463,
     sourceUrl: "https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html",
     license: "MIT and CC BY 4.0",
@@ -243,11 +249,13 @@ test("chooses speaker labels, uses a speaker model once its download completes a
     "Sortformer · Fast, for interviews and podcasts · 132.9 MiB",
   );
   await expect(upToThirtyTwo).toBeDisabled();
+  const speakers = page.getByRole("listitem", { name: "Speaker labels", exact: true });
+  await expect(speakers.getByRole("status")).toHaveText(["Installed", "Not installed"]);
   await page.getByText("Off", { exact: true }).click();
   await expect(off).toBeChecked();
   await upToFour.click();
   await expect(upToFour).toBeChecked();
-  await page.getByRole("button", { name: "Download Pyannote", exact: true }).click();
+  await page.getByRole("button", { name: "Download Pyannote + WeSpeaker", exact: true }).click();
   await expect(
     page.getByRole("progressbar", { name: "Up to 32 speakers download", exact: true }),
   ).toHaveAttribute("aria-valuenow", String(8 * 1024 * 1024));

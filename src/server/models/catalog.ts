@@ -105,8 +105,8 @@ export const sortformerModel = {
 export const pyannoteModel = {
   id: "pyannote-wespeaker",
   role: "speakers",
-  name: "Pyannote",
-  description: "Slower, for meetings and press conferences",
+  name: "Pyannote + WeSpeaker",
+  description: "Runs on the processor, for meetings and press conferences",
   sourceUrl: "https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html",
   files: {
     segmentation: huggingFaceFile({

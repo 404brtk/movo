@@ -100,34 +100,31 @@ export function ModelActions({
   title,
   installation,
   downloadLabel,
-  showInstalled,
   subject,
 }: {
   model: ModelStatus;
   title: string;
   installation: ModelInstallation;
   downloadLabel: string;
-  showInstalled: boolean;
   subject?: string;
 }) {
   const named = (label: string) => (subject ? `${label} ${subject}` : undefined);
   const { action, busy } = installation;
   const { phase } = model.installation;
   const retry = phase === "failed" || phase === "interrupted";
-  const state = busy ? (
-    <span className="font-medium">{activeLabels[phase]}</span>
-  ) : model.state === "ready" ? (
-    showInstalled ? (
-      <StatusIndicator tone="success">Installed</StatusIndicator>
-    ) : null
-  ) : model.state === "broken" ? (
-    <StatusIndicator tone="warning">Needs repair</StatusIndicator>
-  ) : retry || phase === "cancelled" || showInstalled ? (
-    <span className="font-medium">{missingLabels[phase]}</span>
-  ) : null;
   return (
     <div className="ml-auto flex items-center gap-2 text-[12.5px]/[normal] tabular-nums">
-      {state ? <output className="flex">{state}</output> : null}
+      <output className="flex">
+        {busy ? (
+          <span className="font-medium">{activeLabels[phase]}</span>
+        ) : model.state === "ready" ? (
+          <StatusIndicator tone="success">Installed</StatusIndicator>
+        ) : model.state === "broken" ? (
+          <StatusIndicator tone="warning">Needs repair</StatusIndicator>
+        ) : (
+          <span className="font-medium">{missingLabels[phase]}</span>
+        )}
+      </output>
       {busy ? (
         <Button
           variant="ghost"
@@ -159,7 +156,13 @@ export function ModelActions({
         <CheckAgainButton model={model} installation={installation} />
       ) : null}
       <CollapsibleTrigger
-        render={<Button variant="ghost" size="icon-sm" className="group -mr-1.5" />}
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="group -mr-1.5 aria-expanded:bg-transparent aria-expanded:text-muted-foreground aria-expanded:hover:bg-muted aria-expanded:hover:text-foreground"
+          />
+        }
         aria-label={`${title} details`}
       >
         <HugeiconsIcon
@@ -273,7 +276,6 @@ export function ModelRow({ model }: { model: ModelStatus }) {
             title={model.name}
             installation={installation}
             downloadLabel="Download model"
-            showInstalled
           />
         </div>
         <ModelDetails
