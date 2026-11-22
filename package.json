@@ -21,6 +21,7 @@
     "test:tools:real": "vitest run --config vitest.real.config.ts tests/real/media-tools.test.ts",
     "test:downloads:real": "vitest run --config vitest.real.config.ts tests/real/downloads.test.ts",
     "test:models:real": "vitest run --config vitest.real.config.ts tests/real/models.test.ts",
+    "test:speakers:real": "vitest run --config vitest.real.config.ts tests/real/speakers.test.ts",
     "test:transcriptions:real": "vitest run --config vitest.real.config.ts tests/real/transcriptions.test.ts",
     "test:e2e": "node tooling/test-e2e.ts",
     "test:e2e:install": "playwright install chromium",
@@ -57,6 +58,7 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
+    "sherpa-onnx-node": "2.0.2",
     "transcribe-cpp": "0.4.1"
   },
   "devDependencies": {

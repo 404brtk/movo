@@ -22,6 +22,7 @@ import { MediaToolsSetup } from "./media-tools-setup.tsx";
 import { Spinner } from "./spinner.tsx";
 import { Button } from "./ui/button.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx";
+import { Progress } from "./ui/progress.tsx";
 
 const steps = [
   { phase: "preparing", label: "Preparing audio" },
@@ -52,7 +53,7 @@ export function NoTranscriptCard({
   onStart: () => void;
 }) {
   const models = useQuery(modelsOptions);
-  const model = models.data?.find((entry) => entry.role === "transcription");
+  const model = models.data?.models.find((entry) => entry.role === "transcription");
   return (
     <section
       aria-labelledby="transcription-state"
@@ -114,11 +115,9 @@ export function TranscribingCard({
   cancelling: boolean;
   onCancel: () => void;
 }) {
-  const models = useQuery(modelsOptions);
-  const identifiesSpeakers =
-    job.phase === "speakers" ||
-    models.data?.some((model) => model.role === "speakers" && model.state === "ready") === true;
-  const shownSteps = steps.filter((step) => step.phase !== "speakers" || identifiesSpeakers);
+  const shownSteps = steps.filter(
+    (step) => step.phase !== "speakers" || job.speakerModelId !== null,
+  );
   const position = phaseOrder.indexOf(job.phase);
   const queued = job.phase === "queued";
   const currentStep = steps[position - 1]?.label;
@@ -157,6 +156,8 @@ export function TranscribingCard({
             position > index + 1 ? "done" : position === index + 1 ? "current" : "pending";
           const shownDevice =
             state === "current" && step.phase === "transcribing" ? job.device : null;
+          const shownProgress =
+            state === "current" && step.phase === "speakers" ? job.phaseProgress : null;
           return (
             <li
               key={step.phase}
@@ -171,7 +172,7 @@ export function TranscribingCard({
               )}
             >
               <StepMarker state={state} />
-              <span>
+              <div className="min-w-0 flex-1">
                 {state === "current" ? `${step.label}…` : step.label}
                 {state === "done" ? <span className="sr-only">, done</span> : null}
                 {shownDevice ? (
@@ -179,7 +180,15 @@ export function TranscribingCard({
                     On {formatDevice(shownDevice)}
                   </span>
                 ) : null}
-              </span>
+                {shownProgress === null ? null : (
+                  <div className="mt-2 flex max-w-[280px] items-center gap-2.5">
+                    <Progress aria-label={step.label} value={shownProgress} className="flex-1" />
+                    <span className="w-[4ch] text-right text-xs font-normal text-muted-foreground tabular-nums">
+                      {shownProgress}%
+                    </span>
+                  </div>
+                )}
+              </div>
             </li>
           );
         })}

@@ -2,43 +2,66 @@ import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect, Schema } from "effect";
+import type { SpeakerModelId } from "../../shared/contracts/models.ts";
 import {
+  PhaseProgress,
   Transcript,
   TranscriptionDevice,
-  type TranscriptionPhase,
 } from "../../shared/contracts/transcriptions.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
-import { speakerModel, transcriptionModel } from "../models/catalog.ts";
+import { transcriptionModel } from "../models/catalog.ts";
 import type { Models } from "../models/models.ts";
 import { runCommand } from "../process/command.ts";
+import type { TranscriptionReport, TranscriptionRequest } from "./jobs.ts";
+import { SpeakerDiarizer } from "./speaker-diarization.ts";
 
 const EnginePhase = Schema.Literals(["loading", "transcribing", "speakers"]);
 
+const missingFile = () =>
+  new MediaError("unavailable", "The model catalog is missing a required file.");
+
 export function createTranscriptionEngine(
   tools: Pick<MediaTools, "resolve">,
-  models: Pick<Models, "resolve" | "installed">,
+  models: Pick<Models, "resolve">,
   run = runCommand,
 ) {
-  const resources = () =>
+  const transcriber = () =>
     Effect.all({
       ffmpeg: tools.resolve("ffmpeg"),
       model: models.resolve(transcriptionModel.id),
-      speakers: models.installed(speakerModel.id),
-    });
+    }).pipe(
+      Effect.flatMap(({ ffmpeg, model }) =>
+        model.transcription
+          ? Effect.succeed({ ffmpeg, modelPath: model.transcription })
+          : Effect.fail(missingFile()),
+      ),
+    );
+  const diarizer = (speakerModelId: SpeakerModelId | null) =>
+    speakerModelId === null
+      ? Effect.succeed(null)
+      : models.resolve(speakerModelId).pipe(
+          Effect.flatMap((files) =>
+            Effect.try({
+              try: () =>
+                Schema.decodeUnknownSync(SpeakerDiarizer)({ model: speakerModelId, ...files }),
+              catch: missingFile,
+            }),
+          ),
+        );
   return {
-    check: () => resources().pipe(Effect.asVoid),
+    check: (speakerModelId: SpeakerModelId | null) =>
+      Effect.all([transcriber(), diarizer(speakerModelId)]).pipe(Effect.asVoid),
     transcribe: (
-      path: string,
-      directory: string,
-      update: (phase: TranscriptionPhase) => void,
-      reportDevice: (device: TranscriptionDevice) => void,
+      { path, directory, speakerModelId }: TranscriptionRequest,
+      report: TranscriptionReport,
     ) =>
       Effect.gen(function* () {
-        const { ffmpeg, model, speakers } = yield* resources();
+        const { ffmpeg, modelPath } = yield* transcriber();
+        const speakers = yield* diarizer(speakerModelId);
         const pcm = join(directory, "audio.f32");
         const resultPath = join(directory, "result.json");
-        update("preparing");
+        report.phase("preparing");
         yield* run(
           ffmpeg,
           [
@@ -84,21 +107,34 @@ export function createTranscriptionEngine(
           import.meta.url,
         );
         let deviceReported = false;
-        const speakerArguments = speakers === null ? [] : [speakers];
         yield* run(
           process.execPath,
-          [fileURLToPath(worker), model, pcm, resultPath, ...speakerArguments],
+          [
+            fileURLToPath(worker),
+            modelPath,
+            pcm,
+            resultPath,
+            ...(speakers ? [JSON.stringify(speakers)] : []),
+          ],
           {
             timeoutMs: 6 * 60 * 60 * 1000,
             ipc: true,
             onLine: (line) => {
               if (line.startsWith("MOVO_DEVICE:")) {
-                reportDevice(
+                report.device(
                   Schema.decodeUnknownSync(TranscriptionDevice)(
                     JSON.parse(line.slice("MOVO_DEVICE:".length)),
                   ),
                 );
                 deviceReported = true;
+                return;
+              }
+              if (line.startsWith("MOVO_PROGRESS:")) {
+                report.progress(
+                  Schema.decodeUnknownSync(PhaseProgress)(
+                    Number(line.slice("MOVO_PROGRESS:".length)),
+                  ),
+                );
                 return;
               }
               if (!line.startsWith("MOVO_PHASE:")) return;
@@ -108,7 +144,7 @@ export function createTranscriptionEngine(
                   "unsupported",
                   "The transcription engine returned an invalid phase.",
                 );
-              update(phase);
+              report.phase(phase);
             },
           },
         ).pipe(

@@ -42,12 +42,18 @@ import {
   DownloadPreview,
   type DownloadRequest,
 } from "../../shared/contracts/downloads.ts";
-import { activeModelPhases, ModelList, ModelStatus } from "../../shared/contracts/models.ts";
+import {
+  activeModelPhases,
+  ModelCatalog,
+  ModelStatus,
+  SpeakerLabels,
+} from "../../shared/contracts/models.ts";
 import {
   defaultHistoryPage,
   TranscriptHistory,
   TranscriptionJob,
   TranscriptionStatus,
+  type TranscriptionRetry,
   type PassageEdit,
   type SpeakerAssignment,
   type SpeakerMerge,
@@ -210,9 +216,9 @@ export const transcriptionExportUrl = (
 export const modelsOptions = queryOptions({
   queryKey: ["models"],
   queryFn: ({ signal }) =>
-    readResponse(client.api.models.$get({}, { init: { signal } }), ModelList),
+    readResponse(client.api.models.$get({}, { init: { signal } }), ModelCatalog),
   refetchInterval: (query) =>
-    query.state.data?.some((model) => activeModelPhases.includes(model.installation.phase))
+    query.state.data?.models.some((model) => activeModelPhases.includes(model.installation.phase))
       ? 1000
       : false,
   retry: false,
@@ -221,6 +227,8 @@ export const installModel = (id: string) =>
   readResponse(client.api.models[":id"].install.$post({ param: { id } }), ModelStatus);
 export const cancelModelInstallation = (id: string) =>
   readResponse(client.api.models[":id"].cancel.$post({ param: { id } }), ModelStatus);
+export const chooseSpeakerLabels = (choice: SpeakerLabels) =>
+  readResponse(client.api.models["speaker-labels"].$put({}, jsonBody(choice)), SpeakerLabels);
 
 export const downloadsOptions = queryOptions({
   queryKey: ["downloads"],
@@ -286,9 +294,12 @@ export const cancelTranscription = (id: string) =>
     client.api.media[":id"].transcription.cancel.$post({ param: { id } }),
     TranscriptionStatus,
   );
-export const retryTranscription = (id: string) =>
+export const retryTranscription = (id: string, choice?: TranscriptionRetry) =>
   readResponse(
-    client.api.media[":id"].transcription.retry.$post({ param: { id } }),
+    client.api.media[":id"].transcription.retry.$post(
+      { param: { id } },
+      choice ? jsonBody(choice) : undefined,
+    ),
     TranscriptionJob,
   );
 export const transcriptHistoryOptions = (id: string, revision: number) =>

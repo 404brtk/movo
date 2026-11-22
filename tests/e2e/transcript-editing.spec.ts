@@ -26,13 +26,13 @@ const test = base.extend<{
             const database = yield* openDatabase(join(directory, "app.sqlite"));
             const config = { dataDirectory: directory };
             const tools = createMediaTools(config);
-            const models = createModels({ cacheDirectory: join(directory, "hf-cache") });
+            const models = createModels({ database, cacheDirectory: join(directory, "hf-cache") });
             yield* Effect.addFinalizer(() => models.close());
             const transcriptions = createTranscriptions(database, config, tools, {
               check: () => Effect.void,
-              transcribe: (_path, _staging, _update, reportDevice) =>
+              transcribe: (_request, report) =>
                 Effect.sync(() => {
-                  reportDevice({ backend: "cpu", name: "Test CPU" });
+                  report.device({ backend: "cpu", name: "Test CPU" });
                   return {
                     language: "en",
                     words: [
@@ -209,7 +209,8 @@ test("asks before transcribing again replaces edits and then starts a new histor
 
   const more = page.getByRole("button", { name: "More actions", exact: true });
   await more.click();
-  await page.getByRole("menuitem", { name: "Transcribe again…" }).click();
+  await page.getByRole("menuitem", { name: "Transcribe again", exact: true }).click();
+  await page.getByRole("menuitem", { name: "No speaker labels…", exact: true }).click();
   const dialog = page.getByRole("alertdialog", { name: "Replace your edits?" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Keep edits" }).click();
@@ -217,7 +218,8 @@ test("asks before transcribing again replaces edits and then starts a new histor
   await expect(passages(page).first()).toContainText("Edited first passage.");
 
   await more.click();
-  await page.getByRole("menuitem", { name: "Transcribe again…" }).click();
+  await page.getByRole("menuitem", { name: "Transcribe again", exact: true }).click();
+  await page.getByRole("menuitem", { name: "No speaker labels…", exact: true }).click();
   await dialog.getByRole("button", { name: "Transcribe again" }).click();
   await expect(passages(page).first()).toContainText("We deploy kubernetis daily.");
   await expect(page.getByRole("main")).not.toContainText("· edited");

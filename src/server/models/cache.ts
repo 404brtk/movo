@@ -8,7 +8,8 @@ import { Schema } from "effect";
 import type { ModelStatus } from "../../shared/contracts/models.ts";
 import { downloadFile } from "../files/download.ts";
 import { MediaError } from "../media/error.ts";
-import type { ModelDefinition } from "./catalog.ts";
+import type { ModelFile } from "./catalog.ts";
+import { shareWork } from "./shared-work.ts";
 
 type Availability = Pick<ModelStatus, "state" | "message">;
 const ModelMetadata = Schema.Struct({ "general.architecture": Schema.String });
@@ -28,68 +29,78 @@ export function huggingFaceCacheDirectory(environment: NodeJS.ProcessEnv = proce
   );
 }
 
-export function modelCachePath(directory: string, definition: ModelDefinition) {
+export function modelCachePath(directory: string, file: ModelFile) {
   return join(
     directory,
-    `models--${definition.repository.replaceAll("/", "--")}`,
+    `models--${file.repository.replaceAll("/", "--")}`,
     "snapshots",
-    definition.revision,
-    definition.filename,
+    file.revision,
+    file.filename,
   );
 }
 
-async function verifyHeader(path: string, definition: ModelDefinition) {
+async function verifyHeader(path: string, file: ModelFile) {
+  if (file.ggufArchitecture === undefined) return;
   try {
     const { metadata } = await gguf(path, { allowLocalFile: true });
     const architecture = Schema.decodeUnknownSync(ModelMetadata)(metadata)["general.architecture"];
-    if (architecture !== definition.architecture)
-      throw new Error(`Expected ${definition.architecture}, found ${architecture}.`);
+    if (architecture !== file.ggufArchitecture)
+      throw new Error(`Expected ${file.ggufArchitecture}, found ${architecture}.`);
   } catch (cause) {
     throw new MediaError(
       "unsupported",
-      `The model is not a supported ${definition.name} GGUF file.`,
+      `${file.filename} is not a supported ${file.ggufArchitecture} GGUF file.`,
       cause,
     );
   }
 }
 
-export function createModelCache(directory: string, definition: ModelDefinition) {
-  const path = modelCachePath(directory, definition);
-  let verification: { fingerprint: string; result: Promise<void> } | undefined;
+export function createModelCache(directory: string, file: ModelFile) {
+  const path = modelCachePath(directory, file);
+  let verification: { fingerprint: string; work: ReturnType<typeof shareWork<void>> } | undefined;
   const verify = async (initial: Stats, signal: AbortSignal) => {
-    if (!initial.isFile() || initial.size !== definition.bytes)
-      throw new MediaError("unsupported", "The cached model has an unexpected file type or size.");
+    if (!initial.isFile() || initial.size !== file.bytes)
+      throw new MediaError(
+        "unsupported",
+        `The cached file ${file.filename} has an unexpected type or size.`,
+      );
     const hash = createHash("sha256");
     for await (const chunk of createReadStream(path, { signal })) hash.update(chunk);
-    if (hash.digest("hex") !== definition.sha256)
-      throw new MediaError("unsupported", "The cached model failed its SHA-256 integrity check.");
+    if (hash.digest("hex") !== file.sha256)
+      throw new MediaError(
+        "unsupported",
+        `The cached file ${file.filename} failed its SHA-256 integrity check.`,
+      );
     signal.throwIfAborted();
-    await verifyHeader(path, definition);
+    await verifyHeader(path, file);
     signal.throwIfAborted();
     if (fingerprint(await stat(path)) !== fingerprint(initial))
-      throw new MediaError("unavailable", "The model changed during verification. Check again.");
+      throw new MediaError(
+        "unavailable",
+        `The cached file ${file.filename} changed during verification. Check again.`,
+      );
   };
   const inspect = async (signal: AbortSignal, retry = true): Promise<Availability> => {
     signal.throwIfAborted();
-    let file;
+    let cached;
     try {
-      file = await stat(path);
+      cached = await stat(path);
     } catch (cause) {
       if (!hasCode(cause, "ENOENT")) throw cause;
       verification = undefined;
       return { state: "missing", message: null };
     }
-    const key = fingerprint(file);
-    if (verification?.fingerprint !== key)
-      verification = { fingerprint: key, result: verify(file, signal) };
+    const key = fingerprint(cached);
+    if (verification?.fingerprint !== key || verification.work.abandoned())
+      verification = {
+        fingerprint: key,
+        work: shareWork((verificationSignal) => verify(cached, verificationSignal)),
+      };
     try {
-      await verification.result;
+      await verification.work.join(signal);
       return { state: "ready", message: null };
     } catch (cause) {
-      if (signal.aborted) {
-        verification = undefined;
-        throw cause;
-      }
+      if (signal.aborted) throw cause;
       if (hasCode(cause, "ENOENT")) {
         verification = undefined;
         return { state: "missing", message: null };
@@ -122,9 +133,9 @@ export function createModelCache(directory: string, definition: ModelDefinition)
         }
       };
       try {
-        await downloadFile(definition, partial, signal, progress);
+        await downloadFile(file, partial, signal, progress);
         const downloaded = await stat(partial);
-        await verifyHeader(partial, definition);
+        await verifyHeader(partial, file);
         signal.throwIfAborted();
         try {
           await link(partial, path);
@@ -138,7 +149,10 @@ export function createModelCache(directory: string, definition: ModelDefinition)
               "unavailable",
               "The model changed during publication. Check again.",
             );
-          verification = { fingerprint: fingerprint(published), result: Promise.resolve() };
+          verification = {
+            fingerprint: fingerprint(published),
+            work: shareWork(() => Promise.resolve()),
+          };
         } catch (cause) {
           if (!hasCode(cause, "EEXIST"))
             throw cause instanceof MediaError

@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 import { getAvailableBackendsAsync } from "transcribe-cpp";
 import { expect, it } from "vitest";
-import { openDatabase } from "../../src/server/db/database.ts";
 import { createMediaLibrary } from "../../src/server/media/library.ts";
 import { createMediaTools } from "../../src/server/media-tools/tools.ts";
 import { createModels } from "../../src/server/models/models.ts";
@@ -19,19 +18,23 @@ import {
   maxPassageMs,
   transcriptPassages,
 } from "../../src/shared/transcript-passages.ts";
+import { openTestDatabase } from "../helpers/test-database.ts";
 
 it.for([1, 7])(
   "transcribes real speech repeated %s times and preserves source and shared weights",
   async (repetitions) => {
     const directory = await mkdtemp(join(tmpdir(), "movo-real-transcription-"));
-    const models = createModels();
+    const { database, close } = await openTestDatabase(directory);
+    const models = createModels({ database });
     try {
-      const modelPath = await Effect.runPromise(models.resolve(transcriptionModel.id));
+      const { transcription: modelPath } = await Effect.runPromise(
+        models.resolve(transcriptionModel.id),
+      );
+      if (!modelPath) throw new Error("The transcription model has no file.");
       const before = await stat(modelPath);
       await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
-            const database = yield* openDatabase(join(directory, "app.sqlite"));
             const config = { dataDirectory: directory };
             const tools = createMediaTools(config);
             const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
@@ -128,6 +131,7 @@ it.for([1, 7])(
       });
     } finally {
       await Effect.runPromise(models.close());
+      await close();
       await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
   },

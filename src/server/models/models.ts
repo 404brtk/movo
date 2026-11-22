@@ -1,8 +1,15 @@
-import { Effect, Schema } from "effect";
-import { ModelId, ModelStatus, type ModelInstallation } from "../../shared/contracts/models.ts";
+import { Effect, Schema, Semaphore } from "effect";
+import {
+  ModelId,
+  ModelStatus,
+  SpeakerModelId,
+  type ModelInstallation,
+} from "../../shared/contracts/models.ts";
+import type { AppDatabase } from "../db/database.ts";
 import { MediaError } from "../media/error.ts";
 import { createModelCache, huggingFaceCacheDirectory, modelCachePath } from "./cache.ts";
-import { modelCatalog, type ModelDefinition } from "./catalog.ts";
+import { modelCatalog, type ModelDefinition, type ModelPaths } from "./catalog.ts";
+import { readSpeakerModelId, saveSpeakerModelId } from "./speaker-labels.ts";
 
 const modelError = (cause: unknown) =>
   cause instanceof MediaError
@@ -20,43 +27,102 @@ const shutdownError = (cause: unknown) =>
     cause,
   );
 
-function createModel(cacheDirectory: string, definition: ModelDefinition) {
-  const cache = createModelCache(cacheDirectory, definition);
+const settingsStorage = <A>(operation: () => A) =>
+  Effect.try({
+    try: operation,
+    catch: (cause) =>
+      new MediaError(
+        "storage",
+        "Could not access the speaker labels setting. Check the database and disk space.",
+        cause,
+      ),
+  });
+
+const missingMessage = (definition: ModelDefinition) =>
+  definition.role === "speakers"
+    ? `Speaker labels use ${definition.name}, which is not installed. Download it in Settings or choose another option under Speaker labels.`
+    : `Download ${definition.name} from Settings before transcribing a recording.`;
+
+function createModel(cacheDirectory: string, definition: ModelDefinition, onInstalled: () => void) {
+  const files = Object.entries(definition.files).map(([role, file]) => ({
+    role,
+    file,
+    cache: createModelCache(cacheDirectory, file),
+  }));
+  const bytes = files.reduce((total, { file }) => total + file.bytes, 0);
   const lifetime = new AbortController();
   let installation: ModelInstallation = { phase: "idle", downloadedBytes: 0, error: null };
   let running: Promise<void> | undefined;
   let controller: AbortController | undefined;
   let closed = false;
+  const availability = async (signal = lifetime.signal) => {
+    const states = await Promise.all(files.map(({ cache }) => cache.inspect(signal)));
+    return (
+      states.find((entry) => entry.state === "broken") ??
+      states.find((entry) => entry.state === "missing") ?? { state: "ready", message: null }
+    );
+  };
   const status = async () =>
     Schema.decodeUnknownSync(ModelStatus)({
       ...definition,
-      ...(await cache.inspect(lifetime.signal)),
+      bytes,
+      parts: files.map(({ file }) => ({ name: file.title, bytes: file.bytes })),
+      ...(await availability()),
       installation,
     });
-  const failure = (cause: unknown) => (closed ? shutdownError(cause) : modelError(cause));
-  const installed = async () => {
-    if (closed) throw failure(undefined);
-    const current = await status();
-    if (current.state === "broken")
-      throw new MediaError("unavailable", current.message ?? "The cached model needs repair.");
-    return current.state === "ready" ? modelCachePath(cacheDirectory, definition) : null;
+  const download = async (signal: AbortSignal) => {
+    const pending = [];
+    let completedBytes = 0;
+    for (const { file, cache } of files) {
+      const current = await cache.inspect(signal);
+      if (current.state === "broken")
+        throw new MediaError("unavailable", current.message ?? "The cached model needs repair.");
+      if (current.state === "ready") completedBytes += file.bytes;
+      else pending.push({ file, cache });
+    }
+    installation = { ...installation, downloadedBytes: completedBytes };
+    for (const { file, cache } of pending) {
+      signal.throwIfAborted();
+      await cache.download(signal, (fileBytes) => {
+        const downloadedBytes = completedBytes + fileBytes;
+        installation = {
+          phase: downloadedBytes === bytes ? "verifying" : "downloading",
+          downloadedBytes,
+          error: null,
+        };
+      });
+      completedBytes += file.bytes;
+    }
+    const installed = await availability(signal);
+    signal.throwIfAborted();
+    if (installed.state !== "ready")
+      throw new MediaError(
+        "unavailable",
+        installed.message ??
+          `A file of ${definition.name} was removed during the download. Download it again.`,
+      );
   };
+  const failure = (cause: unknown) => (closed ? shutdownError(cause) : modelError(cause));
   return {
     status: () => Effect.tryPromise({ try: status, catch: failure }),
     resolve: () =>
       Effect.tryPromise({
-        try: async () => {
-          const path = await installed();
-          if (path === null)
+        try: async (): Promise<ModelPaths> => {
+          if (closed) throw failure(undefined);
+          const current = await status();
+          if (current.state === "broken")
             throw new MediaError(
               "unavailable",
-              `Download ${definition.name} from Settings before transcribing a recording.`,
+              current.message ?? "The cached model needs repair.",
             );
-          return path;
+          if (current.state === "missing")
+            throw new MediaError("unavailable", missingMessage(definition));
+          return Object.fromEntries(
+            files.map(({ role, file }) => [role, modelCachePath(cacheDirectory, file)]),
+          );
         },
         catch: failure,
       }),
-    installed: () => Effect.tryPromise({ try: installed, catch: failure }),
     install: () =>
       Effect.tryPromise({
         try: async () => {
@@ -72,15 +138,9 @@ function createModel(cacheDirectory: string, definition: ModelDefinition) {
           const operation = controller;
           installation = { phase: "checking", downloadedBytes: 0, error: null };
           const signal = AbortSignal.any([operation.signal, AbortSignal.timeout(30 * 60 * 1000)]);
-          running = cache
-            .download(signal, (downloadedBytes) => {
-              installation = {
-                phase: downloadedBytes === definition.bytes ? "verifying" : "downloading",
-                downloadedBytes,
-                error: null,
-              };
-            })
+          running = download(signal)
             .then(() => {
+              onInstalled();
               installation = { ...installation, phase: "complete" };
               return undefined;
             })
@@ -131,12 +191,26 @@ function createModel(cacheDirectory: string, definition: ModelDefinition) {
 }
 
 export function createModels({
+  database,
   cacheDirectory = huggingFaceCacheDirectory(),
   definitions = modelCatalog,
-}: { cacheDirectory?: string; definitions?: readonly ModelDefinition[] } = {}) {
+}: {
+  database: AppDatabase;
+  cacheDirectory?: string;
+  definitions?: readonly ModelDefinition[];
+}) {
   const models = new Map(
-    definitions.map((definition) => [definition.id, createModel(cacheDirectory, definition)]),
+    definitions.map((definition) => [
+      definition.id,
+      {
+        definition,
+        ...createModel(cacheDirectory, definition, () => {
+          if (Schema.is(SpeakerModelId)(definition.id)) saveSpeakerModelId(database, definition.id);
+        }),
+      },
+    ]),
   );
+  const choosing = Semaphore.makeUnsafe(1);
   const model = (id: string) => {
     const found = Schema.is(ModelId)(id) ? models.get(id) : undefined;
     return found
@@ -144,9 +218,30 @@ export function createModels({
       : Effect.fail(new MediaError("notFound", "Model not found."));
   };
   return {
-    list: () => Effect.forEach([...models.values()], (entry) => entry.status()),
+    list: () =>
+      Effect.all({
+        models: Effect.forEach([...models.values()], (entry) => entry.status()),
+        speakerModelId: settingsStorage(() => readSpeakerModelId(database)),
+      }),
+    chooseSpeakerLabels: (speakerModelId: SpeakerModelId | null) =>
+      Effect.gen(function* () {
+        if (speakerModelId !== null) {
+          const chosen = yield* model(speakerModelId);
+          const status = yield* chosen.status();
+          if (status.state !== "ready")
+            return yield* Effect.fail(
+              new MediaError(
+                "invalid",
+                status.state === "broken"
+                  ? (status.message ?? "The cached model needs repair.")
+                  : `Download ${chosen.definition.name} before using it for speaker labels.`,
+              ),
+            );
+        }
+        yield* settingsStorage(() => saveSpeakerModelId(database, speakerModelId));
+        return { speakerModelId };
+      }).pipe(Semaphore.withPermit(choosing)),
     resolve: (id: string) => Effect.flatMap(model(id), (entry) => entry.resolve()),
-    installed: (id: string) => Effect.flatMap(model(id), (entry) => entry.installed()),
     install: (id: string) => Effect.flatMap(model(id), (entry) => entry.install()),
     cancel: (id: string) => Effect.flatMap(model(id), (entry) => entry.cancel()),
     close: () =>

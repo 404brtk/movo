@@ -24,7 +24,7 @@ import { searchParams } from "../lib/search-params.ts";
 import {
   hasEdits,
   type TranscriptionActionMutation,
-  useModelName,
+  useResultModels,
   useTranscriptionAction,
 } from "../lib/transcription-actions.ts";
 
@@ -116,7 +116,7 @@ function RecordingHeading({
   split: boolean;
   job: TranscriptionJob | null | undefined;
 }) {
-  const modelName = useModelName(job?.modelId);
+  const resultModels = useResultModels(job);
   return (
     <div className={split ? "order-1 mt-5" : "mt-1"}>
       <h1
@@ -130,7 +130,7 @@ function RecordingHeading({
       <RecordingDetails item={item} />
       {job?.transcript ? (
         <p className="mt-1 text-xs text-muted-foreground">
-          {modelName}
+          {resultModels}
           {hasEdits(job) ? " · edited" : ""}
         </p>
       ) : null}

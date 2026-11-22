@@ -16,7 +16,7 @@ export async function readPreparedAudio(path: string) {
   try {
     const { size } = await file.stat();
     assertPreparedAudioSize(size);
-    const pcm = Buffer.allocUnsafe(size);
+    const pcm = Buffer.allocUnsafeSlow(size);
     for (let offset = 0; offset < size;) {
       const { bytesRead } = await file.read(
         pcm,

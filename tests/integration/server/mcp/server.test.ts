@@ -508,6 +508,59 @@ describe("MCP endpoint", () => {
   );
 
   it(
+    "transcribes a recording again with chosen speaker labels and rejects a missing speaker model",
+    withMovo(
+      {
+        check: (speakerModelId) =>
+          speakerModelId === "pyannote-wespeaker"
+            ? Effect.fail(
+                new MediaError(
+                  "unavailable",
+                  "Speaker labels use Pyannote, which is not installed. Download it in Settings or choose another option under Speaker labels.",
+                ),
+              )
+            : Effect.void,
+        transcribe: () => Effect.succeed({ language: "en", words }),
+      },
+      async (app) => {
+        const item = await toolSuccess(MediaItem, app, "import_file", { path: fixture });
+        const recording = Schema.Struct({ transcription: TranscriptionSummary });
+        const transcription = async () =>
+          (await toolSuccess(recording, app, "get_recording", { mediaId: item.id })).transcription;
+        await toolSuccess(TranscriptionSummary, app, "transcribe_recording", { mediaId: item.id });
+        await expect
+          .poll(transcription)
+          .toMatchObject({ status: "completed", speakerModelId: null });
+        expect(
+          await toolSuccess(TranscriptionSummary, app, "retry_transcription", {
+            mediaId: item.id,
+            speakerModelId: "sortformer-4spk-q8",
+          }),
+        ).toMatchObject({ status: "queued", speakerModelId: "sortformer-4spk-q8" });
+        await expect
+          .poll(transcription)
+          .toMatchObject({ status: "completed", speakerModelId: "sortformer-4spk-q8" });
+        expect(
+          await toolError(app, "retry_transcription", {
+            mediaId: item.id,
+            speakerModelId: "pyannote-wespeaker",
+          }),
+        ).toMatch(/^Speaker labels use Pyannote, which is not installed\./u);
+        expect(
+          await toolError(app, "retry_transcription", {
+            mediaId: item.id,
+            speakerModelId: "parakeet-ultra-q8",
+          }),
+        ).toBeTruthy();
+        expect(await transcription()).toMatchObject({
+          status: "completed",
+          speakerModelId: "sortformer-4spk-q8",
+        });
+      },
+    ),
+  );
+
+  it(
     "reads, names, assigns and merges identified speakers through tools",
     withMovo(conversationEngine, async (app) => {
       const item = await toolSuccess(MediaItem, app, "import_file", { path: fixture });

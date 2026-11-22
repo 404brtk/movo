@@ -8,6 +8,7 @@ import { ListSkeleton } from "../components/list-skeleton.tsx";
 import { MediaToolsSetup } from "../components/media-tools-setup.tsx";
 import { ModelRow } from "../components/model-row.tsx";
 import { PageHeader } from "../components/page-header.tsx";
+import { SpeakerLabels } from "../components/speaker-labels.tsx";
 import { ToolRow } from "../components/tool-row.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { YtdlpSetup } from "../components/ytdlp-setup.tsx";
@@ -84,9 +85,12 @@ function Settings() {
         ) : null}
         {models.data ? (
           <ul className="mt-2">
-            {models.data.map((model) => (
-              <ModelRow key={model.id} model={model} />
-            ))}
+            {models.data.models
+              .filter((model) => model.role === "transcription")
+              .map((model) => (
+                <ModelRow key={model.id} model={model} />
+              ))}
+            <SpeakerLabels catalog={models.data} />
           </ul>
         ) : null}
         <ul className="mt-3">

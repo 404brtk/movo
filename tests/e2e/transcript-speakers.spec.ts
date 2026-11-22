@@ -27,13 +27,13 @@ const test = base.extend<{ recording: { origin: string; mediaId: string; url: st
             const database = yield* openDatabase(join(directory, "app.sqlite"));
             const config = { dataDirectory: directory };
             const tools = createMediaTools(config);
-            const models = createModels({ cacheDirectory: join(directory, "hf-cache") });
+            const models = createModels({ database, cacheDirectory: join(directory, "hf-cache") });
             yield* Effect.addFinalizer(() => models.close());
             const transcriptions = createTranscriptions(database, config, tools, {
               check: () => Effect.void,
-              transcribe: (_path, _staging, _update, reportDevice) =>
+              transcribe: (_request, report) =>
                 Effect.sync(() => {
-                  reportDevice({ backend: "cpu", name: "Test CPU" });
+                  report.device({ backend: "cpu", name: "Test CPU" });
                   return {
                     language: "en",
                     words: [
@@ -241,9 +241,13 @@ test("moves passages between speakers, merges them, names the remaining speaker 
   await panel.getByRole("button", { name: "Change speaker of passage at 0:02" }).click();
   await page.getByRole("menuitemradio", { name: "Speaker 2" }).click();
   await expect(speakerHeadings(page)).toHaveText(["Speaker 1", "Speaker 2"]);
+  await expect(page.getByRole("menu")).toHaveCount(0);
 
   await panel.getByRole("button", { name: "Change speaker of passage at 0:00" }).click();
-  await page.getByRole("menuitem", { name: "New speaker" }).click();
+  await page
+    .getByRole("menu", { name: "Change speaker of passage at 0:00" })
+    .getByRole("menuitem", { name: "New speaker" })
+    .click();
   await expect(speakerHeadings(page)).toHaveText(["Speaker 3", "Speaker 2"]);
 
   await speakerHeadings(page).first().click();

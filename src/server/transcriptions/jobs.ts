@@ -30,7 +30,9 @@ import type { DictionaryEntry } from "../../shared/contracts/dictionary.ts";
 import { dictionaryFixes } from "../../shared/transcript-dictionary.ts";
 import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { MediaId } from "../../shared/contracts/media.ts";
+import type { SpeakerModelId } from "../../shared/contracts/models.ts";
 import type { AppDatabase } from "../db/database.ts";
+import { readSpeakerModelId } from "../models/speaker-labels.ts";
 import { createMediaLibrary } from "../media/library.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
@@ -48,13 +50,23 @@ import { addFixes, applyDictionary } from "./dictionary-store.ts";
 import { queueTranscription } from "./queue.ts";
 import { transcriptionJobs, type transcriptChanges } from "./transcriptions.schema.ts";
 
+export interface TranscriptionRequest {
+  path: string;
+  directory: string;
+  speakerModelId: SpeakerModelId | null;
+}
+
+export interface TranscriptionReport {
+  phase: (phase: TranscriptionPhase) => void;
+  device: (device: TranscriptionDevice) => void;
+  progress: (percent: number) => void;
+}
+
 export interface TranscriptionEngine {
-  check: () => Effect.Effect<void, MediaError>;
+  check: (speakerModelId: SpeakerModelId | null) => Effect.Effect<void, MediaError>;
   transcribe: (
-    path: string,
-    directory: string,
-    update: (phase: TranscriptionPhase) => void,
-    reportDevice: (device: TranscriptionDevice) => void,
+    request: TranscriptionRequest,
+    report: TranscriptionReport,
   ) => Effect.Effect<Transcript, MediaError>;
 }
 
@@ -97,7 +109,7 @@ export function createTranscriptions(
   ) =>
     executor
       .update(transcriptionJobs)
-      .set({ ...changes, updatedAt: Date.now() })
+      .set({ ...(changes.phase ? { phaseProgress: null } : {}), ...changes, updatedAt: Date.now() })
       .where(and(eq(transcriptionJobs.mediaId, id), eq(transcriptionJobs.status, "running")))
       .run();
   const interrupt = (id: string) =>
@@ -159,10 +171,12 @@ export function createTranscriptions(
             updateRunning(job.mediaId, changes);
           };
           const result = yield* engine.transcribe(
-            path,
-            directory,
-            (phase) => report({ phase }),
-            (device) => report({ device }),
+            { path, directory, speakerModelId: job.speakerModelId },
+            {
+              phase: (phase) => report({ phase }),
+              device: (device) => report({ device }),
+              progress: (phaseProgress) => report({ phaseProgress }),
+            },
           );
           yield* storage(() => {
             const transcript = Schema.decodeUnknownSync(Transcript)(result);
@@ -178,7 +192,15 @@ export function createTranscriptions(
             database.transaction((transaction) => {
               const completed = updateRunning(
                 job.mediaId,
-                { status: "completed", phase: "finished", transcript, error: null },
+                {
+                  status: "completed",
+                  phase: "finished",
+                  transcript,
+                  resultSpeakerModelId: transcript.words.some((word) => word.speaker !== undefined)
+                    ? job.speakerModelId
+                    : null,
+                  error: null,
+                },
                 transaction,
               );
               if (completed.changes === 0) return;
@@ -329,8 +351,10 @@ export function createTranscriptions(
       });
       return yield* read(id);
     }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions));
+  const chosenSpeakerModel = () => storage(() => readSpeakerModelId(database));
+  const check = () => Effect.flatMap(chosenSpeakerModel(), engine.check);
   return {
-    check: engine.check,
+    check,
     get,
     removeMedia: (id: string) =>
       Effect.gen(function* () {
@@ -489,7 +513,7 @@ export function createTranscriptions(
         yield* library.file(id);
         const existing = yield* read(id);
         if (existing) return existing;
-        yield* engine.check();
+        yield* check();
         return yield* storage(() => {
           queueTranscription(database, id);
           return Schema.decodeUnknownSync(TranscriptionJob)(row(id));
@@ -502,14 +526,20 @@ export function createTranscriptions(
         yield* storage(() =>
           database
             .update(transcriptionJobs)
-            .set({ status: "cancelled", phase: "finished", error: null, updatedAt: Date.now() })
+            .set({
+              status: "cancelled",
+              phase: "finished",
+              phaseProgress: null,
+              error: null,
+              updatedAt: Date.now(),
+            })
             .where(and(eq(transcriptionJobs.mediaId, id), eq(transcriptionJobs.status, job.status)))
             .run(),
         );
         if (active?.mediaId === id) yield* Fiber.interrupt(active.fiber);
         return yield* read(id);
       }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
-    retry: (id: string) =>
+    retry: (id: string, speakerModelId?: SpeakerModelId | null) =>
       Effect.gen(function* () {
         const job = yield* get(id);
         if (!job || ["queued", "running"].includes(job.status))
@@ -518,15 +548,19 @@ export function createTranscriptions(
           );
         if (active?.mediaId === id) yield* Fiber.interrupt(active.fiber);
         yield* library.file(id);
-        yield* engine.check();
+        const speakers =
+          speakerModelId === undefined ? yield* chosenSpeakerModel() : speakerModelId;
+        yield* engine.check(speakers);
         const cleaned = yield* cleanup(id);
         if (Result.isFailure(cleaned)) return yield* Effect.fail(cleaned.failure);
         yield* storage(() =>
           database
             .update(transcriptionJobs)
             .set({
+              speakerModelId: speakers,
               status: "queued",
               phase: "queued",
+              phaseProgress: null,
               device: null,
               error: null,
               updatedAt: Date.now(),
@@ -549,6 +583,7 @@ export function createTranscriptions(
             .set({
               status: "interrupted",
               phase: "finished",
+              phaseProgress: null,
               error: "Movo stopped before transcription finished. Retry to start again.",
               updatedAt: Date.now(),
             })

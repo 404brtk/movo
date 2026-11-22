@@ -36,8 +36,7 @@ it.for(["tone.wav", "sample.webm"])(
     const engine = createTranscriptionEngine(
       tools,
       {
-        resolve: () => Effect.succeed("verified-model.gguf"),
-        installed: () => Effect.succeed(null),
+        resolve: () => Effect.succeed({ transcription: "verified-model.gguf" }),
       },
       (file, args, options) =>
         file === process.execPath
@@ -51,13 +50,15 @@ it.for(["tone.wav", "sample.webm"])(
             })
           : runCommand(file, args, options),
     );
-    await Effect.runPromise(engine.check());
+    await Effect.runPromise(engine.check(null));
     const result = await Effect.runPromise(
       engine.transcribe(
-        fileURLToPath(source),
-        staging,
-        (phase) => phases.push(phase),
-        (device) => devices.push(device),
+        { path: fileURLToPath(source), directory: staging, speakerModelId: null },
+        {
+          phase: (phase) => phases.push(phase),
+          device: (device) => devices.push(device),
+          progress: () => undefined,
+        },
       ),
     );
     expect(result).toEqual(expected);
@@ -118,8 +119,7 @@ it.for([
   const engine = createTranscriptionEngine(
     tools,
     {
-      resolve: () => Effect.succeed("verified-model.gguf"),
-      installed: () => Effect.succeed(null),
+      resolve: () => Effect.succeed({ transcription: "verified-model.gguf" }),
     },
     (file, args, options) =>
       Effect.promise(async () => {
@@ -133,10 +133,8 @@ it.for([
   await expect(
     Effect.runPromise(
       engine.transcribe(
-        "recording.wav",
-        directory,
-        () => undefined,
-        () => undefined,
+        { path: "recording.wav", directory, speakerModelId: null },
+        { phase: () => undefined, device: () => undefined, progress: () => undefined },
       ),
     ),
   ).rejects.toMatchObject({
@@ -146,53 +144,100 @@ it.for([
   });
 });
 
-it("hands the verified speaker model to the worker and accepts its speaker phase and result", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "movo-transcription-speakers-"));
-  onTestFinished(() =>
-    rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }),
-  );
-  const expected = {
-    language: "en",
-    words: [
-      { startMs: 0, endMs: 500, text: "Hello.", speaker: 1 },
-      { startMs: 600, endMs: 1000, text: "Hi.", speaker: 2 },
-    ],
-  };
-  const phases: string[] = [];
-  const workerArguments: string[][] = [];
-  const engine = createTranscriptionEngine(
-    createMediaTools({ dataDirectory: directory }),
-    {
-      resolve: () => Effect.succeed("verified-model.gguf"),
-      installed: () => Effect.succeed("verified-speakers.gguf"),
-    },
-    (file, args, options) =>
-      Effect.promise(async () => {
-        if (file === process.execPath) {
-          workerArguments.push(args.slice(1));
-          options.onLine?.(deviceReport);
-          options.onLine?.("MOVO_PHASE:speakers");
-          await writeFile(args[3] ?? "", JSON.stringify(expected), { flag: "wx" });
-        }
-        return "";
-      }),
-  );
-  const result = await Effect.runPromise(
-    engine.transcribe(
-      "recording.wav",
-      directory,
-      (phase) => phases.push(phase),
-      () => undefined,
+const speakerFiles = {
+  "sortformer-4spk-q8": { diarization: "sortformer.gguf" },
+  "pyannote-wespeaker": { segmentation: "segmentation.onnx", embedding: "embedding.onnx" },
+};
+
+it.for([
+  { speakerModelId: "sortformer-4spk-q8", progress: [] },
+  { speakerModelId: "pyannote-wespeaker", progress: [0, 42, 100] },
+] as const)(
+  "hands the job's $speakerModelId files to the worker by role and accepts its speaker phase, progress and result",
+  async ({ speakerModelId, progress: expectedProgress }) => {
+    const directory = await mkdtemp(join(tmpdir(), "movo-transcription-speakers-"));
+    onTestFinished(() =>
+      rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }),
+    );
+    const expected = {
+      language: "en",
+      words: [
+        { startMs: 0, endMs: 500, text: "Hello.", speaker: 1 },
+        { startMs: 600, endMs: 1000, text: "Hi.", speaker: 2 },
+      ],
+    };
+    const phases: string[] = [];
+    const progress: number[] = [];
+    const workerArguments: string[][] = [];
+    const engine = createTranscriptionEngine(
+      createMediaTools({ dataDirectory: directory }),
+      {
+        resolve: (id) =>
+          Effect.succeed(
+            id === speakerModelId
+              ? speakerFiles[speakerModelId]
+              : { transcription: "verified-model.gguf" },
+          ),
+      },
+      (file, args, options) =>
+        Effect.promise(async () => {
+          if (file === process.execPath) {
+            workerArguments.push(args.slice(1));
+            options.onLine?.(deviceReport);
+            options.onLine?.("MOVO_PHASE:speakers");
+            for (const percent of expectedProgress) options.onLine?.(`MOVO_PROGRESS:${percent}`);
+            await writeFile(args[3] ?? "", JSON.stringify(expected), { flag: "wx" });
+          }
+          return "";
+        }),
+    );
+    const result = await Effect.runPromise(
+      engine.transcribe(
+        { path: "recording.wav", directory, speakerModelId },
+        {
+          phase: (phase) => phases.push(phase),
+          device: () => undefined,
+          progress: (percent) => progress.push(percent),
+        },
+      ),
+    );
+    expect(result).toEqual(expected);
+    expect(phases).toEqual(["preparing", "speakers"]);
+    expect(progress).toEqual(expectedProgress);
+    expect(workerArguments).toEqual([
+      [
+        "verified-model.gguf",
+        join(directory, "audio.f32"),
+        join(directory, "result.json"),
+        JSON.stringify({ model: speakerModelId, ...speakerFiles[speakerModelId] }),
+      ],
+    ]);
+  },
+);
+
+it("checks the speaker model a job will use before it is queued", async () => {
+  const resolved: string[] = [];
+  const engine = (pyannoteFiles: Record<string, string>) =>
+    createTranscriptionEngine(
+      { resolve: () => Effect.succeed("ffmpeg") },
+      {
+        resolve: (id) => {
+          resolved.push(id);
+          return Effect.succeed(
+            id === "pyannote-wespeaker" ? pyannoteFiles : { transcription: "verified-model.gguf" },
+          );
+        },
+      },
+    );
+  await Effect.runPromise(
+    engine({ segmentation: "segmentation.onnx", embedding: "embedding.onnx" }).check(
+      "pyannote-wespeaker",
     ),
   );
-  expect(result).toEqual(expected);
-  expect(phases).toEqual(["preparing", "speakers"]);
-  expect(workerArguments).toEqual([
-    [
-      "verified-model.gguf",
-      join(directory, "audio.f32"),
-      join(directory, "result.json"),
-      "verified-speakers.gguf",
-    ],
-  ]);
+  expect(resolved).toEqual(["parakeet-ultra-q8", "pyannote-wespeaker"]);
+  await Effect.runPromise(engine({}).check(null));
+  expect(resolved).toEqual(["parakeet-ultra-q8", "pyannote-wespeaker", "parakeet-ultra-q8"]);
+  await expect(
+    Effect.runPromise(engine({ embedding: "embedding.onnx" }).check("pyannote-wespeaker")),
+  ).rejects.toThrow(/missing a required file/u);
 });

@@ -21,8 +21,11 @@ async function openRecording(
     value: {
       mediaId: media.id,
       modelId: "parakeet-ultra-q8",
+      speakerModelId: null,
+      resultSpeakerModelId: null,
       status: "completed",
       phase: "finished",
+      phaseProgress: null,
       transcript,
       revision: 0,
       resultRevision: 0,
@@ -112,6 +115,7 @@ test("shows the transcript as video subtitles and replaces them after transcribi
   const transcribeAgain = async (text: string) => {
     await page.getByRole("button", { name: "More actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Transcribe again", exact: true }).click();
+    await page.getByRole("menuitem", { name: "No speaker labels", exact: true }).click();
     await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
     job.value = {
       ...job.value,

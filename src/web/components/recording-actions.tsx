@@ -12,8 +12,11 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
+import { Schema } from "effect";
 import type { MediaDeletion, MediaItem } from "../../shared/contracts/media.ts";
-import { mediaFileUrl, transcriptionOptions } from "../lib/api.ts";
+import { SpeakerModelId } from "../../shared/contracts/models.ts";
+import { mediaFileUrl, modelsOptions, transcriptionOptions } from "../lib/api.ts";
+import { speakerLabelsTitle } from "../lib/speaker-labels.ts";
 import { useDeleteRecording, useRemoveSavedCopy } from "../lib/recording-mutations.ts";
 import { useCopyTranscript } from "../lib/transcript-sharing.ts";
 import {
@@ -27,7 +30,9 @@ import { SourceMenuItems } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
 import { TranscriptExportItems } from "./transcript-actions.tsx";
 import {
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
@@ -70,6 +75,11 @@ export function useRecordingActions({
   library?: LibraryActions;
 }) {
   const [dialog, setDialog] = useState<RecordingDialog | null>(null);
+  const [retranscribeWith, setRetranscribeWith] = useState<SpeakerModelId | null>(null);
+  const models = useQuery({ ...modelsOptions, enabled: loadTranscription });
+  const speakerModels = (models.data?.models ?? []).flatMap((model) =>
+    Schema.is(SpeakerModelId)(model.id) ? [{ ...model, id: model.id }] : [],
+  );
   const transcription = useQuery({ ...transcriptionOptions(item.id), enabled: loadTranscription });
   const job = transcription.data;
   const transcript = job?.transcript ?? null;
@@ -147,13 +157,48 @@ export function useRecordingActions({
       ) : null}
       {item.sourceUrl ? <SourceMenuItems url={item.sourceUrl} /> : null}
       {canReplaceTranscript ? (
-        <DropdownMenuItem
-          disabled={transcribe.isPending}
-          onClick={edited ? openDialog("retranscribe") : () => transcribe.mutate("retry")}
-        >
-          <MenuIcon icon={RefreshIcon} />
-          {edited ? "Transcribe again…" : "Transcribe again"}
-        </DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger disabled={transcribe.isPending}>
+            <MenuIcon icon={RefreshIcon} />
+            Transcribe again
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-60">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Speaker labels</DropdownMenuLabel>
+              {models.isPending ? (
+                <DropdownMenuItem disabled>
+                  <Spinner />
+                  Checking speaker models…
+                </DropdownMenuItem>
+              ) : models.isError ? (
+                <DropdownMenuItem disabled>Could not check speaker models</DropdownMenuItem>
+              ) : null}
+              {[
+                ...speakerModels.map((model) => ({
+                  speakerModelId: model.id,
+                  title: speakerLabelsTitle(model),
+                  hint: model.state === "ready" ? model.name : "Not installed",
+                  disabled: model.state !== "ready",
+                })),
+                { speakerModelId: null, title: "No speaker labels", hint: null, disabled: false },
+              ].map(({ speakerModelId, title, hint, disabled }) => (
+                <DropdownMenuItem
+                  key={title}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (edited) {
+                      setRetranscribeWith(speakerModelId);
+                      openDialog("retranscribe")();
+                    } else transcribe.mutate({ speakerModelId });
+                  }}
+                >
+                  {edited ? `${title}…` : title}
+                  {hint ? <DropdownMenuShortcut>{hint}</DropdownMenuShortcut> : null}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
       ) : null}
       {library ? (
         <DropdownMenuItem onClick={library.onSelect}>
@@ -187,6 +232,7 @@ export function useRecordingActions({
         onOpenChange={closeDialog}
         returnFocus={returnFocus || undefined}
         transcribe={transcribe}
+        retry={{ speakerModelId: retranscribeWith }}
       />
       <ConfirmDialog
         open={dialog === "remove-file"}

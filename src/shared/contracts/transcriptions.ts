@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { MediaId } from "./media.ts";
-import { ModelId } from "./models.ts";
+import { ModelId, SpeakerModelId } from "./models.ts";
 
 export const transcriptionStates = [
   "queued",
@@ -83,6 +83,10 @@ export const TranscriptionDevice = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
 });
 export type TranscriptionDevice = typeof TranscriptionDevice.Type;
+export const PhaseProgress = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isBetween({ minimum: 0, maximum: 100 }),
+);
 export const transcriptExportFormats = ["txt", "srt", "vtt"] as const;
 export const TranscriptExportFormat = Schema.Literals(transcriptExportFormats);
 export type TranscriptExportFormat = typeof TranscriptExportFormat.Type;
@@ -105,8 +109,11 @@ export const TranscriptExportQuery = Schema.Struct({
 export const TranscriptionJob = Schema.Struct({
   mediaId: MediaId,
   modelId: ModelId,
+  speakerModelId: Schema.NullOr(SpeakerModelId),
+  resultSpeakerModelId: Schema.NullOr(SpeakerModelId),
   status: Schema.Literals(transcriptionStates),
   phase: Schema.Literals(transcriptionPhases),
+  phaseProgress: Schema.NullOr(PhaseProgress),
   transcript: Schema.NullOr(Transcript),
   revision: Count,
   resultRevision: Count,
@@ -125,6 +132,10 @@ export const TranscriptionJob = Schema.Struct({
 );
 export type TranscriptionJob = typeof TranscriptionJob.Type;
 export const TranscriptionStatus = Schema.NullOr(TranscriptionJob);
+export const TranscriptionRetry = Schema.Struct({
+  speakerModelId: Schema.optionalKey(Schema.NullOr(SpeakerModelId)),
+});
+export type TranscriptionRetry = typeof TranscriptionRetry.Type;
 
 const Revision = Count;
 const overlongWord = new RegExp(String.raw`\S{${maxWordCharacters + 1}}`, "u");

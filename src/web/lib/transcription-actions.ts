@@ -1,5 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
+import type { ModelId } from "../../shared/contracts/models.ts";
+import type {
+  TranscriptionJob,
+  TranscriptionRetry,
+} from "../../shared/contracts/transcriptions.ts";
 import {
   cancelTranscription,
   enqueueTranscription,
@@ -12,7 +16,7 @@ import {
 export const isActiveTranscription = (job: TranscriptionJob | null | undefined) =>
   job?.status === "queued" || job?.status === "running";
 
-export type TranscriptionAction = "start" | "cancel" | "retry";
+export type TranscriptionAction = "start" | "cancel" | "retry" | TranscriptionRetry;
 
 export function useTranscriptionAction(mediaId: string) {
   const queryClient = useQueryClient();
@@ -24,7 +28,7 @@ export function useTranscriptionAction(mediaId: string) {
         ? enqueueTranscription(mediaId)
         : action === "cancel"
           ? cancelTranscription(mediaId)
-          : retryTranscription(mediaId),
+          : retryTranscription(mediaId, action === "retry" ? undefined : action),
     onMutate: () => queryClient.cancelQueries({ queryKey, exact: true }),
     onSuccess: (job) => {
       queryClient.setQueryData(queryKey, job);
@@ -41,7 +45,21 @@ export type TranscriptionActionMutation = ReturnType<typeof useTranscriptionActi
 
 export const hasEdits = (job: TranscriptionJob) => job.revision > job.resultRevision;
 
-export function useModelName(modelId: TranscriptionJob["modelId"] | undefined) {
+function useModelNames() {
   const models = useQuery(modelsOptions);
-  return models.data?.find((model) => model.id === modelId)?.name ?? "Parakeet Ultra";
+  return (modelId: ModelId) => models.data?.models.find((model) => model.id === modelId)?.name;
+}
+
+export function useModelName(modelId: TranscriptionJob["modelId"] | undefined) {
+  const modelName = useModelNames();
+  return (modelId && modelName(modelId)) ?? "Parakeet Ultra";
+}
+
+export function useResultModels(job: TranscriptionJob | null | undefined) {
+  const modelName = useModelNames();
+  const transcriber = (job && modelName(job.modelId)) ?? "Parakeet Ultra";
+  const speakers = job?.resultSpeakerModelId;
+  return speakers
+    ? `${transcriber} · ${modelName(speakers) ?? speakers} speaker labels`
+    : transcriber;
 }

@@ -8,5 +8,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["*.config.ts", "tests/**/*.ts", "tooling/**/*.ts"]
+  "include": ["*.config.ts", "tests/**/*.ts", "tooling/**/*.ts", "src/server/**/*.d.ts"]
 }

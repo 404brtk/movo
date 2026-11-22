@@ -1,0 +1,1 @@
+ALTER TABLE `transcription_jobs` ADD `result_speaker_model_id` text;

@@ -101,8 +101,8 @@ export const toolHandlers = (
       reported(transcriptions.enqueue(mediaId).pipe(Effect.map(summarize))),
     cancel_transcription: ({ mediaId }) =>
       reported(transcriptions.cancel(mediaId).pipe(Effect.map(summarize))),
-    retry_transcription: ({ mediaId }) =>
-      reported(transcriptions.retry(mediaId).pipe(Effect.map(summarize))),
+    retry_transcription: ({ mediaId, speakerModelId }) =>
+      reported(transcriptions.retry(mediaId, speakerModelId).pipe(Effect.map(summarize))),
     edit_transcript: ({ mediaId, ...request }) =>
       reported(transcriptions.edit(mediaId, request, source).pipe(Effect.map(summarize))),
     replace_in_transcript: ({ mediaId, ...request }) =>

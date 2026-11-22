@@ -14,6 +14,7 @@ import {
   isActiveTranscription,
   type TranscriptionActionMutation,
   useModelName,
+  useResultModels,
 } from "../lib/transcription-actions.ts";
 import { ChangeHistory } from "./change-history.tsx";
 import { ReplaceEditsDialog } from "./confirm-dialog.tsx";
@@ -275,6 +276,7 @@ export function TranscriptionPanel({
   const job = query.data;
   const fileAvailable = playback !== undefined;
   const modelName = useModelName(job?.modelId);
+  const resultModels = useResultModels(job);
   const transcript = job?.transcript;
   const active = isActiveTranscription(job);
   const status = (
@@ -341,7 +343,7 @@ export function TranscriptionPanel({
           {job.cleanupError}
         </p>
       ) : null}
-      {transcript && job?.status !== "completed" ? (
+      {transcript && job && !["completed", "cancelled"].includes(job.status) ? (
         <p className="text-xs text-muted-foreground">
           {active
             ? "Showing the previous transcript until the new one completes."
@@ -357,7 +359,7 @@ export function TranscriptionPanel({
           mediaId={mediaId}
           job={job}
           transcript={transcript}
-          modelName={modelName}
+          modelName={resultModels}
           playback={playback}
           revealMs={revealMs}
           toolbarAction={toolbarAction}

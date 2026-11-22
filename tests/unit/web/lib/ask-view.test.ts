@@ -242,8 +242,11 @@ function speakerJob(revision: number, words: TranscriptWord[]): TranscriptionJob
   return {
     mediaId: id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: null,
+    resultSpeakerModelId: null,
     status: "completed",
     phase: "finished",
+    phaseProgress: null,
     transcript: { language: "en", words, speakers: [{ id: 2, name: "Bob" }] },
     revision,
     resultRevision: 1,

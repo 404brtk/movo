@@ -23,6 +23,7 @@ import {
 } from "../../shared/contracts/dictionary.ts";
 import { DownloadPreviewRequest, DownloadRequest } from "../../shared/contracts/downloads.ts";
 import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
+import { SpeakerLabels } from "../../shared/contracts/models.ts";
 import { ImportMediaQuery, RenameMediaRequest } from "../../shared/contracts/media.ts";
 import {
   defaultHistoryPage,
@@ -37,6 +38,7 @@ import {
   TranscriptExportFormat,
   TranscriptExportQuery,
   TranscriptHistoryQuery,
+  TranscriptionRetry,
   TranscriptReplace,
   TranscriptRestore,
 } from "../../shared/contracts/transcriptions.ts";
@@ -122,6 +124,14 @@ const dictionaryLimit = bodyLimit({
 
 const dictionaryDraftMessage = `Provide a spelling and lists of up to ${maxTermVariants} words or phrases of at most ${maxTermCharacters} characters each.`;
 
+const speakerLabelsLimit = bodyLimit({
+  maxSize: 4096,
+  onError: (context) =>
+    context.json({ error: "Speaker label requests must be 4 KiB or smaller." }, 413),
+});
+
+const speakerLabelsMessage = "Choose a speaker model from Settings, or turn speaker labels off.";
+
 const transcriptChangeLimit = bodyLimit({
   maxSize: 64 * 1024,
   onError: (context) =>
@@ -141,7 +151,7 @@ export function createApp(
       tools,
       createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools),
     ),
-    models = createModels(),
+    models = createModels({ database }),
     transcriptions = createTranscriptions(
       database,
       config,
@@ -217,6 +227,14 @@ export function createApp(
     .get("/models", async (context) => {
       context.header("Cache-Control", "no-store");
       return context.json(await runMedia(models.list()));
+    })
+    .put("/models/speaker-labels", speakerLabelsLimit, async (context) => {
+      const { speakerModelId } = await readJson(
+        context.req.json(),
+        SpeakerLabels,
+        speakerLabelsMessage,
+      );
+      return context.json(await runMedia(models.chooseSpeakerLabels(speakerModelId)));
     })
     .post("/models/:id/install", async (context) =>
       context.json(await runMedia(models.install(context.req.param("id"))), 202),
@@ -452,9 +470,17 @@ export function createApp(
     .post("/media/:id/transcription/cancel", async (context) =>
       context.json(await runMedia(transcriptions.cancel(context.req.param("id")))),
     )
-    .post("/media/:id/transcription/retry", async (context) =>
-      context.json(await runMedia(transcriptions.retry(context.req.param("id"))), 202),
-    )
+    .post("/media/:id/transcription/retry", speakerLabelsLimit, async (context) => {
+      const { speakerModelId } = await readJson(
+        context.req.text().then((body): unknown => (body ? JSON.parse(body) : {})),
+        TranscriptionRetry,
+        speakerLabelsMessage,
+      );
+      return context.json(
+        await runMedia(transcriptions.retry(context.req.param("id"), speakerModelId)),
+        202,
+      );
+    })
     .get("/ask/connections", async (context) => {
       context.header("Cache-Control", "no-store");
       return context.json(await runMedia(ask.connections()));

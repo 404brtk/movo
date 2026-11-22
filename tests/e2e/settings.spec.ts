@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { ModelStatus } from "../../src/shared/contracts/models.ts";
+import type { ModelCatalog, ModelStatus } from "../../src/shared/contracts/models.ts";
 
 const initial: ModelStatus = {
   id: "parakeet-ultra-q8",
@@ -7,12 +7,47 @@ const initial: ModelStatus = {
   name: "Parakeet Ultra",
   description: "Local transcription for European languages.",
   bytes: 740363168,
+  parts: [{ name: "Parakeet Ultra Q8_0", bytes: 740363168 }],
   sourceUrl: "https://huggingface.co/handy-computer/parakeet-ultra-gguf",
   license: "CC BY 4.0",
   languages: ["en", "pl"],
   state: "missing",
   message: null,
   installation: { phase: "idle", downloadedBytes: 0, error: null },
+};
+const catalog = (...models: ModelStatus[]): ModelCatalog => ({ models, speakerModelId: null });
+const speakerModel = {
+  role: "speakers",
+  languages: ["en"],
+  state: "missing",
+  message: null,
+  installation: { phase: "idle", downloadedBytes: 0, error: null },
+} as const;
+const sortformer: ModelStatus = {
+  ...speakerModel,
+  id: "sortformer-4spk-q8",
+  name: "Sortformer",
+  description: "GPU or CPU",
+  bytes: 139310336,
+  parts: [{ name: "Streaming Sortformer 4spk v2.1 Q8_0", bytes: 139310336 }],
+  sourceUrl: "https://huggingface.co/handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf",
+  license: "NVIDIA Open Model License",
+  maxSpeakers: 4,
+  state: "ready",
+};
+const pyannoteModel: ModelStatus = {
+  ...speakerModel,
+  id: "pyannote-wespeaker",
+  name: "Pyannote",
+  description: "CPU only",
+  bytes: 32523463,
+  parts: [
+    { name: "Pyannote segmentation 3.0", bytes: 5992913 },
+    { name: "WeSpeaker ResNet34-LM", bytes: 26530550 },
+  ],
+  sourceUrl: "https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html",
+  license: "MIT and CC BY 4.0",
+  maxSpeakers: 32,
 };
 
 test("opens the real model catalog without starting installation", async ({ page }) => {
@@ -26,21 +61,43 @@ test("opens the real model catalog without starting installation", async ({ page
   await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
   const transcription = page.getByRole("listitem", { name: "Parakeet Ultra", exact: true });
   const speakers = page.getByRole("listitem", { name: "Speaker labels", exact: true });
-  for (const card of [transcription, speakers]) {
-    await expect(card.getByRole("button", { name: "Download model", exact: true })).toBeEnabled();
-    await expect(card.getByText("Not installed", { exact: true })).toBeVisible();
-  }
+  await expect(
+    transcription.getByRole("button", { name: "Download model", exact: true }),
+  ).toBeEnabled();
+  await expect(transcription.getByText("Not installed", { exact: true })).toBeVisible();
   await expect(transcription).toContainText("Download it once to transcribe on this computer.");
-  await expect(speakers).toContainText(
-    "Optional. Download it to label who speaks in new transcripts.",
-  );
-  await expect(speakers).toContainText("Sortformer · optional");
+  const labels = speakers.getByRole("radiogroup", { name: "Speaker labels", exact: true });
+  await expect(labels.getByRole("radio", { name: "Off", exact: true })).toBeChecked();
+  for (const [option, model] of [
+    ["Up to 4 speakers", "Sortformer"],
+    ["Up to 32 speakers", "Pyannote"],
+  ] as const) {
+    await expect(labels.getByRole("radio", { name: option, exact: true })).toBeDisabled();
+    await expect(speakers.getByText(model, { exact: true })).toBeVisible();
+    await expect(
+      speakers.getByRole("button", { name: `Download ${model}`, exact: true }),
+    ).toBeEnabled();
+  }
+  await expect(speakers.getByText("Not installed", { exact: true })).toHaveCount(2);
   await expect(
     page
       .getByRole("listitem", { name: "Dictionary", exact: true })
       .getByRole("button", { name: "Manage", exact: true }),
   ).toBeEnabled();
-  await speakers.getByRole("button", { name: "Speaker labels details", exact: true }).click();
+  const details = speakers.getByRole("button", { name: "Up to 32 speakers details", exact: true });
+  await details.click();
+  await expect(details).toHaveAttribute("aria-expanded", "true");
+  await page.mouse.move(0, 0);
+  await expect
+    .poll(() => details.evaluate((button) => getComputedStyle(button).backgroundColor))
+    .toBe("rgba(0, 0, 0, 0)");
+  await expect(speakers.getByText("MIT and CC BY 4.0", { exact: true })).toBeVisible();
+  await expect(speakers.getByRole("listitem").filter({ hasText: "segmentation" })).toHaveText(
+    "Pyannote segmentation 3.0 · 5.7 MiB",
+  );
+  await expect(speakers.getByRole("listitem").filter({ hasText: "WeSpeaker" })).toHaveText(
+    "WeSpeaker ResNet34-LM · 25.3 MiB",
+  );
   await expect(speakers.getByText("English", { exact: true })).toBeVisible();
   expect(writes).toEqual([]);
 });
@@ -52,7 +109,7 @@ test("requires an explicit download, retries a failed request and discovers inst
   let attempts = 0;
   await page.route("**/api/models", (route) => {
     expect(route.request().method()).toBe("GET");
-    return route.fulfill({ json: [model] });
+    return route.fulfill({ json: catalog(model) });
   });
   await page.route(`**/api/models/${initial.id}/install`, async (route) => {
     expect(route.request().method()).toBe("POST");
@@ -101,11 +158,13 @@ test("requires an explicit download, retries a failed request and discovers inst
   await page.reload();
   await expect(page.getByText("Installed", { exact: true })).toBeVisible();
   expect(attempts).toBe(2);
+  const repairMessage =
+    "The cached file parakeet-ultra-Q8_0.gguf failed its SHA-256 integrity check. Repair it in your Hugging Face cache, then check again.";
   model = {
     ...model,
     state: "broken",
-    message:
-      "The cached model failed its SHA-256 integrity check. Repair it in your Hugging Face cache, then check again.",
+    message: repairMessage,
+    installation: { phase: "failed", downloadedBytes: 0, error: "The download was interrupted." },
   };
   await page.getByRole("button", { name: "Parakeet Ultra details", exact: true }).click();
   await expect(
@@ -115,7 +174,7 @@ test("requires an explicit download, retries a failed request and discovers inst
   await expect(page.getByText("Needs repair", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Check again", exact: true })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Download model", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("alert")).toContainText("Repair it in your Hugging Face cache");
+  await expect(page.getByRole("alert")).toHaveText(repairMessage);
   await expect(page.getByRole("status")).toHaveText("Needs repair");
 });
 
@@ -126,7 +185,7 @@ test("cancels verification and reports a failed verification with an explicit re
     ...initial,
     installation: { phase: "verifying", downloadedBytes: initial.bytes, error: null },
   };
-  await page.route("**/api/models", (route) => route.fulfill({ json: [model] }));
+  await page.route("**/api/models", (route) => route.fulfill({ json: catalog(model) }));
   await page.route(`**/api/models/${initial.id}/cancel`, async (route) => {
     expect(route.request().method()).toBe("POST");
     model = {
@@ -160,8 +219,151 @@ test("cancels verification and reports a failed verification with an explicit re
   await page.screenshot({ path: testInfo.outputPath("settings-mobile.png"), fullPage: true });
 });
 
+test("chooses speaker labels, uses a speaker model once its download completes and keeps the choice after a rejected change", async ({
+  page,
+}, testInfo) => {
+  let pyannote = pyannoteModel;
+  let current: ModelCatalog = {
+    models: [{ ...initial, state: "ready" }, sortformer, pyannote],
+    speakerModelId: "sortformer-4spk-q8",
+  };
+  const choices: unknown[] = [];
+  let rejectChoice = false;
+  let catalogResponse = Promise.resolve();
+  await page.route("**/api/models", async (route) => {
+    await catalogResponse;
+    return route.fulfill({ json: current });
+  });
+  await page.route("**/api/models/speaker-labels", async (route) => {
+    expect(route.request().method()).toBe("PUT");
+    const choice = route.request().postDataJSON();
+    choices.push(choice);
+    if (rejectChoice)
+      return route.fulfill({
+        status: 400,
+        json: { error: "Download Sortformer before using it for speaker labels." },
+      });
+    current = { ...current, ...choice };
+    return route.fulfill({ json: choice });
+  });
+  await page.route(`**/api/models/${pyannote.id}/install`, async (route) => {
+    expect(route.request().method()).toBe("POST");
+    pyannote = {
+      ...pyannote,
+      installation: { phase: "downloading", downloadedBytes: 8 * 1024 * 1024, error: null },
+    };
+    current = { ...current, models: [current.models[0] ?? initial, sortformer, pyannote] };
+    await route.fulfill({ status: 202, json: pyannote });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/settings");
+  const labels = page.getByRole("radiogroup", { name: "Speaker labels", exact: true });
+  const off = labels.getByRole("radio", { name: "Off", exact: true });
+  const upToFour = labels.getByRole("radio", { name: "Up to 4 speakers", exact: true });
+  const upToThirtyTwo = labels.getByRole("radio", { name: "Up to 32 speakers", exact: true });
+  await expect(upToFour).toBeChecked();
+  await expect(upToFour).toHaveAccessibleDescription("Sortformer · GPU or CPU · 132.9 MiB");
+  await expect(upToThirtyTwo).toBeDisabled();
+  const speakers = page.getByRole("listitem", { name: "Speaker labels", exact: true });
+  await expect(speakers.getByRole("status")).toHaveText(["Installed", "Not installed"]);
+  await page.getByText("Off", { exact: true }).click();
+  await expect(off).toBeChecked();
+  await upToFour.click();
+  await expect(upToFour).toBeChecked();
+  await page.getByRole("button", { name: "Download Pyannote", exact: true }).click();
+  await expect(
+    page.getByRole("progressbar", { name: "Up to 32 speakers download", exact: true }),
+  ).toHaveAttribute("aria-valuenow", String(8 * 1024 * 1024));
+  await expect(
+    page.getByText(
+      "New transcripts use it once the download is verified. You can keep using Movo.",
+      {
+        exact: true,
+      },
+    ),
+  ).toBeVisible();
+  await expect(upToFour).toBeChecked();
+  pyannote = {
+    ...pyannote,
+    state: "ready",
+    installation: { phase: "complete", downloadedBytes: pyannote.bytes, error: null },
+  };
+  current = {
+    models: [current.models[0] ?? initial, sortformer, pyannote],
+    speakerModelId: "pyannote-wespeaker",
+  };
+  await expect(upToThirtyTwo).toBeChecked();
+  await expect(upToThirtyTwo).toBeEnabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({ path: testInfo.outputPath("speaker-labels-mobile.png"), fullPage: true });
+  rejectChoice = true;
+  let releaseCatalog: (() => void) | undefined;
+  catalogResponse = new Promise((resolve) => {
+    releaseCatalog = resolve;
+  });
+  await upToFour.focus();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Download Sortformer before using it for speaker labels.",
+  );
+  await expect(upToThirtyTwo).toBeChecked();
+  releaseCatalog?.();
+  expect(choices).toEqual([
+    { speakerModelId: null },
+    { speakerModelId: "sortformer-4spk-q8" },
+    { speakerModelId: "sortformer-4spk-q8" },
+  ]);
+});
+
+test("keeps showing the latest speaker labels choice until it is saved, through an earlier rejection and catalog refreshes", async ({
+  page,
+}) => {
+  let current: ModelCatalog = {
+    models: [
+      { ...initial, installation: { phase: "downloading", downloadedBytes: 1024, error: null } },
+      sortformer,
+      { ...pyannoteModel, state: "ready" },
+    ],
+    speakerModelId: "sortformer-4spk-q8",
+  };
+  let catalogReads = 0;
+  const choices: unknown[] = [];
+  const held: (() => void)[] = [];
+  await page.route("**/api/models", (route) => {
+    catalogReads++;
+    return route.fulfill({ json: current });
+  });
+  await page.route("**/api/models/speaker-labels", async (route) => {
+    const choice = route.request().postDataJSON();
+    choices.push(choice);
+    await new Promise<void>((resolve) => held.push(resolve));
+    if (choice.speakerModelId !== null)
+      return route.fulfill({ status: 400, json: { error: "The cached model needs repair." } });
+    current = { ...current, ...choice };
+    return route.fulfill({ json: choice });
+  });
+  await page.goto("/settings");
+  const labels = page.getByRole("radiogroup", { name: "Speaker labels", exact: true });
+  const off = labels.getByRole("radio", { name: "Off", exact: true });
+  await expect(labels.getByRole("radio", { name: "Up to 4 speakers", exact: true })).toBeChecked();
+  await labels.getByRole("radio", { name: "Up to 32 speakers", exact: true }).click();
+  await expect.poll(() => choices).toHaveLength(1);
+  await off.click();
+  held.shift()?.();
+  await expect.poll(() => choices).toHaveLength(2);
+  const readsBeforeRefresh = catalogReads;
+  await expect.poll(() => catalogReads).toBeGreaterThan(readsBeforeRefresh);
+  await expect(off).toBeChecked();
+  held.shift()?.();
+  await expect.poll(() => current.speakerModelId).toBeNull();
+  await page.reload();
+  await expect(off).toBeChecked();
+});
+
 test("lists the media tools and opens yt-dlp setup from the settings page", async ({ page }) => {
-  await page.route("**/api/models", (route) => route.fulfill({ json: [initial] }));
+  await page.route("**/api/models", (route) => route.fulfill({ json: catalog(initial) }));
   await page.route("**/api/media-tools", (route) =>
     route.fulfill({
       json: {

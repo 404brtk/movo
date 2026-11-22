@@ -4,9 +4,10 @@ import { TranscribeModel } from "transcribe-cpp";
 import { TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
 import { readEngineTranscript } from "./engine-result.ts";
 import { readPreparedAudio } from "./prepared-audio.ts";
+import { diarizeSpeakers, SpeakerDiarizer } from "./speaker-diarization.ts";
 import { assignSpeakers } from "./speakers.ts";
 
-const ownerDisconnected = () => process.exit(1);
+const ownerDisconnected = () => process.kill(process.pid, "SIGKILL");
 process.once("disconnect", ownerDisconnected);
 
 async function transcribe(modelPath: string, audioPath: string) {
@@ -33,39 +34,31 @@ async function transcribe(modelPath: string, audioPath: string) {
   }
 }
 
-async function speakerTurns(modelPath: string, pcm: Buffer) {
+function speakerTurns(diarizer: SpeakerDiarizer, pcm: Buffer) {
   console.log("MOVO_PHASE:speakers");
-  const model = await TranscribeModel.load(modelPath, { backend: "auto" });
-  try {
-    if (
-      model.arch !== "sortformer" ||
-      !model.roles.includes("diarize") ||
-      model.diarizeInfo.sampleRate !== 16000
-    )
-      throw new Error("The speaker model does not support speaker turns for 16 kHz audio.");
-    const session = model.createDiarizeSession();
-    try {
-      return await session.run(pcm, {
-        family: { kind: "sortformer_diarize", preset: "very_high_latency" },
-      });
-    } finally {
-      session.dispose();
-    }
-  } finally {
-    model.dispose();
-  }
+  let reportedPercent = -1;
+  return diarizeSpeakers(diarizer, pcm, (fraction) => {
+    const percent = Math.floor(fraction * 100);
+    if (percent === reportedPercent) return;
+    reportedPercent = percent;
+    console.log(`MOVO_PROGRESS:${percent}`);
+  });
 }
 
 try {
   if (!process.connected) throw new Error("The transcription worker must be started by Movo.");
-  const [, , modelPath, audioPath, resultPath, speakerModelPath] = process.argv;
-  if (!modelPath || !audioPath || !resultPath)
+  const [, , modelPath, audioPath, resultPath, speakerModel, ...unexpected] = process.argv;
+  if (!modelPath || !audioPath || !resultPath || unexpected.length > 0)
     throw new Error("Missing transcription worker arguments.");
+  const diarizer =
+    speakerModel === undefined
+      ? null
+      : Schema.decodeUnknownSync(Schema.fromJsonString(SpeakerDiarizer))(speakerModel);
   console.log("MOVO_PHASE:loading");
   const { pcm, transcript } = await transcribe(modelPath, audioPath);
   const result =
-    speakerModelPath && transcript.words.length > 0
-      ? assignSpeakers(transcript, await speakerTurns(speakerModelPath, pcm))
+    diarizer && transcript.words.length > 0
+      ? assignSpeakers(transcript, await speakerTurns(diarizer, pcm))
       : transcript;
   await writeFile(resultPath, JSON.stringify(result), { flag: "wx" });
 } catch (cause) {

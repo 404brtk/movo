@@ -30,8 +30,11 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
       job = {
         mediaId: media.id,
         modelId: "parakeet-ultra-q8",
+        speakerModelId: null,
+        resultSpeakerModelId: null,
         status: "running",
         phase: "transcribing",
+        phaseProgress: null,
         transcript: null,
         revision: 0,
         resultRevision: 0,
@@ -67,6 +70,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   ).toBeVisible();
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Transcribing");
+  await expect(panel.getByText("Identifying speakers", { exact: true })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Export transcript", exact: true })).toHaveCount(
     0,
   );
@@ -74,8 +78,11 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   job = {
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: null,
+    resultSpeakerModelId: null,
     status: "completed",
     phase: "finished",
+    phaseProgress: null,
     transcript: {
       language: "en",
       words: [
@@ -133,8 +140,11 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   let job: TranscriptionJob = {
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: "pyannote-wespeaker",
+    resultSpeakerModelId: null,
     status: "running",
     phase: "loading",
+    phaseProgress: null,
     transcript: null,
     revision: 0,
     resultRevision: 0,
@@ -179,10 +189,20 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Transcribing");
   await expect(device).toBeVisible();
+  await expect(panel.getByText("Identifying speakers", { exact: true })).toBeVisible();
+  job = { ...job, phase: "speakers", phaseProgress: 42 };
+  const speakerProgress = panel.getByRole("progressbar", {
+    name: "Identifying speakers",
+    exact: true,
+  });
+  await expect(speakerProgress).toHaveAttribute("aria-valuenow", "42");
+  await expect(panel.getByText("42%", { exact: true })).toBeVisible();
+  await expect(device).toHaveCount(0);
   job = {
     ...job,
     status: "completed",
     phase: "finished",
+    phaseProgress: null,
     transcript: { language: null, words: [] },
     cleanupError: "Could not remove temporary transcription files. Check folder permissions.",
   };
@@ -239,8 +259,11 @@ test("keeps retry progress when an older failed status arrives after retry succe
   const failed: TranscriptionJob = {
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: null,
+    resultSpeakerModelId: null,
     status: "failed",
     phase: "finished",
+    phaseProgress: null,
     transcript: null,
     revision: 0,
     resultRevision: 0,
@@ -316,8 +339,11 @@ test("transcribes a completed recording again while keeping the previous transcr
   let job: TranscriptionJob = {
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: null,
+    resultSpeakerModelId: "sortformer-4spk-q8",
     status: "completed",
     phase: "finished",
+    phaseProgress: null,
     transcript: previous,
     revision: 0,
     resultRevision: 0,
@@ -332,9 +358,10 @@ test("transcribes a completed recording again while keeping the previous transcr
     expect(route.request().method()).toBe("GET");
     return route.fulfill({ json: job });
   });
+  const retryBodies: unknown[] = [];
   await page.route(`**/api/media/${media.id}/transcription/retry`, (route) => {
     expect(route.request().method()).toBe("POST");
-    expect(route.request().postData()).toBeNull();
+    retryBodies.push(route.request().postDataJSON());
     retries++;
     job = { ...job, status: "running", phase: "transcribing", device: null, error: null };
     return route.fulfill({ status: 202, json: job });
@@ -358,14 +385,30 @@ test("transcribes a completed recording again while keeping the previous transcr
   const previousText = panel.getByText("The previous transcript.", { exact: true });
   const notice = panel.getByText(/^Showing the previous transcript/u);
   await expect(previousText).toBeVisible();
+  const resultModels = page.getByText("Parakeet Ultra · Sortformer speaker labels", {
+    exact: true,
+  });
+  await expect(resultModels).toBeVisible();
   await expect(notice).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Retry transcription", exact: true })).toHaveCount(
     0,
   );
   await page.getByRole("button", { name: "More actions", exact: true }).click();
   await page.getByRole("menuitem", { name: "Transcribe again", exact: true }).click();
+  const speakerLabels = page.getByRole("group", { name: "Speaker labels", exact: true });
+  for (const [option, hint] of [
+    ["Up to 4 speakers", "Not installed"],
+    ["Up to 32 speakers", "Not installed"],
+  ] as const) {
+    const item = speakerLabels.getByRole("menuitem", { name: option });
+    await expect(item).toBeDisabled();
+    await expect(item).toContainText(hint);
+  }
+  await speakerLabels.getByRole("menuitem", { name: "No speaker labels", exact: true }).click();
   await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
+  expect(retryBodies).toEqual([{ speakerModelId: null }]);
   await expect(previousText).toBeVisible();
+  await expect(resultModels).toBeVisible();
   await expect(notice).toBeVisible();
   await expect(panel.getByRole("button", { name: "Copy transcript", exact: true })).toBeVisible();
   await page.reload();
@@ -387,6 +430,7 @@ test("transcribes a completed recording again while keeping the previous transcr
     ...job,
     status: "completed",
     phase: "finished",
+    phaseProgress: null,
     transcript: {
       language: "en",
       words: timedWords(0, 1000, "The replacement transcript."),
@@ -407,6 +451,7 @@ test("transcribes a completed recording again while keeping the previous transcr
   });
   await expect(copied).toBeVisible();
   expect(retries).toBe(2);
+  expect(retryBodies).toEqual([{ speakerModelId: null }, null]);
 });
 
 test("offers transcribing again after a cancelled, rejected or failed repeat attempt", async ({
@@ -422,8 +467,11 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
   let job: TranscriptionJob = {
     mediaId: media.id,
     modelId: "parakeet-ultra-q8",
+    speakerModelId: null,
+    resultSpeakerModelId: null,
     status: "cancelled",
     phase: "finished",
+    phaseProgress: null,
     transcript: { language: "en", words: timedWords(0, 1000, "The previous transcript.") },
     revision: 0,
     resultRevision: 0,
@@ -448,18 +496,36 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
     job = { ...job, status: "running", phase: "transcribing", error: null };
     return route.fulfill({ status: 202, json: job });
   });
+  let releaseModels: (() => void) | undefined;
+  const modelsReleased = new Promise<void>((resolve) => {
+    releaseModels = resolve;
+  });
+  await page.route("**/api/models", async (route) => {
+    await modelsReleased;
+    return route.fulfill({ status: 503, json: { error: "Model status is unavailable." } });
+  });
   await page.goto(`/media/${media.id}`);
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
-  await expect(panel.getByText("Showing the previous transcript.", { exact: true })).toBeVisible();
+  await expect(panel.getByText(/^Showing the previous transcript/u)).toHaveCount(0);
   const more = page.getByRole("button", { name: "More actions", exact: true });
   const transcribeAgain = page.getByRole("menuitem", { name: "Transcribe again", exact: true });
+  const noSpeakerLabels = page.getByRole("menuitem", { name: "No speaker labels", exact: true });
   await more.click();
   await transcribeAgain.click();
+  await expect(
+    page.getByRole("menuitem", { name: "Checking speaker models…", exact: true }),
+  ).toBeDisabled();
+  releaseModels?.();
+  await expect(
+    page.getByRole("menuitem", { name: "Could not check speaker models", exact: true }),
+  ).toBeDisabled({ timeout: 15_000 });
+  await noSpeakerLabels.click();
   await expect(panel.getByRole("alert")).toHaveText(
     "Close apps using the recording and try again.",
   );
   await more.click();
   await transcribeAgain.click();
+  await noSpeakerLabels.click();
   await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
   await expect(panel.getByRole("alert")).toHaveCount(0);
 
