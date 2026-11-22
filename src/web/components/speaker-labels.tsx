@@ -106,23 +106,27 @@ function SpeakerModelOption({ model }: { model: ModelStatus }) {
 export function SpeakerLabels({ catalog }: { catalog: ModelCatalog }) {
   const headingId = useId();
   const queryClient = useQueryClient();
+  const showChoice = (speakerModelId: SpeakerModelId | null) =>
+    queryClient.setQueryData(
+      modelsOptions.queryKey,
+      (current) => current && { ...current, speakerModelId },
+    );
+  const isLatestChoice = () => queryClient.isMutating({ mutationKey: choosingSpeakerLabels }) === 1;
   const choice = useMutation({
     mutationKey: choosingSpeakerLabels,
     scope: { id: choosingSpeakerLabels.join() },
     mutationFn: chooseSpeakerLabels,
     onMutate: async ({ speakerModelId }) => {
       await queryClient.cancelQueries({ queryKey: modelsOptions.queryKey });
-      const previous = queryClient.getQueryData(modelsOptions.queryKey);
-      queryClient.setQueryData(
-        modelsOptions.queryKey,
-        (current) => current && { ...current, speakerModelId },
-      );
+      const previous = queryClient.getQueryData(modelsOptions.queryKey)?.speakerModelId ?? null;
+      showChoice(speakerModelId);
       return previous;
     },
-    onError: (_error, _choice, previous) =>
-      queryClient.setQueryData(modelsOptions.queryKey, previous),
+    onError: (_error, _choice, previous) => {
+      if (previous !== undefined && isLatestChoice()) showChoice(previous);
+    },
     onSettled: () =>
-      queryClient.isMutating({ mutationKey: choosingSpeakerLabels }) === 1
+      isLatestChoice()
         ? queryClient.invalidateQueries({ queryKey: modelsOptions.queryKey })
         : undefined,
   });

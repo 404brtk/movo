@@ -341,6 +341,44 @@ test("saves quick speaker labels choices in the order they were made", async ({ 
   await expect(off).toBeChecked();
 });
 
+test("keeps showing the latest speaker labels choice when an earlier one is rejected", async ({
+  page,
+}) => {
+  let current: ModelCatalog = {
+    models: [{ ...initial, state: "ready" }, sortformer, { ...pyannoteModel, state: "ready" }],
+    speakerModelId: "sortformer-4spk-q8",
+  };
+  const choices: unknown[] = [];
+  const held: (() => void)[] = [];
+  await page.route("**/api/models", (route) => route.fulfill({ json: current }));
+  await page.route("**/api/models/speaker-labels", async (route) => {
+    const choice = route.request().postDataJSON();
+    choices.push(choice);
+    await new Promise<void>((resolve) => held.push(resolve));
+    if (choice.speakerModelId !== null)
+      return route.fulfill({
+        status: 400,
+        json: { error: "The cached model needs repair." },
+      });
+    current = { ...current, ...choice };
+    return route.fulfill({ json: choice });
+  });
+  await page.goto("/settings");
+  const labels = page.getByRole("radiogroup", { name: "Speaker labels", exact: true });
+  const off = labels.getByRole("radio", { name: "Off", exact: true });
+  await expect(labels.getByRole("radio", { name: "Up to 4 speakers", exact: true })).toBeChecked();
+  await labels.getByRole("radio", { name: "Up to 32 speakers", exact: true }).click();
+  await expect.poll(() => choices).toHaveLength(1);
+  await off.click();
+  held.shift()?.();
+  await expect.poll(() => choices).toHaveLength(2);
+  await expect(off).toBeChecked();
+  held.shift()?.();
+  await expect.poll(() => current.speakerModelId).toBeNull();
+  await page.reload();
+  await expect(off).toBeChecked();
+});
+
 test("lists the media tools and opens yt-dlp setup from the settings page", async ({ page }) => {
   await page.route("**/api/models", (route) => route.fulfill({ json: catalog(initial) }));
   await page.route("**/api/media-tools", (route) =>
