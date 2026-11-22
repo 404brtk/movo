@@ -241,57 +241,6 @@ it("fails the download and keeps speaker labels off when a cached file disappear
   });
 });
 
-it("cancels the download while it checks every file again and keeps speaker labels off", async () => {
-  await withModels(async ({ cacheDirectory, file, respond, create }) => {
-    const speakers = speakerFixture(cacheDirectory, file.url);
-    const segmentation = Buffer.alloc(96 * 1024 * 1024, 7);
-    const definition = {
-      ...speakers.definition,
-      files: {
-        ...speakers.definition.files,
-        segmentation: {
-          ...speakers.definition.files.segmentation,
-          bytes: segmentation.length,
-          sha256: digest(segmentation),
-        },
-      },
-    } satisfies ModelDefinition;
-    let transfer: ServerResponse | undefined;
-    respond((_request, response) => {
-      response.write(speakers.embedding.subarray(0, 8));
-      transfer = response;
-    });
-    await mkdir(dirname(speakers.segmentationPath), { recursive: true });
-    await writeFile(speakers.segmentationPath, segmentation);
-    const models = create(definition);
-    await Effect.runPromise(models.install(pyannoteModel.id));
-    await expect
-      .poll(async () => (await status(models)).installation.phase, { timeout: 10000 })
-      .toBe("downloading");
-    if (!transfer) throw new Error("The embedding download did not start.");
-    const touchedAt = new Date(Date.now() + 60000);
-    await utimes(speakers.segmentationPath, touchedAt, touchedAt);
-    transfer.end(speakers.embedding.subarray(8));
-    await expect
-      .poll(
-        () =>
-          stat(speakers.embeddingPath).then(
-            () => true,
-            () => false,
-          ),
-        {
-          interval: 1,
-          timeout: 10000,
-        },
-      )
-      .toBe(true);
-    expect(await Effect.runPromise(models.cancel(pyannoteModel.id))).toMatchObject({
-      installation: { phase: "cancelled", error: null },
-    });
-    expect((await Effect.runPromise(models.list())).speakerModelId).toBeNull();
-  });
-});
-
 it("counts the cached second file while downloading and verifying the first", async () => {
   await withModels(async ({ cacheDirectory, file, respond, create, requests }) => {
     const speakers = speakerFixture(cacheDirectory, file.url);

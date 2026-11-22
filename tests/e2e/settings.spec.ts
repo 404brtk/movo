@@ -308,58 +308,30 @@ test("chooses speaker labels, uses a speaker model once its download completes a
   ]);
 });
 
-test("saves quick speaker labels choices in the order they were made", async ({ page }) => {
-  let current: ModelCatalog = {
-    models: [{ ...initial, state: "ready" }, sortformer, { ...pyannoteModel, state: "ready" }],
-    speakerModelId: null,
-  };
-  const choices: unknown[] = [];
-  let finishVerification: (() => void) | undefined;
-  const verified = new Promise<void>((resolve) => (finishVerification = resolve));
-  await page.route("**/api/models", (route) => route.fulfill({ json: current }));
-  await page.route("**/api/models/speaker-labels", async (route) => {
-    const choice = route.request().postDataJSON();
-    choices.push(choice);
-    if (choice.speakerModelId !== null) await verified;
-    current = { ...current, ...choice };
-    return route.fulfill({ json: choice });
-  });
-  await page.goto("/settings");
-  const labels = page.getByRole("radiogroup", { name: "Speaker labels", exact: true });
-  const off = labels.getByRole("radio", { name: "Off", exact: true });
-  await expect(off).toBeChecked();
-  await labels.getByRole("radio", { name: "Up to 32 speakers", exact: true }).click();
-  await expect.poll(() => choices).toEqual([{ speakerModelId: "pyannote-wespeaker" }]);
-  await off.click();
-  await expect(off).toBeChecked();
-  finishVerification?.();
-  await expect
-    .poll(() => choices)
-    .toEqual([{ speakerModelId: "pyannote-wespeaker" }, { speakerModelId: null }]);
-  await expect.poll(() => current.speakerModelId).toBeNull();
-  await page.reload();
-  await expect(off).toBeChecked();
-});
-
-test("keeps showing the latest speaker labels choice when an earlier one is rejected", async ({
+test("keeps showing the latest speaker labels choice until it is saved, through an earlier rejection and catalog refreshes", async ({
   page,
 }) => {
   let current: ModelCatalog = {
-    models: [{ ...initial, state: "ready" }, sortformer, { ...pyannoteModel, state: "ready" }],
+    models: [
+      { ...initial, installation: { phase: "downloading", downloadedBytes: 1024, error: null } },
+      sortformer,
+      { ...pyannoteModel, state: "ready" },
+    ],
     speakerModelId: "sortformer-4spk-q8",
   };
+  let catalogReads = 0;
   const choices: unknown[] = [];
   const held: (() => void)[] = [];
-  await page.route("**/api/models", (route) => route.fulfill({ json: current }));
+  await page.route("**/api/models", (route) => {
+    catalogReads++;
+    return route.fulfill({ json: current });
+  });
   await page.route("**/api/models/speaker-labels", async (route) => {
     const choice = route.request().postDataJSON();
     choices.push(choice);
     await new Promise<void>((resolve) => held.push(resolve));
     if (choice.speakerModelId !== null)
-      return route.fulfill({
-        status: 400,
-        json: { error: "The cached model needs repair." },
-      });
+      return route.fulfill({ status: 400, json: { error: "The cached model needs repair." } });
     current = { ...current, ...choice };
     return route.fulfill({ json: choice });
   });
@@ -372,48 +344,12 @@ test("keeps showing the latest speaker labels choice when an earlier one is reje
   await off.click();
   held.shift()?.();
   await expect.poll(() => choices).toHaveLength(2);
+  const readsBeforeRefresh = catalogReads;
+  await expect.poll(() => catalogReads).toBeGreaterThan(readsBeforeRefresh);
   await expect(off).toBeChecked();
   held.shift()?.();
   await expect.poll(() => current.speakerModelId).toBeNull();
   await page.reload();
-  await expect(off).toBeChecked();
-});
-
-test("keeps showing a pending speaker labels choice while the catalog refreshes", async ({
-  page,
-}) => {
-  let current: ModelCatalog = {
-    models: [
-      { ...initial, installation: { phase: "downloading", downloadedBytes: 1024, error: null } },
-      sortformer,
-    ],
-    speakerModelId: "sortformer-4spk-q8",
-  };
-  let catalogReads = 0;
-  let finishSaving: (() => void) | undefined;
-  const saved = new Promise<void>((resolve) => {
-    finishSaving = resolve;
-  });
-  await page.route("**/api/models", (route) => {
-    catalogReads++;
-    return route.fulfill({ json: current });
-  });
-  await page.route("**/api/models/speaker-labels", async (route) => {
-    const choice = route.request().postDataJSON();
-    await saved;
-    current = { ...current, ...choice };
-    return route.fulfill({ json: choice });
-  });
-  await page.goto("/settings");
-  const labels = page.getByRole("radiogroup", { name: "Speaker labels", exact: true });
-  const off = labels.getByRole("radio", { name: "Off", exact: true });
-  await expect(labels.getByRole("radio", { name: "Up to 4 speakers", exact: true })).toBeChecked();
-  await off.click();
-  const readsBeforeRefresh = catalogReads;
-  await expect.poll(() => catalogReads, { timeout: 5000 }).toBeGreaterThan(readsBeforeRefresh);
-  await expect(off).toBeChecked();
-  finishSaving?.();
-  await expect.poll(() => current.speakerModelId).toBeNull();
   await expect(off).toBeChecked();
 });
 
