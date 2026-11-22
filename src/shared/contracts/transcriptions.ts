@@ -115,6 +115,10 @@ export const TranscriptionJob = Schema.Struct({
 );
 export type TranscriptionJob = typeof TranscriptionJob.Type;
 export const TranscriptionStatus = Schema.NullOr(TranscriptionJob);
+export const TranscriptionRetry = Schema.Struct({
+  speakerModelId: Schema.optionalKey(Schema.NullOr(SpeakerModelId)),
+});
+export type TranscriptionRetry = typeof TranscriptionRetry.Type;
 
 const Revision = Count;
 const overlongWord = new RegExp(String.raw`\S{${maxWordCharacters + 1}}`, "u");

@@ -8,6 +8,7 @@ import {
 } from "../../shared/contracts/models.ts";
 import { chooseSpeakerLabels, modelsOptions } from "../lib/api.ts";
 import { formatBytes } from "../lib/format.ts";
+import { speakerLabelsTitle } from "../lib/speaker-labels.ts";
 import { cn } from "../lib/utils.ts";
 import { ModelActions, ModelDetails, useModelInstallation } from "./model-row.tsx";
 import { Collapsible } from "./ui/collapsible.tsx";
@@ -64,7 +65,7 @@ function SpeakerOption({
 
 function SpeakerModelOption({ model }: { model: ModelStatus }) {
   const installation = useModelInstallation(model);
-  const title = `Up to ${model.maxSpeakers} speakers`;
+  const title = speakerLabelsTitle(model);
   return (
     <Collapsible>
       <SpeakerOption

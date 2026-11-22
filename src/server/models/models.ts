@@ -207,14 +207,12 @@ export function createModels({
       ? Effect.succeed(found)
       : Effect.fail(new MediaError("notFound", "Model not found."));
   };
-  const speakerLabels = () => settingsStorage(() => readSpeakerModelId(database));
   return {
     list: () =>
       Effect.all({
         models: Effect.forEach([...models.values()], (entry) => entry.status()),
-        speakerModelId: speakerLabels(),
+        speakerModelId: settingsStorage(() => readSpeakerModelId(database)),
       }),
-    speakerLabels,
     chooseSpeakerLabels: (speakerModelId: SpeakerModelId | null) =>
       Effect.gen(function* () {
         if (speakerModelId !== null) {

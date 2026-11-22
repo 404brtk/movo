@@ -23,7 +23,7 @@ const missingFile = () =>
 
 export function createTranscriptionEngine(
   tools: Pick<MediaTools, "resolve">,
-  models: Pick<Models, "resolve" | "speakerLabels">,
+  models: Pick<Models, "resolve">,
   run = runCommand,
 ) {
   const transcriber = () =>
@@ -50,10 +50,8 @@ export function createTranscriptionEngine(
           ),
         );
   return {
-    check: () =>
-      Effect.all([transcriber(), Effect.flatMap(models.speakerLabels(), diarizer)]).pipe(
-        Effect.asVoid,
-      ),
+    check: (speakerModelId: SpeakerModelId | null) =>
+      Effect.all([transcriber(), diarizer(speakerModelId)]).pipe(Effect.asVoid),
     transcribe: (
       { path, directory, speakerModelId }: TranscriptionRequest,
       report: TranscriptionReport,

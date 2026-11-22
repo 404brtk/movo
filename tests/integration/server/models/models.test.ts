@@ -171,9 +171,8 @@ it("uses only a verified speaker model for speaker labels and keeps the choice",
     expect(await choose(pyannoteModel.id)).toEqual({ speakerModelId: pyannoteModel.id });
     const reopened = create(definition, speakers.definition);
     expect((await Effect.runPromise(reopened.list())).speakerModelId).toBe(pyannoteModel.id);
-    expect(await Effect.runPromise(reopened.speakerLabels())).toBe(pyannoteModel.id);
     expect(await choose(null)).toEqual({ speakerModelId: null });
-    expect(await Effect.runPromise(reopened.speakerLabels())).toBeNull();
+    expect((await Effect.runPromise(reopened.list())).speakerModelId).toBeNull();
     expect(requests()).toBe(0);
   });
 });
@@ -192,7 +191,7 @@ it("uses a speaker model for speaker labels once its download completes", async 
       state: "ready",
       installation: { phase: "complete" },
     });
-    expect(await Effect.runPromise(models.speakerLabels())).toBe(pyannoteModel.id);
+    expect((await Effect.runPromise(models.list())).speakerModelId).toBe(pyannoteModel.id);
   });
 });
 

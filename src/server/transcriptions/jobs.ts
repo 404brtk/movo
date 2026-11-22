@@ -63,7 +63,7 @@ export interface TranscriptionReport {
 }
 
 export interface TranscriptionEngine {
-  check: () => Effect.Effect<void, MediaError>;
+  check: (speakerModelId: SpeakerModelId | null) => Effect.Effect<void, MediaError>;
   transcribe: (
     request: TranscriptionRequest,
     report: TranscriptionReport,
@@ -343,8 +343,10 @@ export function createTranscriptions(
       });
       return yield* read(id);
     }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions));
+  const chosenSpeakerModel = () => storage(() => readSpeakerModelId(database));
+  const check = () => Effect.flatMap(chosenSpeakerModel(), engine.check);
   return {
-    check: engine.check,
+    check,
     get,
     removeMedia: (id: string) =>
       Effect.gen(function* () {
@@ -503,7 +505,7 @@ export function createTranscriptions(
         yield* library.file(id);
         const existing = yield* read(id);
         if (existing) return existing;
-        yield* engine.check();
+        yield* check();
         return yield* storage(() => {
           queueTranscription(database, id);
           return Schema.decodeUnknownSync(TranscriptionJob)(row(id));
@@ -529,7 +531,7 @@ export function createTranscriptions(
         if (active?.mediaId === id) yield* Fiber.interrupt(active.fiber);
         return yield* read(id);
       }).pipe(Effect.uninterruptible, Semaphore.withPermit(actions)),
-    retry: (id: string) =>
+    retry: (id: string, speakerModelId?: SpeakerModelId | null) =>
       Effect.gen(function* () {
         const job = yield* get(id);
         if (!job || ["queued", "running"].includes(job.status))
@@ -538,14 +540,16 @@ export function createTranscriptions(
           );
         if (active?.mediaId === id) yield* Fiber.interrupt(active.fiber);
         yield* library.file(id);
-        yield* engine.check();
+        const speakers =
+          speakerModelId === undefined ? yield* chosenSpeakerModel() : speakerModelId;
+        yield* engine.check(speakers);
         const cleaned = yield* cleanup(id);
         if (Result.isFailure(cleaned)) return yield* Effect.fail(cleaned.failure);
         yield* storage(() =>
           database
             .update(transcriptionJobs)
             .set({
-              speakerModelId: readSpeakerModelId(database),
+              speakerModelId: speakers,
               status: "queued",
               phase: "queued",
               phaseProgress: null,

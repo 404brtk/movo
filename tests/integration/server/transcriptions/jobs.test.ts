@@ -153,14 +153,18 @@ it("queues once per recording, saves timestamped passages and preserves the medi
   );
 });
 
-it("keeps the speaker labels chosen when a job was queued and takes the current choice on retry", async ({
+it("keeps the speaker labels chosen when a job was queued and takes the current or requested choice on retry", async ({
   signal,
 }) => {
   await withRecording(signal, (database, directory, tools, _library, media) =>
     Effect.gen(function* () {
       const requested: (string | null)[] = [];
+      const checked: (string | null)[] = [];
       const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
-        check: () => Effect.void,
+        check: (speakerModelId) =>
+          Effect.sync(() => {
+            checked.push(speakerModelId);
+          }),
         transcribe: ({ speakerModelId }) =>
           Effect.sync(() => {
             requested.push(speakerModelId);
@@ -177,6 +181,12 @@ it("keeps the speaker labels chosen when a job was queued and takes the current 
       expect(yield* jobs.retry(media.id)).toMatchObject({ speakerModelId: null });
       yield* waitFor(jobs, media.id, "completed");
       expect(requested).toEqual(["sortformer-4spk-q8", null]);
+      expect(yield* jobs.retry(media.id, "pyannote-wespeaker")).toMatchObject({
+        speakerModelId: "pyannote-wespeaker",
+      });
+      yield* waitFor(jobs, media.id, "completed");
+      expect(requested).toEqual(["sortformer-4spk-q8", null, "pyannote-wespeaker"]);
+      expect(checked).toEqual(["sortformer-4spk-q8", null, "pyannote-wespeaker"]);
       yield* Fiber.interrupt(worker);
     }),
   );

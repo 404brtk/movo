@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
+import type {
+  TranscriptionJob,
+  TranscriptionRetry,
+} from "../../shared/contracts/transcriptions.ts";
 import {
   cancelTranscription,
   enqueueTranscription,
@@ -12,7 +15,7 @@ import {
 export const isActiveTranscription = (job: TranscriptionJob | null | undefined) =>
   job?.status === "queued" || job?.status === "running";
 
-export type TranscriptionAction = "start" | "cancel" | "retry";
+export type TranscriptionAction = "start" | "cancel" | "retry" | TranscriptionRetry;
 
 export function useTranscriptionAction(mediaId: string) {
   const queryClient = useQueryClient();
@@ -24,7 +27,7 @@ export function useTranscriptionAction(mediaId: string) {
         ? enqueueTranscription(mediaId)
         : action === "cancel"
           ? cancelTranscription(mediaId)
-          : retryTranscription(mediaId),
+          : retryTranscription(mediaId, action === "retry" ? undefined : action),
     onMutate: () => queryClient.cancelQueries({ queryKey, exact: true }),
     onSuccess: (job) => {
       queryClient.setQueryData(queryKey, job);

@@ -1,7 +1,10 @@
 import { type RefObject, useRef } from "react";
 import { RefreshIcon } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
-import type { TranscriptionActionMutation } from "../lib/transcription-actions.ts";
+import type {
+  TranscriptionAction,
+  TranscriptionActionMutation,
+} from "../lib/transcription-actions.ts";
 import { AccentIcon } from "./accent-icon.tsx";
 import { Spinner } from "./spinner.tsx";
 import {
@@ -87,11 +90,13 @@ export function ReplaceEditsDialog({
   onOpenChange,
   returnFocus,
   transcribe,
+  retry = "retry",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   returnFocus?: RefObject<HTMLElement | null> | undefined;
   transcribe: TranscriptionActionMutation;
+  retry?: TranscriptionAction;
 }) {
   return (
     <ConfirmDialog
@@ -106,7 +111,7 @@ export function ReplaceEditsDialog({
       pending="Starting…"
       busy={transcribe.isPending}
       error={transcribe.error?.message ?? null}
-      onConfirm={() => transcribe.mutate("retry", { onSuccess: () => onOpenChange(false) })}
+      onConfirm={() => transcribe.mutate(retry, { onSuccess: () => onOpenChange(false) })}
     />
   );
 }

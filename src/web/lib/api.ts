@@ -53,6 +53,7 @@ import {
   TranscriptHistory,
   TranscriptionJob,
   TranscriptionStatus,
+  type TranscriptionRetry,
   type PassageEdit,
   type SpeakerAssignment,
   type SpeakerMerge,
@@ -285,9 +286,12 @@ export const cancelTranscription = (id: string) =>
     client.api.media[":id"].transcription.cancel.$post({ param: { id } }),
     TranscriptionStatus,
   );
-export const retryTranscription = (id: string) =>
+export const retryTranscription = (id: string, choice?: TranscriptionRetry) =>
   readResponse(
-    client.api.media[":id"].transcription.retry.$post({ param: { id } }),
+    client.api.media[":id"].transcription.retry.$post(
+      { param: { id } },
+      choice ? jsonBody(choice) : undefined,
+    ),
     TranscriptionJob,
   );
 export const transcriptHistoryOptions = (id: string, revision: number) =>

@@ -19,6 +19,7 @@ import {
   Transcript,
   TranscriptHistory,
   TranscriptionJob,
+  TranscriptionRetry,
   TranscriptReplace,
   TranscriptRestore,
 } from "../../shared/contracts/transcriptions.ts";
@@ -175,8 +176,8 @@ export const movoTools = Toolkit.make(
   }).annotateMerge(changes({ idempotent: true })),
   Tool.make("retry_transcription", {
     description:
-      "Transcribe a recording again after its transcription completed, failed, was cancelled or was interrupted. A completed transcript is kept until the new attempt completes and then replaced, together with its edits and change history.",
-    parameters: Recording,
+      "Transcribe a recording again after its transcription completed, failed, was cancelled or was interrupted. A completed transcript is kept until the new attempt completes and then replaced, together with its edits and change history. speakerModelId chooses speaker labels for this attempt: sortformer-4spk-q8 labels up to 4 speakers quickly and suits interviews and podcasts, pyannote-wespeaker labels up to 32 speakers more slowly and suits meetings and press conferences, and null turns speaker labels off. Leave it out to use the speaker labels chosen in Settings. The chosen speaker model must be installed in Settings. Every job reports the speakerModelId it uses.",
+    parameters: Schema.Struct({ ...Recording.fields, ...TranscriptionRetry.fields }),
     success: TranscriptionSummary,
     failure,
   }).annotateMerge(changes({ destructive: true, idempotent: false })),

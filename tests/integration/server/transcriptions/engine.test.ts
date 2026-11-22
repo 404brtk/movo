@@ -37,7 +37,6 @@ it.for(["tone.wav", "sample.webm"])(
       tools,
       {
         resolve: () => Effect.succeed({ transcription: "verified-model.gguf" }),
-        speakerLabels: () => Effect.succeed(null),
       },
       (file, args, options) =>
         file === process.execPath
@@ -51,7 +50,7 @@ it.for(["tone.wav", "sample.webm"])(
             })
           : runCommand(file, args, options),
     );
-    await Effect.runPromise(engine.check());
+    await Effect.runPromise(engine.check(null));
     const result = await Effect.runPromise(
       engine.transcribe(
         { path: fileURLToPath(source), directory: staging, speakerModelId: null },
@@ -121,7 +120,6 @@ it.for([
     tools,
     {
       resolve: () => Effect.succeed({ transcription: "verified-model.gguf" }),
-      speakerLabels: () => Effect.succeed(null),
     },
     (file, args, options) =>
       Effect.promise(async () => {
@@ -180,7 +178,6 @@ it.for([
               ? speakerFiles[speakerModelId]
               : { transcription: "verified-model.gguf" },
           ),
-        speakerLabels: () => Effect.succeed(null),
       },
       (file, args, options) =>
         Effect.promise(async () => {
@@ -218,7 +215,7 @@ it.for([
   },
 );
 
-it("checks the chosen speaker model before a transcription is queued", async () => {
+it("checks the speaker model a job will use before it is queued", async () => {
   const resolved: string[] = [];
   const engine = (pyannoteFiles: Record<string, string>) =>
     createTranscriptionEngine(
@@ -230,14 +227,17 @@ it("checks the chosen speaker model before a transcription is queued", async () 
             id === "pyannote-wespeaker" ? pyannoteFiles : { transcription: "verified-model.gguf" },
           );
         },
-        speakerLabels: () => Effect.succeed("pyannote-wespeaker"),
       },
     );
   await Effect.runPromise(
-    engine({ segmentation: "segmentation.onnx", embedding: "embedding.onnx" }).check(),
+    engine({ segmentation: "segmentation.onnx", embedding: "embedding.onnx" }).check(
+      "pyannote-wespeaker",
+    ),
   );
   expect(resolved).toEqual(["parakeet-ultra-q8", "pyannote-wespeaker"]);
-  await expect(Effect.runPromise(engine({ embedding: "embedding.onnx" }).check())).rejects.toThrow(
-    /missing a required file/u,
-  );
+  await Effect.runPromise(engine({}).check(null));
+  expect(resolved).toEqual(["parakeet-ultra-q8", "pyannote-wespeaker", "parakeet-ultra-q8"]);
+  await expect(
+    Effect.runPromise(engine({ embedding: "embedding.onnx" }).check("pyannote-wespeaker")),
+  ).rejects.toThrow(/missing a required file/u);
 });

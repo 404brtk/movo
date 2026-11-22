@@ -353,9 +353,10 @@ test("transcribes a completed recording again while keeping the previous transcr
     expect(route.request().method()).toBe("GET");
     return route.fulfill({ json: job });
   });
+  const retryBodies: unknown[] = [];
   await page.route(`**/api/media/${media.id}/transcription/retry`, (route) => {
     expect(route.request().method()).toBe("POST");
-    expect(route.request().postData()).toBeNull();
+    retryBodies.push(route.request().postDataJSON());
     retries++;
     job = { ...job, status: "running", phase: "transcribing", device: null, error: null };
     return route.fulfill({ status: 202, json: job });
@@ -385,7 +386,18 @@ test("transcribes a completed recording again while keeping the previous transcr
   );
   await page.getByRole("button", { name: "More actions", exact: true }).click();
   await page.getByRole("menuitem", { name: "Transcribe again", exact: true }).click();
+  const speakerLabels = page.getByRole("group", { name: "Speaker labels", exact: true });
+  for (const [option, hint] of [
+    ["Up to 4 speakers", "Not installed"],
+    ["Up to 32 speakers", "Not installed"],
+  ] as const) {
+    const item = speakerLabels.getByRole("menuitem", { name: option });
+    await expect(item).toBeDisabled();
+    await expect(item).toContainText(hint);
+  }
+  await speakerLabels.getByRole("menuitem", { name: "No speaker labels", exact: true }).click();
   await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
+  expect(retryBodies).toEqual([{ speakerModelId: null }]);
   await expect(previousText).toBeVisible();
   await expect(notice).toBeVisible();
   await expect(panel.getByRole("button", { name: "Copy transcript", exact: true })).toBeVisible();
@@ -429,6 +441,7 @@ test("transcribes a completed recording again while keeping the previous transcr
   });
   await expect(copied).toBeVisible();
   expect(retries).toBe(2);
+  expect(retryBodies).toEqual([{ speakerModelId: null }, null]);
 });
 
 test("offers transcribing again after a cancelled, rejected or failed repeat attempt", async ({
@@ -477,13 +490,16 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
   await expect(panel.getByText("Showing the previous transcript.", { exact: true })).toBeVisible();
   const more = page.getByRole("button", { name: "More actions", exact: true });
   const transcribeAgain = page.getByRole("menuitem", { name: "Transcribe again", exact: true });
+  const noSpeakerLabels = page.getByRole("menuitem", { name: "No speaker labels", exact: true });
   await more.click();
   await transcribeAgain.click();
+  await noSpeakerLabels.click();
   await expect(panel.getByRole("alert")).toHaveText(
     "Close apps using the recording and try again.",
   );
   await more.click();
   await transcribeAgain.click();
+  await noSpeakerLabels.click();
   await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
   await expect(panel.getByRole("alert")).toHaveCount(0);
 

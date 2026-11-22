@@ -81,6 +81,28 @@ it("runs transcription beyond the initiating request and exposes status, cancel 
                 .transcript,
             ).toEqual({ language: null, words: [] });
             expect(await (await app.request(`${base}/export/vtt`)).text()).toBe("WEBVTT\n\n");
+            const retryWith = (body: string) =>
+              app.request(`${base}/retry`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body,
+              });
+            for (const body of [
+              "{",
+              JSON.stringify({ speakerModelId: "parakeet-ultra-q8" }),
+              JSON.stringify({ speakerModelId: "x".repeat(5000) }),
+            ]) {
+              const rejected = await retryWith(body);
+              expect(rejected.status).toBe(body.length > 4096 ? 413 : 400);
+            }
+            const chosen = await retryWith(
+              JSON.stringify({ speakerModelId: "sortformer-4spk-q8" }),
+            );
+            expect(chosen.status).toBe(202);
+            expect(Schema.decodeUnknownSync(TranscriptionJob)(await chosen.json())).toMatchObject({
+              status: "queued",
+              speakerModelId: "sortformer-4spk-q8",
+            });
           });
           yield* Fiber.interrupt(worker);
         }),
