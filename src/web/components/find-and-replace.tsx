@@ -1,9 +1,8 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import type { Transcript } from "../../shared/contracts/transcriptions.ts";
 import { findWords, replaceWords } from "../../shared/transcript-edits.ts";
-import { transcriptPassages } from "../../shared/transcript-passages.ts";
 import { useMatchStepper, type StepDirection } from "../lib/match-stepper.ts";
-import { marksByPassage, type TranscriptMatches } from "../lib/passage-marks.ts";
+import type { TranscriptMatches } from "../lib/passage-marks.ts";
 
 export function useFindAndReplace(transcript: Transcript, chosen: readonly number[] | undefined) {
   const [find, setFind] = useState("");
@@ -18,10 +17,6 @@ export function useFindAndReplace(transcript: Transcript, chosen: readonly numbe
     () => replaceWords(transcript.words, previewFind, previewReplacement, chosen).length,
     [transcript.words, previewFind, previewReplacement, chosen],
   );
-  const passageCount = useMemo(
-    () => marksByPassage(transcriptPassages(transcript.words), { ranges: found, current: 0 }).size,
-    [found, transcript.words],
-  );
   const stepper = useMatchStepper(found.length);
   const { index } = stepper;
   const matches = useMemo<TranscriptMatches | undefined>(
@@ -34,7 +29,6 @@ export function useFindAndReplace(transcript: Transcript, chosen: readonly numbe
     chosen,
     count: found.length,
     changeCount,
-    passageCount,
     index,
     matches,
     previewCurrent: previewFind === find && previewReplacement === replacement,
