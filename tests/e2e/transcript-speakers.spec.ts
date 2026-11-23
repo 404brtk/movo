@@ -390,3 +390,29 @@ test("shows only the chosen speakers, scopes search, replace and copy, and plays
   await expect(page.getByText(/^Playing only/u)).toHaveCount(0);
   await expect(speakerHeadings(page)).toHaveText(["Speaker 1", "Speaker 2", "Speaker 1"]);
 });
+
+test("keeps a passage being edited open while its speaker is filtered out", async ({ page }) => {
+  const panel = transcription(page);
+  await panel.getByRole("button", { name: "Speakers", exact: true }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Speaker 1" }).click();
+  await page.keyboard.press("Escape");
+  await panel.getByRole("button", { name: "Edit passage at 0:00" }).click();
+  const text = page.getByRole("textbox", { name: "Passage text" });
+  await text.fill("Good morning, everybody.");
+
+  await panel.getByRole("button", { name: "Speaker 1", exact: true }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Speaker 2" }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Speaker 1" }).click();
+  await page.keyboard.press("Escape");
+  await expect(text).toHaveValue("Good morning, everybody.");
+  await expect(panel.getByRole("button", { name: /^Hide Speaker 1/u })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Save passage" }).click();
+  await expect(text).toBeHidden();
+  await panel
+    .getByRole("button", { name: /^Speaker 1 · 1 passage/u })
+    .first()
+    .click();
+  await expect(passages(page).nth(1)).toContainText("Good morning, everybody.");
+  await expect(panel.getByRole("button", { name: /^Hide Speaker 1/u })).toBeEnabled();
+});

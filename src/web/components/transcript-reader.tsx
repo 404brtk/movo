@@ -240,6 +240,7 @@ function FoldRow({
   label,
   passages,
   expanded,
+  locked,
   playing,
   skipping,
   spacing,
@@ -248,6 +249,7 @@ function FoldRow({
   label: string;
   passages: readonly TranscriptPassage[];
   expanded: boolean;
+  locked: boolean;
   playing: boolean;
   skipping: boolean;
   spacing: "turn" | "stacked" | undefined;
@@ -268,8 +270,9 @@ function FoldRow({
       <button
         type="button"
         aria-expanded={expanded}
+        disabled={locked}
         className={cn(
-          "-mx-3.5 flex h-9 w-[calc(100%+1.75rem)] cursor-pointer items-center gap-2 rounded-xl px-3.5 text-left text-[13px] font-medium transition-colors duration-150 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+          "-mx-3.5 flex h-9 w-[calc(100%+1.75rem)] cursor-pointer items-center gap-2 rounded-xl px-3.5 text-left text-[13px] font-medium transition-colors duration-150 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-45",
           expanded
             ? "text-muted-foreground hover:bg-subtle hover:text-foreground"
             : playing
@@ -425,36 +428,42 @@ export function TranscriptReader({
       />
     );
   };
+  const editingIndex = edited?.open
+    ? passages.findIndex((passage) => passage.firstWord === edited.firstWord)
+    : -1;
+  const holdsEditor = ({ start, end }: { start: number; end: number }) =>
+    start <= editingIndex && editingIndex < end;
+  const foldOpen = (row: { start: number; end: number }) =>
+    holdsEditor(row) || expanded.has(passages[row.start]?.firstWord ?? row.start);
   return (
     <>
       <ol ref={list} aria-label="Timestamped passages">
-        {rows.map((row, rowIndex) => {
-          if (row.kind === "passage") return passageAt(row.index, false);
+        {rows.flatMap((row, rowIndex) => {
+          if (row.kind === "passage") return [passageAt(row.index, false)];
           const folded = passages.slice(row.start, row.end);
           const firstWord = folded[0]?.firstWord ?? row.start;
-          const open = expanded.has(firstWord);
+          const open = foldOpen(row);
           const previous = rows[rowIndex - 1];
-          return (
-            <Fragment key={`fold-${firstWord}`}>
-              <FoldRow
-                label={row.speaker === undefined ? "No speaker" : speakers.label(row.speaker)}
-                passages={folded}
-                expanded={open}
-                playing={!open && currentIndex >= row.start && currentIndex < row.end}
-                skipping={skipping}
-                spacing={
-                  previous === undefined
-                    ? undefined
-                    : previous.kind === "fold" &&
-                        !expanded.has(passages[previous.start]?.firstWord ?? previous.start)
-                      ? "stacked"
-                      : "turn"
-                }
-                onToggle={() => toggleFold(firstWord)}
-              />
-              {open ? folded.map((_, offset) => passageAt(row.start + offset, offset === 0)) : null}
-            </Fragment>
-          );
+          return [
+            <FoldRow
+              key={`fold-${firstWord}`}
+              label={row.speaker === undefined ? "No speaker" : speakers.label(row.speaker)}
+              passages={folded}
+              expanded={open}
+              locked={holdsEditor(row)}
+              playing={!open && currentIndex >= row.start && currentIndex < row.end}
+              skipping={skipping}
+              spacing={
+                previous === undefined
+                  ? undefined
+                  : previous.kind === "fold" && !foldOpen(previous)
+                    ? "stacked"
+                    : "turn"
+              }
+              onToggle={() => toggleFold(firstWord)}
+            />,
+            ...(open ? folded.map((_, offset) => passageAt(row.start + offset, offset === 0)) : []),
+          ];
         })}
       </ol>
       {playback && !playback.following && !suspended && currentPassage ? (
