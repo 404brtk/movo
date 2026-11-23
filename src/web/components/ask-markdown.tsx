@@ -32,7 +32,6 @@ function MomentLink({ mediaId, startMs }: { mediaId: string; startMs: number }) 
     <Link
       to="/media/$mediaId"
       params={{ mediaId }}
-      search={{ startMs }}
       {...useMomentNavigation(mediaId, startMs)}
       onClick={() => onMoment?.()}
       className={chipClassName}

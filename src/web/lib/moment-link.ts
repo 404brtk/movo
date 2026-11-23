@@ -6,8 +6,26 @@ const nextMoment = (previous: HistoryState): HistoryState => ({
 });
 
 export function useMomentNavigation(mediaId: string, startMs: number) {
-  const here = useRouterState({
-    select: (state) => state.location.href === momentHref(mediaId, startMs),
+  const open = useRouterState({
+    select: (state) => state.location.pathname === momentHref(mediaId),
   });
-  return { state: nextMoment, replace: here, resetScroll: false };
+  const here = useRouterState({
+    select: (state) => open && state.location.search.startMs === startMs,
+  });
+  const speakers = useRouterState({
+    select: (state) => (open ? state.location.search.speakers : undefined),
+  });
+  const only = useRouterState({
+    select: (state) => (open ? state.location.search.only : undefined),
+  });
+  return {
+    search: {
+      startMs,
+      ...(speakers === undefined ? {} : { speakers }),
+      ...(only === undefined ? {} : { only }),
+    },
+    state: nextMoment,
+    replace: here,
+    resetScroll: false,
+  };
 }

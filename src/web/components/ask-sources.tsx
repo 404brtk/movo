@@ -39,7 +39,6 @@ function QuotedMoment({
       <Link
         to="/media/$mediaId"
         params={{ mediaId }}
-        search={{ startMs }}
         {...useMomentNavigation(mediaId, startMs)}
         className="font-medium text-primary-strong tabular-nums outline-none after:absolute after:inset-0 after:rounded-lg"
       >

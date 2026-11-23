@@ -358,9 +358,10 @@ export function TranscriptReader({
     if (!next.delete(firstWord)) next.add(firstWord);
     setExpanded(next);
   };
-  const [seenRevealMs, setSeenRevealMs] = useState<number | undefined>();
-  if (revealMs !== seenRevealMs) {
-    setSeenRevealMs(revealMs);
+  const revealJumps = playback?.jumps ?? 0;
+  const [seenReveal, setSeenReveal] = useState<{ ms: number | undefined; jumps: number }>();
+  if (seenReveal === undefined || seenReveal.ms !== revealMs || seenReveal.jumps !== revealJumps) {
+    setSeenReveal({ ms: revealMs, jumps: revealJumps });
     const revealedIndex = passages.findIndex((passage) => contains(passage, revealedWord));
     const revealedFold = rows.find(
       (row) => row.kind === "fold" && row.start <= revealedIndex && revealedIndex < row.end,
