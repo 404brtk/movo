@@ -255,9 +255,16 @@ describe("speakers", () => {
     expect(findWords(thanks, "a lot", [1])).toEqual([{ firstWord: 5, wordCount: 2 }]);
     expect(findWords(thanks, "lot a", [2])).toEqual([]);
     expect(findWords(thanks, "thanks", [4])).toEqual([]);
+    expect(findWords(thanks, "lot a", [1, 2])).toEqual([]);
     expect(texts(checkedRoundTrip(thanks, replaceWords(thanks, "thanks", "Cheers", [1, 3])))).toBe(
       "Cheers, Anna. Thanks a lot a lot. Cheers!",
     );
+  });
+
+  it("never matches a phrase that runs from one speaker into another", () => {
+    expect(findWords(words, "morning hi")).toEqual([]);
+    expect(replaceWords(words, "morning hi", "Hello")).toEqual([]);
+    expect(findWords(words, "good morning")).toEqual([{ firstWord: 0, wordCount: 2 }]);
   });
 
   it("gives words added at the start of a passage the passage's speaker", () => {

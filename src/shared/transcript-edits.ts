@@ -120,15 +120,17 @@ export function findWords(
   const pattern = wordTokens(find).map(matchKey);
   if (pattern.length === 0) return [];
   const keys = words.map((word) => matchKey(word.text));
-  const spokenInScope = (index: number) => {
-    const speaker = words[index]?.speaker;
-    return speakers === undefined || (speaker !== undefined && speakers.includes(speaker));
-  };
+  const inScope = (speaker: number | undefined) =>
+    speakers === undefined || (speaker !== undefined && speakers.includes(speaker));
   const ranges: { firstWord: number; wordCount: number }[] = [];
   let index = 0;
   while (index + pattern.length <= words.length) {
+    const speaker = words[index]?.speaker;
     if (
-      !pattern.every((key, offset) => keys[index + offset] === key && spokenInScope(index + offset))
+      !inScope(speaker) ||
+      !pattern.every(
+        (key, offset) => keys[index + offset] === key && words[index + offset]?.speaker === speaker,
+      )
     ) {
       index++;
       continue;
