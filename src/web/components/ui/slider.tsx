@@ -5,21 +5,27 @@ const tones = {
   default: {
     track: "bg-border",
     range: "bg-linear-to-r from-primary-from to-primary-to",
+    highlight: "bg-primary/30",
   },
-  overlay: { track: "bg-white/35", range: "bg-white" },
+  overlay: { track: "bg-white/35", range: "bg-white", highlight: "bg-white/70" },
 } as const;
 
 function Slider({
   className,
   tone = "default",
+  highlights = [],
   getAriaValueText,
   "aria-label": ariaLabel,
   ...props
 }: SliderPrimitive.Root.Props<number> &
   Pick<SliderPrimitive.Thumb.Props, "getAriaValueText"> & {
     tone?: keyof typeof tones;
+    highlights?: readonly { from: number; to: number }[] | undefined;
     "aria-label"?: string;
   }) {
+  const min = props.min ?? 0;
+  const span = Math.max((props.max ?? 100) - min, Number.EPSILON);
+  const percent = (value: number) => (Math.min(Math.max(value - min, 0), span) / span) * 100;
   return (
     <SliderPrimitive.Root
       data-slot="slider"
@@ -32,6 +38,14 @@ function Slider({
           data-slot="slider-track"
           className={cn("relative h-1 w-full rounded-[2px] select-none", tones[tone].track)}
         >
+          {highlights.map(({ from, to }) => (
+            <span
+              key={from}
+              data-slot="slider-highlight"
+              className={cn("absolute inset-y-0 rounded-[2px]", tones[tone].highlight)}
+              style={{ left: `${percent(from)}%`, width: `${percent(to) - percent(from)}%` }}
+            />
+          ))}
           <SliderPrimitive.Indicator
             data-slot="slider-range"
             className={cn("h-full rounded-[2px] select-none", tones[tone].range)}

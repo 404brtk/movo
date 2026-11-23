@@ -190,7 +190,7 @@ export const movoTools = Toolkit.make(
   }).annotateMerge(changes({ idempotent: false })),
   Tool.make("replace_in_transcript", {
     description:
-      "Replace every whole-word occurrence of find in a transcript, ignoring case but not accents, for example a consistently misrecognized name. find can span several words, punctuation around each match is kept and an empty replacement removes the matches. revision must be the current one. The revision stays the same when nothing matched.",
+      "Replace every whole-word occurrence of find in a transcript, ignoring case but not accents, for example a consistently misrecognized name. find can span several words of one speaker, punctuation around each match is kept and an empty replacement removes the matches. speakers, ids from speakers in read_transcript, limits the replacement to those speakers' words. revision must be the current one. The revision stays the same when nothing matched.",
     parameters: Schema.Struct({ ...Recording.fields, ...TranscriptReplace.fields }),
     success: TranscriptionSummary,
     failure,

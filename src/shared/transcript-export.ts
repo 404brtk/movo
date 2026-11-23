@@ -45,8 +45,14 @@ const cueTime = (milliseconds: number, separator: "," | ".") =>
 export function transcriptText(
   transcript: Transcript,
   { speakers, timestamps }: TranscriptExportOptions = defaultTranscriptExportOptions,
+  spokenBy?: readonly number[],
 ) {
   return labeledPassages(transcript, speakers)
+    .filter(
+      ({ passage }) =>
+        spokenBy === undefined ||
+        (passage.speaker !== undefined && spokenBy.includes(passage.speaker)),
+    )
     .map(({ passage, speaker, turnStart, named }, index) => {
       const turnGap = speaker !== null && turnStart && index > 0 ? "\n" : "";
       const time = timestamps ? `[${clockTime(passage.startMs)}] ` : "";

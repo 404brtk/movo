@@ -17,6 +17,7 @@ import {
   useCopyTranscript,
   useTranscriptExportOptions,
 } from "../lib/transcript-sharing.ts";
+import type { SpeakerFilter } from "./speaker-filter.tsx";
 import { Button } from "./ui/button.tsx";
 import {
   DropdownMenu,
@@ -99,20 +100,30 @@ export function TranscriptExportItems({
 export function TranscriptActions({
   mediaId,
   transcript,
+  filter,
 }: {
   mediaId: string;
   transcript: Transcript;
+  filter: Pick<SpeakerFilter, "chosen" | "owner">;
 }) {
-  const { state: copyState, copyText } = useCopyTranscript(transcript);
+  const { chosen, owner } = filter;
+  const { state: copyState, copyText } = useCopyTranscript(transcript, chosen);
+  const copyLabel = owner === undefined ? "Copy transcript" : `Copy ${owner} passages`;
 
   return (
     <div className="relative flex items-center">
-      <output className="sr-only">{copyState === "copied" ? "Transcript copied." : ""}</output>
+      <output className="sr-only">
+        {copyState === "copied"
+          ? owner === undefined
+            ? "Transcript copied."
+            : "Passages copied."
+          : ""}
+      </output>
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger
             render={<Button variant="ghost" size="icon-sm" disabled={copyState === "copying"} />}
-            aria-label="Copy transcript"
+            aria-label={copyLabel}
             aria-busy={copyState === "copying" || undefined}
             onClick={() => void copyText()}
           >
@@ -133,7 +144,7 @@ export function TranscriptActions({
               />
             </span>
           </TooltipTrigger>
-          <TooltipContent>Copy transcript</TooltipContent>
+          <TooltipContent>{copyLabel}</TooltipContent>
         </Tooltip>
         <DropdownMenu>
           <Tooltip>

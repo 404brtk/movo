@@ -13,6 +13,9 @@ export const searchShortcut: Shortcut = {
     event.code === "KeyF" && pressesModifier(event) && !event.shiftKey && !event.altKey,
 };
 
+export const nextMatchLabel = isMac ? "↩" : "Enter";
+export const previousMatchLabel = isMac ? "⇧↩" : "Shift+Enter";
+
 export const replaceShortcut: Shortcut = {
   label: isMac ? "⇧⌘H" : "Ctrl+H",
   keys: isMac ? "Shift+Meta+H" : "Control+H",

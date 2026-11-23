@@ -121,13 +121,12 @@ test("previews and applies find and replace, then undoes and restores versions",
   await expect(form.getByLabel("Find", { exact: true })).toBeFocused();
   await form.getByLabel("Find", { exact: true }).fill("KUBERNETIS");
   await form.getByLabel("Replace with").fill("Kubernetes");
-  await expect(form.getByRole("status")).toHaveText(/^Matches whole words in 2 passages\./u);
   await expect(form.getByText("1 of 2", { exact: true })).toBeVisible();
   await expect(panel.locator("mark")).toHaveText(["kubernetis", "Kubernetis"]);
   await form.getByLabel("Find", { exact: true }).press("Enter");
   await expect(form.getByText("2 of 2", { exact: true })).toBeVisible();
   await form.getByRole("button", { name: "Replace all" }).click();
-  await expect(form.getByRole("status")).toHaveText(/^Replaced 2 matches\./u);
+  await expect(page.getByText("Replaced 2 matches", { exact: true })).toBeVisible();
   await expect(passages(page)).toHaveText([
     /We deploy Kubernetes daily\./u,
     /Kubernetes keeps running\./u,
@@ -137,6 +136,7 @@ test("previews and applies find and replace, then undoes and restores versions",
   await panel.getByRole("button", { name: "Edit passage at 0:01" }).click();
   await page.getByRole("textbox", { name: "Passage text" }).fill("Kubernetes keeps working.");
   await page.getByRole("button", { name: "Save passage" }).click();
+  await form.getByRole("button", { name: "Close", exact: true }).click();
 
   const history = panel.getByRole("button", { name: "History" });
   await history.click();
@@ -196,6 +196,143 @@ test("previews and applies find and replace, then undoes and restores versions",
   ]);
   await page.getByRole("button", { name: "Close history" }).click();
   await expect(passages(page).last()).toContainText("Kubernetes keeps working.");
+});
+
+test("undoes a replacement after the bar closed mid-save and after switching versions", async ({
+  page,
+  recording,
+}) => {
+  const statusUrl = `${recording.origin}/api/media/${recording.mediaId}/transcription`;
+  const change = async (action: string, body: object) =>
+    expect((await page.request.post(`${statusUrl}/${action}`, { data: body })).status()).toBe(200);
+  await change("replace", { revision: 1, find: "kubernetis", replacement: "Kubernetes" });
+  await change("restore", { revision: 2, target: 1 });
+  await change("restore", { revision: 3, target: 2 });
+  await page.reload();
+  await expect(passages(page)).toHaveText([
+    /We deploy Kubernetes daily\./u,
+    /Kubernetes keeps running\./u,
+  ]);
+
+  const panel = transcription(page);
+  await panel.getByRole("button", { name: "Replace", exact: true }).click();
+  const form = panel.getByRole("form", { name: "Find and replace" });
+  await form.getByLabel("Find", { exact: true }).fill("Kubernetes");
+  await form.getByLabel("Replace with").fill("K8s");
+  await expect(form.getByText("1 of 2", { exact: true })).toBeVisible();
+  let saveReplacement: (() => void) | undefined;
+  const replacementGate = new Promise<void>((open) => {
+    saveReplacement = open;
+  });
+  await page.route("**/transcription/replace", async (route) => {
+    await replacementGate;
+    await route.fallback();
+  });
+  await form.getByRole("button", { name: "Replace all" }).click();
+  await form.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(form).toBeHidden();
+  saveReplacement?.();
+  await page.unroute("**/transcription/replace");
+  await expect(passages(page)).toHaveText([/We deploy K8s daily\./u, /K8s keeps running\./u]);
+  await expect(page.getByText("Replaced 2 matches", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(passages(page)).toHaveText([
+    /We deploy Kubernetes daily\./u,
+    /Kubernetes keeps running\./u,
+  ]);
+  await expect(page.getByText("Could not undo the replacement")).toHaveCount(0);
+});
+
+test("offers Undo and reports its failure after leaving the recording", async ({
+  page,
+  recording,
+}) => {
+  const statusUrl = `${recording.origin}/api/media/${recording.mediaId}/transcription`;
+  const exported = async () => (await page.request.get(`${statusUrl}/export/txt`)).text();
+  const panel = transcription(page);
+  const replaceAll = async (find: string, replacement: string) => {
+    await panel.getByRole("button", { name: "Replace", exact: true }).click();
+    const form = panel.getByRole("form", { name: "Find and replace" });
+    await form.getByLabel("Find", { exact: true }).fill(find);
+    await form.getByLabel("Replace with").fill(replacement);
+    await expect(form.getByText("1 of 2", { exact: true })).toBeVisible();
+    await form.getByRole("button", { name: "Replace all" }).click();
+  };
+  const leave = async () => {
+    await page.getByRole("link", { name: "Back to library" }).click();
+    await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
+  };
+
+  let saveReplacement: (() => void) | undefined;
+  const replacementGate = new Promise<void>((open) => {
+    saveReplacement = open;
+  });
+  await page.route("**/transcription/replace", async (route) => {
+    await replacementGate;
+    await route.fallback();
+  });
+  await replaceAll("kubernetis", "Kubernetes");
+  await leave();
+  saveReplacement?.();
+  await page.unroute("**/transcription/replace");
+  await expect(page.getByText("Replaced 2 matches", { exact: true })).toBeVisible();
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  await undo.click();
+  await expect(undo).toBeHidden({ timeout: 1500 });
+  await expect.poll(exported).toBe("We deploy kubernetis daily.\nKubernetis keeps running.");
+
+  await page.goto(recording.url);
+  await replaceAll("kubernetis", "Kubernetes");
+  await expect(page.getByText("Replaced 2 matches", { exact: true })).toBeVisible();
+  await leave();
+  const job: TranscriptionJob = await (await page.request.get(statusUrl)).json();
+  const edited = await page.request.post(`${statusUrl}/replace`, {
+    data: { revision: job.revision, find: "running", replacement: "working" },
+  });
+  expect(edited.status()).toBe(200);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Notifications" }).getByText("Could not undo the replacement"),
+  ).toBeVisible();
+  await expect.poll(exported).toBe("We deploy Kubernetes daily.\nKubernetes keeps working.");
+});
+
+test("reports a rejected replacement after leaving the recording", async ({ page, recording }) => {
+  const statusUrl = `${recording.origin}/api/media/${recording.mediaId}/transcription`;
+  let saveReplacement: (() => void) | undefined;
+  const replacementGate = new Promise<void>((open) => {
+    saveReplacement = open;
+  });
+  await page.route("**/transcription/replace", async (route) => {
+    await replacementGate;
+    await route.fallback();
+  });
+  const panel = transcription(page);
+  await panel.getByRole("button", { name: "Replace", exact: true }).click();
+  const form = panel.getByRole("form", { name: "Find and replace" });
+  await form.getByLabel("Find", { exact: true }).fill("kubernetis");
+  await form.getByLabel("Replace with").fill("Kubernetes");
+  const replacementStarted = page.waitForRequest(`${statusUrl}/replace`);
+  await form.getByRole("button", { name: "Replace all" }).click();
+  await replacementStarted;
+  try {
+    await page.getByRole("link", { name: "Back to library" }).click();
+    await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
+    const edited = await page.request.post(`${statusUrl}/replace`, {
+      data: { revision: 1, find: "running", replacement: "working" },
+    });
+    expect(edited.status()).toBe(200);
+  } finally {
+    saveReplacement?.();
+  }
+
+  const notifications = page.getByRole("region", { name: "Notifications" });
+  await expect(notifications.getByText("Could not replace matches", { exact: true })).toBeVisible();
+  await expect(
+    notifications.getByText(/The transcript changed since it was loaded/u),
+  ).toBeVisible();
+  const exported = await page.request.get(`${statusUrl}/export/txt`);
+  expect(await exported.text()).toBe("We deploy kubernetis daily.\nKubernetis keeps working.");
 });
 
 test("asks before transcribing again replaces edits and then starts a new history", async ({

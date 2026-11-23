@@ -595,6 +595,18 @@ it("assigns, merges and names speakers over HTTP and labels the exports", async 
                 { revision: 2, kind: "speaker" },
               ],
             });
+
+            const replaceFine = (speakers: readonly number[]) =>
+              post("replace", { revision: 3, find: "fine", replacement: "Great", speakers });
+            const untouched = await replaceFine([1]);
+            expect(untouched.status).toBe(200);
+            expect(
+              Schema.decodeUnknownSync(TranscriptionJob)(await untouched.json()).revision,
+            ).toBe(3);
+            expect((await replaceFine([2, 3])).status).toBe(400);
+            expect((await replaceFine([])).status).toBe(400);
+            expect((await replaceFine([1, 2])).status).toBe(200);
+            expect(await text()).toBe("Ann: How are you?\n\nSpeaker 2: Great, thanks.");
           });
           yield* Fiber.interrupt(worker);
         }),

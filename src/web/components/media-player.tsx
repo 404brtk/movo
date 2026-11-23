@@ -4,6 +4,7 @@ import type { Transcript } from "../../shared/contracts/transcriptions.ts";
 import { exportTranscript } from "../../shared/transcript-export.ts";
 import { mediaFileUrl } from "../lib/api.ts";
 import { formatDuration } from "../lib/format.ts";
+import type { PlaySegment } from "../lib/speaker-filter.ts";
 import { scrollBehavior } from "../lib/transcript-follow.ts";
 import { cn } from "../lib/utils.ts";
 import { AudioPlayerBar, dockedSurfaceClassName } from "./audio-player-bar.tsx";
@@ -168,8 +169,10 @@ export function MediaPlayer({
   onPositionChange,
   onSeeking,
   onShowVideo,
+  playOnly,
 }: {
   item: MediaItem;
+  playOnly?: { segments: readonly PlaySegment[]; names: string } | undefined;
   transcript?: Transcript | null | undefined;
   layout: "split" | "single";
   className?: string | undefined;
@@ -181,7 +184,7 @@ export function MediaPlayer({
 }) {
   const [failed, setFailed] = useState(false);
   const frame = useRef<HTMLElement>(null);
-  const playback = useMediaPlayback(item.durationSeconds);
+  const playback = useMediaPlayback(item.durationSeconds, playOnly?.segments);
   const { attach: attachPlayback, controls } = playback;
   const subtitles = useMemo(
     () =>
@@ -208,10 +211,18 @@ export function MediaPlayer({
       if (startMs !== undefined) event.currentTarget.currentTime = startMs / 1000;
     },
     onError: () => setFailed(true),
-    onSeeking,
+    onSeeking: () => {
+      if (!playback.skipping()) onSeeking?.();
+    },
     onTimeUpdate: (event: SyntheticEvent<HTMLMediaElement>) =>
       onPositionChange?.(event.currentTarget.currentTime * 1000),
   } as const;
+  const playOnlyNote = playOnly ? (
+    <p className="mt-2.5 flex items-center gap-2 text-xs text-primary-strong">
+      <span aria-hidden="true" className="h-1 w-2.5 shrink-0 rounded-[2px] bg-primary/30" />
+      <span className="min-w-0 truncate">Playing only {playOnly.names}</span>
+    </p>
+  ) : null;
   const failure = failed ? (
     <p role="alert" className="mt-3 text-[13px]/5 text-pretty text-destructive">
       This file could not be played. Its codec may not be supported by your browser, or the saved
@@ -228,6 +239,7 @@ export function MediaPlayer({
           docked={layout === "split"}
           className={className}
         />
+        {playOnlyNote}
         {failure}
       </>
     );
@@ -280,6 +292,7 @@ export function MediaPlayer({
       {layout === "single" ? (
         <CompactPlayer item={item} playback={playback} frame={frame} onShowVideo={onShowVideo} />
       ) : null}
+      {playOnlyNote}
       {failure}
     </>
   );

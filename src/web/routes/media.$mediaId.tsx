@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -6,13 +6,14 @@ import { createFileRoute, useLocation } from "@tanstack/react-router";
 import { Schema } from "effect";
 import { maxSearchLength } from "../../shared/contracts/library.ts";
 import type { MediaItem } from "../../shared/contracts/media.ts";
-import type { TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
+import { SpeakerId, type TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
 import { AskButton, AskPanel, useAskPanelOpen } from "../components/ask-panel.tsx";
 import { BackToLibrary } from "../components/back-to-library.tsx";
 import { MediaPlayer } from "../components/media-player.tsx";
 import { NotFound } from "../components/not-found.tsx";
 import { RecordingMenu } from "../components/recording-menu.tsx";
 import { SourceLink } from "../components/source-site.tsx";
+import { useSpeakerFilter } from "../components/speaker-filter.tsx";
 import { TranscriptionPanel } from "../components/transcription-panel.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Skeleton } from "../components/ui/skeleton.tsx";
@@ -21,6 +22,7 @@ import { formatBytes, formatDuration } from "../lib/format.ts";
 import { useMediaQuery } from "../lib/media-query.ts";
 import { cn } from "../lib/utils.ts";
 import { searchParams } from "../lib/search-params.ts";
+import { chosenSegments } from "../lib/speaker-filter.ts";
 import {
   hasEdits,
   type TranscriptionActionMutation,
@@ -35,6 +37,8 @@ export const Route = createFileRoute("/media/$mediaId")({
         Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
       ),
       q: Schema.optional(Schema.String.check(Schema.isMaxLength(maxSearchLength))),
+      speakers: Schema.optional(Schema.Array(SpeakerId)),
+      only: Schema.optional(Schema.Boolean),
     }),
   ),
   remountDeps: ({ params }) => params.mediaId,
@@ -198,6 +202,12 @@ function RecordingWorkspace({
   const sync = usePlaybackSync(startMs, moment);
   const transcription = useQuery(transcriptionOptions(item.id));
   const job = transcription.data;
+  const filter = useSpeakerFilter(job?.transcript);
+  const { only, chosen, passages, names } = filter;
+  const playOnly = useMemo(
+    () => (only && chosen ? { segments: chosenSegments(passages, chosen), names } : undefined),
+    [only, chosen, passages, names],
+  );
   const fileAvailable = item.fileRemovedAt === null;
   const floatingPlayer = fileAvailable && item.kind === "audio" && !split;
   const compactPlayer = fileAvailable && item.kind === "video" && !split;
@@ -233,6 +243,7 @@ function RecordingWorkspace({
             onPositionChange={sync.setPositionMs}
             onSeeking={sync.resumeFollowing}
             onShowVideo={sync.stopFollowing}
+            playOnly={playOnly}
           />
         ) : (
           <SavedCopyRemoved className={split ? undefined : "mt-5"} />

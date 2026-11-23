@@ -1028,6 +1028,82 @@ test("moves the open recording to each chosen moment, again on a repeated choice
   await expect(page.getByLabel("Find", { exact: true })).toHaveValue("worth");
 });
 
+test("keeps the speaker filter and opens the cited turn on every choice of a moment", async ({
+  page,
+  request,
+}) => {
+  const uploaded = await request.post("/api/media", {
+    data: silentWav(60),
+    headers: { "x-file-name": `${randomUUID()}.wav` },
+  });
+  expect(uploaded.status()).toBe(201);
+  const media: { id: string } = await uploaded.json();
+  const cited = passageStart(5);
+  await page.route(`**/api/media/${media.id}/transcription`, (route) =>
+    route.fulfill({
+      json: {
+        ...completedJob(media.id, ""),
+        transcript: {
+          language: "en",
+          words: Array.from({ length: 8 }, (_, index) =>
+            timedWords(passageStart(index), passageStart(index) + 2000, `Passage ${index}.`).map(
+              (word) => ({ ...word, speaker: (index % 2) + 1 }),
+            ),
+          ).flat(),
+        },
+      },
+    }),
+  );
+  const chatId = randomUUID();
+  const detail: ChatDetail = {
+    chat: summaryOf(chatId, media.id, "Where is it?"),
+    messages: [
+      userMessage("Where is it?"),
+      answerMessage(
+        "done",
+        [{ type: "text", text: `Speaker 2 says it here [${cited}].` }],
+        [{ startMs: cited, mediaId: media.id }],
+      ),
+    ],
+    hiddenBeforeSeq: 0,
+  };
+  await connectedModel(page);
+  await page.route("**/api/ask/chats?*", (route) => route.fulfill({ json: [detail.chat] }));
+  await page.route(`**/api/ask/chats/${chatId}`, (route) => route.fulfill({ json: detail }));
+
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await page.goto(`/media/${media.id}?speakers=%5B1%5D`);
+  const transcript = page.getByRole("region", { name: "Transcription", exact: true });
+  const passage = page.locator(`li[data-start-ms="${cited}"]`);
+  await expect(transcript.getByRole("button", { name: "Speaker 1", exact: true })).toBeVisible();
+  await expect(passage).toHaveCount(0);
+  await page.keyboard.press("/");
+  const panel = page.getByRole("complementary", { name: "Ask about this recording" });
+  const moment = panel.getByRole("link", { name: "0:20" });
+
+  await moment.click();
+  await expect(page).toHaveURL(new RegExp(`startMs=${cited}`, "u"));
+  await expect(page).toHaveURL(/[?&]speakers=/u);
+  await expect(passage).toBeInViewport();
+  await transcript.getByRole("button", { name: /^Hide Speaker 2/u }).click();
+  await expect(passage).toHaveCount(0);
+
+  const entries = await page.evaluate(() => history.length);
+  await moment.click();
+  await expect(passage).toBeInViewport();
+  expect(await page.evaluate(() => history.length)).toBe(entries);
+  await expect(transcript.getByRole("button", { name: "Speaker 1", exact: true })).toBeVisible();
+
+  await transcript.getByRole("button", { name: "Search", exact: true }).click();
+  await transcript.getByRole("searchbox", { name: "Search this transcript" }).fill("passage");
+  await expect(page).toHaveURL(/[?&]q=passage(?:&|$)/u);
+  await moment.click();
+  await expect(page).not.toHaveURL(/[?&]q=/u);
+  expect(await page.evaluate(() => history.length)).toBe(entries + 1);
+  await page.goBack();
+  await expect(page).toHaveURL(/[?&]q=passage(?:&|$)/u);
+});
+
 test("opens an earlier chat about the recording from the panel's history", async ({
   page,
   request,

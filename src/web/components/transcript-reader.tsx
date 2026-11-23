@@ -1,4 +1,9 @@
-import { ArrowDown01Icon, ArrowUp01Icon, Edit02Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  ArrowUp01Icon,
+  Edit02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 import type { Transcript } from "../../shared/contracts/transcriptions.ts";
@@ -11,6 +16,7 @@ import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { formatDuration } from "../lib/format.ts";
 import { focusOnMount } from "../lib/match-stepper.ts";
 import { marksByPassage, type PassageMark, type TranscriptMatches } from "../lib/passage-marks.ts";
+import { transcriptRows } from "../lib/speaker-filter.ts";
 import { pinnedHeight, useTranscriptFollow } from "../lib/transcript-follow.ts";
 import type { PassageHit, TranscriptFound } from "../lib/transcript-search.ts";
 import { cn } from "../lib/utils.ts";
@@ -230,6 +236,79 @@ const Passage = memo(function Passage({
   );
 });
 
+function FoldRow({
+  label,
+  passages,
+  expanded,
+  locked,
+  playing,
+  skipping,
+  spacing,
+  onToggle,
+}: {
+  label: string;
+  passages: readonly TranscriptPassage[];
+  expanded: boolean;
+  locked: boolean;
+  playing: boolean;
+  skipping: boolean;
+  spacing: "turn" | "stacked" | undefined;
+  onToggle: () => void;
+}) {
+  const startMs = passages[0]?.startMs ?? 0;
+  const endMs = Math.max(startMs, ...passages.map((passage) => passage.endMs));
+  const count = `${passages.length} ${passages.length === 1 ? "passage" : "passages"}`;
+  return (
+    <li
+      aria-current={playing ? "time" : undefined}
+      className={cn(
+        "scroll-mt-14",
+        spacing === "turn" && "mt-4",
+        spacing === "stacked" && "mt-1.5",
+      )}
+    >
+      <button
+        type="button"
+        aria-expanded={expanded}
+        disabled={locked}
+        className={cn(
+          "-mx-3.5 flex h-9 w-[calc(100%+1.75rem)] cursor-pointer items-center gap-2 rounded-xl px-3.5 text-left text-[13px] font-medium transition-colors duration-150 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-45",
+          expanded
+            ? "text-muted-foreground hover:bg-subtle hover:text-foreground"
+            : playing
+              ? "bg-tint text-foreground"
+              : "bg-subtle text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+        onClick={onToggle}
+      >
+        <HugeiconsIcon
+          icon={ArrowRight01Icon}
+          aria-hidden="true"
+          className={cn(
+            "size-3.5 transition-transform duration-150 ease-snappy motion-reduce:transition-none",
+            expanded && "rotate-90",
+          )}
+        />
+        <span className="min-w-0 truncate">
+          {expanded ? `Hide ${label}` : `${label} · ${count}`}
+        </span>
+        {playing ? (
+          <span className="flex shrink-0 items-center gap-1.5 text-primary-strong">
+            <span aria-hidden="true" className="size-1.5 rounded-full bg-primary" />
+            Current
+          </span>
+        ) : null}
+        <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground tabular-nums">
+          {skipping && !expanded ? (
+            <span className="max-sm:hidden">Skipped while playing · </span>
+          ) : null}
+          {formatDuration(startMs / 1000)}–{formatDuration(endMs / 1000)}
+        </span>
+      </button>
+    </li>
+  );
+}
+
 const contains = (passage: TranscriptPassage, word: number) =>
   word >= passage.firstWord && word < passage.firstWord + passage.words.length;
 
@@ -239,6 +318,8 @@ export function TranscriptReader({
   revealMs,
   editing,
   searching = false,
+  chosenSpeakers,
+  skipping = false,
   matches,
   found,
 }: {
@@ -247,6 +328,8 @@ export function TranscriptReader({
   revealMs?: number | undefined;
   editing?: TranscriptEditing | undefined;
   searching?: boolean;
+  chosenSpeakers?: readonly number[] | undefined;
+  skipping?: boolean;
   matches?: TranscriptMatches | undefined;
   found?: TranscriptFound | undefined;
 }) {
@@ -266,7 +349,28 @@ export function TranscriptReader({
   const currentWord = playback ? currentWordIndex(transcript.words, playback.positionMs) : -1;
   const revealedWord = revealMs === undefined ? -1 : currentWordIndex(transcript.words, revealMs);
   const list = useRef<HTMLOListElement>(null);
-  const currentPassage = passages.find((passage) => contains(passage, currentWord));
+  const currentIndex = passages.findIndex((passage) => contains(passage, currentWord));
+  const currentPassage = passages[currentIndex];
+  const rows = useMemo(() => transcriptRows(passages, chosenSpeakers), [passages, chosenSpeakers]);
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
+  const toggleFold = (firstWord: number) => {
+    const next = new Set(expanded);
+    if (!next.delete(firstWord)) next.add(firstWord);
+    setExpanded(next);
+  };
+  const revealJumps = playback?.jumps ?? 0;
+  const [seenReveal, setSeenReveal] = useState<{ ms: number | undefined; jumps: number }>();
+  if (seenReveal === undefined || seenReveal.ms !== revealMs || seenReveal.jumps !== revealJumps) {
+    setSeenReveal({ ms: revealMs, jumps: revealJumps });
+    const revealedIndex = passages.findIndex((passage) => contains(passage, revealedWord));
+    const revealedFold = rows.find(
+      (row) => row.kind === "fold" && row.start <= revealedIndex && revealedIndex < row.end,
+    );
+    const foldWord =
+      revealedFold?.kind === "fold" ? passages[revealedFold.start]?.firstWord : undefined;
+    if (foldWord !== undefined && !expanded.has(foldWord))
+      setExpanded(new Set(expanded).add(foldWord));
+  }
   const openingWord = currentWordIndex(transcript.words, revealMs ?? 0);
   const openingPassage = passages.find((passage) => contains(passage, openingWord));
   const suspended = searching || Boolean(edited?.open);
@@ -287,42 +391,81 @@ export function TranscriptReader({
     suspended,
     onFollowingChange: playback?.onFollowingChange,
   });
+  const passageAt = (index: number, opensFold: boolean) => {
+    const passage = passages[index];
+    if (!passage) return null;
+    const previousSpeaker = passages[index - 1]?.speaker;
+    return (
+      <Passage
+        key={passage.firstWord}
+        passage={passage}
+        currentWord={contains(passage, currentWord) ? currentWord - passage.firstWord : -1}
+        dimmed={(Boolean(playback) && !matches && !found) || Boolean(edited?.open)}
+        revealed={contains(passage, revealedWord)}
+        scrollsIntoView={!playback || revealMs === openingMs}
+        marks={marks.get(passage.firstWord)}
+        onSeek={playback?.onSeek}
+        editing={editing}
+        edited={edited?.firstWord === passage.firstWord ? edited : undefined}
+        onEdited={setEdited}
+        speakerHeading={
+          passage.speaker !== undefined && previousSpeaker !== passage.speaker
+            ? speakers.label(passage.speaker)
+            : null
+        }
+        speakerEditing={speakerEditing}
+        speakerSpacing={
+          speakers.ids.length < 2
+            ? undefined
+            : previousSpeaker === passage.speaker
+              ? "continued"
+              : index > 0 && !opensFold
+                ? "turn"
+                : undefined
+        }
+        hit={found?.hits.get(passage.firstWord)}
+        searchCurrent={found?.current === passage.firstWord}
+        markCurrentWord={!searching}
+      />
+    );
+  };
+  const editingIndex = edited?.open
+    ? passages.findIndex((passage) => passage.firstWord === edited.firstWord)
+    : -1;
+  const holdsEditor = ({ start, end }: { start: number; end: number }) =>
+    start <= editingIndex && editingIndex < end;
+  const foldOpen = (row: { start: number; end: number }) =>
+    holdsEditor(row) || expanded.has(passages[row.start]?.firstWord ?? row.start);
   return (
     <>
       <ol ref={list} aria-label="Timestamped passages">
-        {passages.map((passage, index) => (
-          <Passage
-            key={passage.firstWord}
-            passage={passage}
-            currentWord={contains(passage, currentWord) ? currentWord - passage.firstWord : -1}
-            dimmed={(Boolean(playback) && !matches && !found) || Boolean(edited?.open)}
-            revealed={contains(passage, revealedWord)}
-            scrollsIntoView={!playback || revealMs === openingMs}
-            marks={marks.get(passage.firstWord)}
-            onSeek={playback?.onSeek}
-            editing={editing}
-            edited={edited?.firstWord === passage.firstWord ? edited : undefined}
-            onEdited={setEdited}
-            speakerHeading={
-              passage.speaker !== undefined && passages[index - 1]?.speaker !== passage.speaker
-                ? speakers.label(passage.speaker)
-                : null
-            }
-            speakerEditing={speakerEditing}
-            speakerSpacing={
-              speakers.ids.length < 2
-                ? undefined
-                : passages[index - 1]?.speaker === passage.speaker
-                  ? "continued"
-                  : index > 0
-                    ? "turn"
-                    : undefined
-            }
-            hit={found?.hits.get(passage.firstWord)}
-            searchCurrent={found?.current === passage.firstWord}
-            markCurrentWord={!searching}
-          />
-        ))}
+        {rows.flatMap((row, rowIndex) => {
+          if (row.kind === "passage") return [passageAt(row.index, false)];
+          const folded = passages.slice(row.start, row.end);
+          const firstWord = folded[0]?.firstWord ?? row.start;
+          const open = foldOpen(row);
+          const previous = rows[rowIndex - 1];
+          return [
+            <FoldRow
+              key={`fold-${firstWord}`}
+              label={row.speaker === undefined ? "No speaker" : speakers.label(row.speaker)}
+              passages={folded}
+              expanded={open}
+              locked={holdsEditor(row)}
+              playing={!open && currentIndex >= row.start && currentIndex < row.end}
+              skipping={skipping}
+              spacing={
+                previous === undefined
+                  ? undefined
+                  : previous.kind === "fold" && !foldOpen(previous)
+                    ? "stacked"
+                    : "turn"
+              }
+              onToggle={() => toggleFold(firstWord)}
+            />,
+            ...(open ? folded.map((_, offset) => passageAt(row.start + offset, offset === 0)) : []),
+          ];
+        })}
       </ol>
       {playback && !playback.following && !suspended && currentPassage ? (
         <Button

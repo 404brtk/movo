@@ -112,14 +112,26 @@ function keepEdgePunctuation(texts: readonly string[], matched: readonly Transcr
   );
 }
 
-export function findWords(words: readonly TranscriptWord[], find: string) {
+export function findWords(
+  words: readonly TranscriptWord[],
+  find: string,
+  speakers?: readonly number[],
+) {
   const pattern = wordTokens(find).map(matchKey);
   if (pattern.length === 0) return [];
   const keys = words.map((word) => matchKey(word.text));
+  const inScope = (speaker: number | undefined) =>
+    speakers === undefined || (speaker !== undefined && speakers.includes(speaker));
   const ranges: { firstWord: number; wordCount: number }[] = [];
   let index = 0;
   while (index + pattern.length <= words.length) {
-    if (!pattern.every((key, offset) => keys[index + offset] === key)) {
+    const speaker = words[index]?.speaker;
+    if (
+      !inScope(speaker) ||
+      !pattern.every(
+        (key, offset) => keys[index + offset] === key && words[index + offset]?.speaker === speaker,
+      )
+    ) {
       index++;
       continue;
     }
@@ -160,11 +172,12 @@ export function replaceWords(
   words: readonly TranscriptWord[],
   find: string,
   replacement: string,
+  speakers?: readonly number[],
 ): TranscriptPatch {
   const replacementTexts = wordTokens(replacement);
   return replaceRanges(
     words,
-    findWords(words, find).map((range) => ({ ...range, replacement: replacementTexts })),
+    findWords(words, find, speakers).map((range) => ({ ...range, replacement: replacementTexts })),
   );
 }
 

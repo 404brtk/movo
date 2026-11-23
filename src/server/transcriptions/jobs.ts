@@ -403,12 +403,19 @@ export function createTranscriptions(
         return { job, fixed: fixes.length };
       }),
     replace: (id: string, request: TranscriptReplace, source: TranscriptChangeSource) =>
-      change(id, request.revision, source, ({ words }) =>
-        Effect.succeed({
-          kind: "replace",
-          restoredRevision: null,
-          patch: replaceWords(words, request.find, request.replacement),
-        }),
+      change(id, request.revision, source, (transcript) =>
+        request.speakers?.some((speaker) => !transcriptSpeakers(transcript).ids.includes(speaker))
+          ? Effect.fail(new MediaError("invalid", "Choose speakers who speak in the transcript."))
+          : Effect.succeed({
+              kind: "replace",
+              restoredRevision: null,
+              patch: replaceWords(
+                transcript.words,
+                request.find,
+                request.replacement,
+                request.speakers,
+              ),
+            }),
       ),
     restore: (id: string, request: TranscriptRestore, source: TranscriptChangeSource) =>
       change(id, request.revision, source, ({ words }, resultRevision) =>

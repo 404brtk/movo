@@ -6,6 +6,8 @@ import {
   PlayIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { usePlayOnly } from "../lib/play-only.ts";
+import type { PlaySegment } from "../lib/speaker-filter.ts";
 import { cn } from "../lib/utils.ts";
 import { Button } from "./ui/button.tsx";
 import {
@@ -30,7 +32,10 @@ const mediaEvents = [
 ] as const;
 const idle = { playing: false, currentTime: 0, mediaDuration: 0, rate: 1, muted: false };
 
-export function useMediaPlayback(fallbackDuration: number) {
+export function useMediaPlayback(
+  fallbackDuration: number,
+  segments: readonly PlaySegment[] | undefined,
+) {
   const media = useRef<HTMLMediaElement | null>(null);
   const [element, setElement] = useState<HTMLMediaElement | null>(null);
   const [snapshot, setSnapshot] = useState(idle);
@@ -80,7 +85,8 @@ export function useMediaPlayback(fallbackDuration: number) {
     }),
     [],
   );
-  return { attach, state: { ...state, duration }, controls };
+  const skipping = usePlayOnly(element, segments, controls.seek);
+  return { attach, segments, skipping, state: { ...state, duration }, controls };
 }
 
 export type MediaPlayback = ReturnType<typeof useMediaPlayback>;
@@ -153,6 +159,10 @@ export function SeekSlider({
     <Slider
       aria-label="Position"
       tone={tone}
+      highlights={playback.segments?.map(({ startMs, endMs }) => ({
+        from: startMs / 1000,
+        to: endMs / 1000,
+      }))}
       min={0}
       max={Math.max(duration, 0.001)}
       step={0.1}

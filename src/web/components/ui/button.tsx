@@ -13,7 +13,7 @@ const buttonStyles = cva(
         default:
           "border-primary-edge bg-linear-to-b from-primary-from to-primary-to font-[550] text-primary-foreground shadow-button-primary hover:from-primary-from-hover hover:to-primary-to-hover active:from-primary-from-pressed active:to-primary-to-pressed active:shadow-button-primary-pressed",
         outline,
-        toggle: `${outline} aria-expanded:border-primary/25 aria-expanded:from-tint aria-expanded:to-highlight aria-expanded:text-primary-strong aria-expanded:shadow-button-tinted`,
+        toggle: `${outline} aria-expanded:border-primary/25 aria-expanded:from-tint aria-expanded:to-highlight aria-expanded:text-primary-strong aria-expanded:shadow-button-tinted data-active:border-primary/25 data-active:from-tint data-active:to-highlight data-active:text-primary-strong data-active:shadow-button-tinted`,
         secondary:
           "border-primary/18 bg-linear-to-b from-tint to-highlight text-primary-deep shadow-button-tinted hover:border-primary/28 hover:from-highlight active:shadow-button-pressed",
         ghost:

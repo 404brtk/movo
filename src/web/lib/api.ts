@@ -302,20 +302,23 @@ export const retryTranscription = (id: string, choice?: TranscriptionRetry) =>
     ),
     TranscriptionJob,
   );
+export const readTranscriptChanges = (
+  id: string,
+  page: { limit: number; offset: number },
+  signal: AbortSignal | null = null,
+) =>
+  readResponse(
+    client.api.media[":id"].transcription.changes.$get(
+      { param: { id }, query: { limit: String(page.limit), offset: String(page.offset) } },
+      { init: { signal } },
+    ),
+    TranscriptHistory,
+  );
 export const transcriptHistoryOptions = (id: string, revision: number) =>
   infiniteQueryOptions({
     queryKey: [...transcriptionOptions(id).queryKey, "changes", revision],
     queryFn: ({ pageParam, signal }) =>
-      readResponse(
-        client.api.media[":id"].transcription.changes.$get(
-          {
-            param: { id },
-            query: { limit: String(defaultHistoryPage), offset: String(pageParam) },
-          },
-          { init: { signal } },
-        ),
-        TranscriptHistory,
-      ),
+      readTranscriptChanges(id, { limit: defaultHistoryPage, offset: pageParam }, signal),
     initialPageParam: 0,
     getNextPageParam: (last, pages) => {
       const loaded = pages.reduce((total, page) => total + page.changes.length, 0);
