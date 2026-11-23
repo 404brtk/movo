@@ -276,7 +276,9 @@ test("offers Undo and reports its failure after leaving the recording", async ({
   saveReplacement?.();
   await page.unroute("**/transcription/replace");
   await expect(page.getByText("Replaced 2 matches", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  await undo.click();
+  await expect(undo).toBeHidden({ timeout: 1500 });
   await expect.poll(exported).toBe("We deploy kubernetis daily.\nKubernetis keeps running.");
 
   await page.goto(recording.url);

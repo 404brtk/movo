@@ -39,11 +39,21 @@ export function useReplaceAll(mediaId: string) {
           description: error.message,
           priority: "high",
         }),
-      onSuccess: (replaced, { notice }) =>
-        toastManager.add({
+      onSuccess: (replaced, { notice }) => {
+        let undoStarted = false;
+        const toastId = toastManager.add({
           ...notice,
-          actionProps: { children: "Undo", onClick: () => undo.mutate(replaced) },
-        }),
+          actionProps: {
+            children: "Undo",
+            onClick: () => {
+              if (undoStarted) return;
+              undoStarted = true;
+              toastManager.close(toastId);
+              undo.mutate(replaced);
+            },
+          },
+        });
+      },
     },
   );
   return {
