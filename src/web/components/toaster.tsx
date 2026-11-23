@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Toast } from "@base-ui/react/toast";
+import { toastManager } from "../lib/toasts.ts";
 import { buttonVariants } from "./ui/button.tsx";
 
 function ToastList() {
@@ -23,7 +24,7 @@ function ToastList() {
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   return (
-    <Toast.Provider limit={1}>
+    <Toast.Provider limit={1} toastManager={toastManager}>
       {children}
       <Toast.Portal>
         <Toast.Viewport className="fixed right-4 bottom-4 z-50 w-[calc(100vw-2rem)] sm:w-90">

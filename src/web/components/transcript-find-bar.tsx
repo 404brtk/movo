@@ -189,20 +189,20 @@ function ReplaceBar({
       onSubmit={(event) => {
         event.preventDefault();
         if (!ready) return;
-        replace.replaceAll(
-          {
+        replace.replaceAll({
+          request: {
             revision,
             find: state.find,
             replacement: state.replacement,
             ...(state.chosen === undefined ? {} : { speakers: state.chosen }),
           },
-          {
+          notice: {
             title: `Replaced ${plural(state.changeCount, "match")}`,
             ...(filter.owner === undefined
               ? {}
               : { description: `In passages by ${filter.names}` }),
           },
-        );
+        });
       }}
     >
       <div className={cn(controlsClassName, barLayouts.replace)}>

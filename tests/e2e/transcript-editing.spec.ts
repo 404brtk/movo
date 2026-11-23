@@ -243,6 +243,58 @@ test("undoes a replacement after the bar closed mid-save and after switching ver
   await expect(page.getByText("Could not undo the replacement")).toHaveCount(0);
 });
 
+test("offers Undo and reports its failure after leaving the recording", async ({
+  page,
+  recording,
+}) => {
+  const statusUrl = `${recording.origin}/api/media/${recording.mediaId}/transcription`;
+  const exported = async () => (await page.request.get(`${statusUrl}/export/txt`)).text();
+  const panel = transcription(page);
+  const replaceAll = async (find: string, replacement: string) => {
+    await panel.getByRole("button", { name: "Replace", exact: true }).click();
+    const form = panel.getByRole("form", { name: "Find and replace" });
+    await form.getByLabel("Find", { exact: true }).fill(find);
+    await form.getByLabel("Replace with").fill(replacement);
+    await expect(form.getByText("1 of 2", { exact: true })).toBeVisible();
+    await form.getByRole("button", { name: "Replace all" }).click();
+  };
+  const leave = async () => {
+    await page.getByRole("link", { name: "Back to library" }).click();
+    await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
+  };
+
+  let saveReplacement: (() => void) | undefined;
+  const replacementGate = new Promise<void>((open) => {
+    saveReplacement = open;
+  });
+  await page.route("**/transcription/replace", async (route) => {
+    await replacementGate;
+    await route.fallback();
+  });
+  await replaceAll("kubernetis", "Kubernetes");
+  await leave();
+  saveReplacement?.();
+  await page.unroute("**/transcription/replace");
+  await expect(page.getByText("Replaced 2 matches", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect.poll(exported).toBe("We deploy kubernetis daily.\nKubernetis keeps running.");
+
+  await page.goto(recording.url);
+  await replaceAll("kubernetis", "Kubernetes");
+  await expect(page.getByText("Replaced 2 matches", { exact: true })).toBeVisible();
+  await leave();
+  const job: TranscriptionJob = await (await page.request.get(statusUrl)).json();
+  const edited = await page.request.post(`${statusUrl}/replace`, {
+    data: { revision: job.revision, find: "running", replacement: "working" },
+  });
+  expect(edited.status()).toBe(200);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Notifications" }).getByText("Could not undo the replacement"),
+  ).toBeVisible();
+  await expect.poll(exported).toBe("We deploy Kubernetes daily.\nKubernetes keeps working.");
+});
+
 test("asks before transcribing again replaces edits and then starts a new history", async ({
   page,
 }) => {

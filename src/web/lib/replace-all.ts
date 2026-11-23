@@ -1,7 +1,12 @@
-import { Toast } from "@base-ui/react/toast";
 import type { TranscriptionJob, TranscriptReplace } from "../../shared/contracts/transcriptions.ts";
 import { readTranscriptChanges, replaceInTranscript, restoreTranscript } from "./api.ts";
+import { toastManager } from "./toasts.ts";
 import { useTranscriptChange } from "./transcript-change.ts";
+
+interface Replacement {
+  request: TranscriptReplace;
+  notice: { title: string; description?: string };
+}
 
 async function undoReplacement(mediaId: string, replaced: TranscriptionJob) {
   const { changes } = await readTranscriptChanges(mediaId, { limit: 2, offset: 0 });
@@ -12,33 +17,33 @@ async function undoReplacement(mediaId: string, replaced: TranscriptionJob) {
 }
 
 export function useReplaceAll(mediaId: string) {
-  const { add: addToast } = Toast.useToastManager();
-  const replace = useTranscriptChange(mediaId, (request: TranscriptReplace) =>
-    replaceInTranscript(mediaId, request),
-  );
-  const undo = useTranscriptChange(mediaId, (replaced: TranscriptionJob) =>
-    undoReplacement(mediaId, replaced),
-  );
-  const undoLater = (replaced: TranscriptionJob) =>
-    undo.mutate(replaced, {
+  const undo = useTranscriptChange(
+    mediaId,
+    (replaced: TranscriptionJob) => undoReplacement(mediaId, replaced),
+    {
       onError: (error) =>
-        addToast({
+        toastManager.add({
           title: "Could not undo the replacement",
           description: error.message,
           priority: "high",
         }),
-    });
+    },
+  );
+  const replace = useTranscriptChange(
+    mediaId,
+    ({ request }: Replacement) => replaceInTranscript(mediaId, request),
+    {
+      onSuccess: (replaced, { notice }) =>
+        toastManager.add({
+          ...notice,
+          actionProps: { children: "Undo", onClick: () => undo.mutate(replaced) },
+        }),
+    },
+  );
   return {
     pending: replace.isPending,
     error: replace.error,
-    replaceAll: (request: TranscriptReplace, notice: { title: string; description?: string }) =>
-      replace.mutate(request, {
-        onSuccess: (replaced) =>
-          addToast({
-            ...notice,
-            actionProps: { children: "Undo", onClick: () => undoLater(replaced) },
-          }),
-      }),
+    replaceAll: (replacement: Replacement) => replace.mutate(replacement),
   };
 }
 
