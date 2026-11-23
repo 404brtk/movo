@@ -51,16 +51,25 @@ describe("speaker filter", () => {
     expect(playableFrom(segments, 5900)).toBeUndefined();
   });
 
-  it("skips even a short interjection, but not again when a jump lands just before its target", () => {
+  it("skips even a very short interjection", () => {
+    const segments = [
+      { startMs: 0, endMs: 900 },
+      { startMs: 940, endMs: 2000 },
+    ];
+    expect(playOnlyStep(segments, 500, undefined)).toEqual({ kind: "play" });
+    expect(playOnlyStep(segments, 900, undefined)).toEqual({ kind: "seek", toMs: 940 });
+    expect(playOnlyStep(segments, 920, undefined)).toEqual({ kind: "seek", toMs: 940 });
+    expect(playOnlyStep(segments, 2000, 940)).toEqual({ kind: "pause" });
+  });
+
+  it("does not jump again when its own jump lands just before the target", () => {
     const segments = [
       { startMs: 0, endMs: 900 },
       { startMs: 1100, endMs: 2000 },
     ];
-    expect(playOnlyStep(segments, 500, undefined)).toEqual({ kind: "play" });
-    expect(playOnlyStep(segments, 900, undefined)).toEqual({ kind: "seek", toMs: 1100 });
     expect(playOnlyStep(segments, 1097, 1100)).toEqual({ kind: "play" });
-    expect(playOnlyStep(segments, 1080, undefined)).toEqual({ kind: "play" });
-    expect(playOnlyStep(segments, 2000, 1100)).toEqual({ kind: "pause" });
+    expect(playOnlyStep(segments, 1097, undefined)).toEqual({ kind: "seek", toMs: 1100 });
+    expect(playOnlyStep(segments, 1000, 1100)).toEqual({ kind: "seek", toMs: 1100 });
   });
 
   it("names several speakers as a list", () => {

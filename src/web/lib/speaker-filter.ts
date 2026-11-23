@@ -9,7 +9,7 @@ export interface PlaySegment {
   endMs: number;
 }
 
-export const skipToleranceMs = 50;
+export const landingToleranceMs = 50;
 
 export const spokenBy = (speakers: readonly number[], speaker: number | undefined) =>
   speaker !== undefined && speakers.includes(speaker);
@@ -62,9 +62,8 @@ export function playOnlyStep(
 ): { kind: "play" } | { kind: "pause" } | { kind: "seek"; toMs: number } {
   const target = playableFrom(segments, positionMs);
   if (target === undefined) return { kind: "pause" };
-  return target - positionMs <= skipToleranceMs || target === landingMs
-    ? { kind: "play" }
-    : { kind: "seek", toMs: target };
+  const landed = target === landingMs && target - positionMs <= landingToleranceMs;
+  return target === positionMs || landed ? { kind: "play" } : { kind: "seek", toMs: target };
 }
 
 const listFormat = new Intl.ListFormat("en", { type: "conjunction" });
