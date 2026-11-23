@@ -281,3 +281,112 @@ test("moves passages between speakers, merges them, names the remaining speaker 
   await page.getByRole("button", { name: "Close history" }).click();
   await expect(speakerHeadings(page)).toHaveText(["Speaker 3", "Ann"]);
 });
+
+test("shows only the chosen speakers, scopes search, replace and copy, and plays only them", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    let text = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          text = value;
+        },
+        readText: async () => text,
+      },
+    });
+  });
+  await page.reload();
+  const panel = transcription(page);
+  await panel.getByRole("button", { name: "Speakers", exact: true }).click();
+  await expect(page.getByRole("menuitemcheckbox")).toHaveText([
+    "Speaker 1",
+    "Speaker 2",
+    /^Play only these speakers/u,
+  ]);
+  await expect(page.getByRole("menuitemcheckbox", { name: /^Play only/u })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  await page.getByRole("menuitemcheckbox", { name: "Speaker 2" }).click();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Speaker 2" })).toBeChecked();
+  await page.keyboard.press("Escape");
+  const filterButton = panel.getByRole("button", { name: "Speaker 2", exact: true });
+  await expect(filterButton).toBeVisible();
+  await expect(passages(page)).toHaveText([
+    /^Speaker 1 · 1 passageCurrent0:00–0:00$/u,
+    /Thanks for having me\./u,
+    /^Speaker 1 · 1 passage0:02–0:02$/u,
+  ]);
+
+  const firstFold = panel.getByRole("button", { name: /Speaker 1/u }).first();
+  await firstFold.click();
+  await expect(firstFold).toHaveAttribute("aria-expanded", "true");
+  await expect(firstFold).toHaveText(/^Hide Speaker 1/u);
+  await expect(passages(page).nth(1)).toContainText("Good morning everyone.");
+  await firstFold.click();
+  await expect(passages(page)).toHaveCount(3);
+
+  await page.reload();
+  await expect(filterButton).toBeVisible();
+  await expect(passages(page)).toHaveCount(3);
+
+  await panel.getByRole("button", { name: "Copy Speaker 2's passages" }).click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("Speaker 2: Thanks for having me.");
+
+  await panel.getByRole("button", { name: "Search", exact: true }).click();
+  const search = panel.getByRole("search", { name: "Search this transcript" });
+  const field = search.getByRole("searchbox", { name: "Search this transcript" });
+  await expect(field).toHaveAttribute("placeholder", "Search Speaker 2's passages");
+  await field.fill("good");
+  await expect(search.getByText("No matches", { exact: true })).toBeVisible();
+  await field.fill("having");
+  await expect(search.getByText("1 of 1", { exact: true })).toBeVisible();
+
+  await search.getByRole("button", { name: "Replace", exact: true }).click();
+  const form = panel.getByRole("form", { name: "Find and replace" });
+  const find = form.getByLabel("Find", { exact: true });
+  await expect(find).toHaveAttribute("placeholder", "Find in Speaker 2's passages");
+  await find.fill("everyone");
+  await expect(form.getByText("No matches", { exact: true })).toBeVisible();
+  await find.fill("thanks");
+  await form.getByLabel("Replace with").fill("Thank you");
+  await expect(form.getByText("1 of 1", { exact: true })).toBeVisible();
+  await form.getByRole("button", { name: "Replace all" }).click();
+  await expect(passages(page).nth(1)).toContainText("Thank you for having me.");
+  await expect(page.getByText("In passages by Speaker 2", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(passages(page).nth(1)).toContainText("Thanks for having me.");
+  await form.getByRole("button", { name: "Close", exact: true }).click();
+
+  await filterButton.click();
+  await page.getByRole("menuitemcheckbox", { name: /^Play only these speakers/u }).click();
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(/[?&]only=true(?:&|$)/u);
+  await expect(page.getByText("Playing only Speaker 2", { exact: true })).toBeVisible();
+  await expect(passages(page).first()).toContainText("Skipped while playing");
+  const player = page.locator("audio");
+  await expect
+    .poll(() => player.evaluate((element: HTMLMediaElement) => element.readyState))
+    .toBeGreaterThanOrEqual(1);
+  await player.evaluate(async (element: HTMLMediaElement) => {
+    element.muted = true;
+    await element.play();
+  });
+  await expect
+    .poll(() => player.evaluate((element: HTMLMediaElement) => element.paused))
+    .toBe(true);
+  const stoppedAt = await player.evaluate((element: HTMLMediaElement) => element.currentTime);
+  expect(stoppedAt).toBeGreaterThanOrEqual(1.85);
+  expect(stoppedAt).toBeLessThan(2);
+
+  await filterButton.click();
+  await page.getByRole("menuitem", { name: "Show everyone" }).click();
+  await expect(panel.getByRole("button", { name: "Speakers", exact: true })).toBeVisible();
+  await expect(page).not.toHaveURL(/speakers=|only=/u);
+  await expect(page.getByText(/^Playing only/u)).toHaveCount(0);
+  await expect(speakerHeadings(page)).toHaveText(["Speaker 1", "Speaker 2", "Speaker 1"]);
+});

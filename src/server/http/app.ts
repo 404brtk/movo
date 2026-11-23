@@ -393,7 +393,7 @@ export function createApp(
       const request = await readJson(
         context.req.json(),
         TranscriptReplace,
-        "Provide the transcript revision, the text to find and its replacement.",
+        "Provide the transcript revision, the text to find, its replacement and optionally speaker ids.",
       );
       return context.json(
         await runMedia(transcriptions.replace(context.req.param("id"), request, "app")),

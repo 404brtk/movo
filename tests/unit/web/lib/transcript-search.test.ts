@@ -40,6 +40,15 @@ describe("transcript search", () => {
     });
   });
 
+  const scoped = (query: string, chosen: readonly number[]) =>
+    searchPassages(passages, transcriptSpeakers(transcript), searchTerms(query), chosen);
+
+  it("searches only the passages of the chosen speakers", () => {
+    expect([...scoped("budż", [2, 3]).keys()]).toEqual([7, 13]);
+    expect([...scoped("licencje", [3]).keys()]).toEqual([]);
+    expect(scoped("", [1]).size).toBe(0);
+  });
+
   it("finds every passage of a named speaker and nothing for unnamed ones", () => {
     expect([...search("kowalska").keys()]).toEqual([0, 4]);
     expect(search("kowalska").get(4)?.marks).toEqual([]);

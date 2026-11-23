@@ -8,7 +8,7 @@ import { useMatchStepper, type StepDirection } from "../lib/match-stepper.ts";
 import { useSearchDraft } from "../lib/search-draft.ts";
 import { searchPassages, type TranscriptFound } from "../lib/transcript-search.ts";
 
-export function useTranscriptSearch(transcript: Transcript) {
+export function useTranscriptSearch(transcript: Transcript, chosen: readonly number[] | undefined) {
   const query = useSearch({ from: "/media/$mediaId", select: (search) => search.q });
   const navigate = useNavigate({ from: "/media/$mediaId" });
   const applyQuery = useCallback(
@@ -26,8 +26,13 @@ export function useTranscriptSearch(transcript: Transcript) {
   const terms = useMemo(() => searchTerms(previewDraft), [previewDraft]);
   const hits = useMemo(
     () =>
-      searchPassages(transcriptPassages(transcript.words), transcriptSpeakers(transcript), terms),
-    [transcript, terms],
+      searchPassages(
+        transcriptPassages(transcript.words),
+        transcriptSpeakers(transcript),
+        terms,
+        chosen,
+      ),
+    [transcript, terms, chosen],
   );
   const order = useMemo(() => [...hits.keys()], [hits]);
   const stepper = useMatchStepper(order.length);
@@ -36,10 +41,15 @@ export function useTranscriptSearch(transcript: Transcript) {
     const firstWord = order[position];
     setReveal(firstWord === undefined ? undefined : { firstWord });
   };
-  const [revealedTerms, setRevealedTerms] = useState<readonly string[] | null>(null);
-  if (terms !== revealedTerms) {
-    setRevealedTerms(terms);
-    revealAt(index);
+  const [revealed, setRevealed] = useState<{
+    terms: readonly string[];
+    chosen: readonly number[] | undefined;
+  } | null>(null);
+  if (revealed?.terms !== terms || revealed.chosen !== chosen) {
+    const sameScope = revealed?.chosen === chosen;
+    setRevealed({ terms, chosen });
+    if (!sameScope) stepper.reset();
+    revealAt(sameScope ? index : 0);
   }
   const currentPassage = order[index];
   const found = useMemo<TranscriptFound | undefined>(

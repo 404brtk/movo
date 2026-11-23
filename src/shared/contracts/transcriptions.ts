@@ -162,6 +162,7 @@ export const TranscriptReplace = Schema.Struct({
     Schema.makeFilter((text) => text.trim().length > 0 || "Enter the text to find."),
   ),
   replacement: wordText(maxReplaceCharacters),
+  speakers: Schema.optionalKey(Schema.Array(SpeakerId).check(Schema.isMinLength(1))),
 });
 export type TranscriptReplace = typeof TranscriptReplace.Type;
 export const TranscriptRestore = Schema.Struct({ revision: Revision, target: Revision });

@@ -19,6 +19,7 @@ import {
 import { ChangeHistory } from "./change-history.tsx";
 import { ReplaceEditsDialog } from "./confirm-dialog.tsx";
 import { useFindAndReplace } from "./find-and-replace.tsx";
+import { SpeakerFilterMenu, useSpeakerFilter } from "./speaker-filter.tsx";
 import { TranscriptActions } from "./transcript-actions.tsx";
 import { findBarSelector, type FindTool, TranscriptFindBar } from "./transcript-find-bar.tsx";
 import { useTranscriptSearch } from "./transcript-search.tsx";
@@ -82,7 +83,8 @@ function TranscriptView({
   toolbarAction: ReactNode;
   status: ReactNode;
 }) {
-  const search = useTranscriptSearch(transcript);
+  const filter = useSpeakerFilter(transcript);
+  const search = useTranscriptSearch(transcript, filter.chosen);
   const [tool, setTool] = useState<FindTool | null>(search.query === undefined ? null : "search");
   const [returnFocus, setReturnFocus] = useState(tool);
   const [seenQuery, setSeenQuery] = useState(search.query);
@@ -93,7 +95,7 @@ function TranscriptView({
       setTool("search");
     }
   }
-  const find = useFindAndReplace(transcript);
+  const find = useFindAndReplace(transcript, filter.chosen);
   const field = useRef<HTMLInputElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const { revision, resultRevision } = job;
@@ -166,10 +168,10 @@ function TranscriptView({
             revision={revision}
             search={search}
             find={find}
+            filter={filter}
             canReplace={canReplace}
             fieldRef={field}
             onToolChange={open}
-            onOpenHistory={() => setHistoryOpen(true)}
             onClose={close}
           />
         ) : (
@@ -177,7 +179,9 @@ function TranscriptView({
             end={
               <>
                 {toolbarAction}
-                {hasWords ? <TranscriptActions mediaId={mediaId} transcript={transcript} /> : null}
+                {hasWords ? (
+                  <TranscriptActions mediaId={mediaId} transcript={transcript} filter={filter} />
+                ) : null}
               </>
             }
             start={
@@ -230,6 +234,7 @@ function TranscriptView({
                   </TooltipProvider>
                 ) : null}
                 {history(true)}
+                {filter.choices.length > 0 ? <SpeakerFilterMenu filter={filter} /> : null}
               </>
             }
           />
@@ -244,6 +249,8 @@ function TranscriptView({
           revealMs={revealMs}
           editing={editing}
           searching={shown !== null}
+          chosenSpeakers={filter.chosen}
+          skipping={filter.only}
           matches={shown === "replace" ? find.matches : undefined}
           found={shown === "search" ? search.found : undefined}
         />

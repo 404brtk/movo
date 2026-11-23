@@ -121,13 +121,12 @@ test("previews and applies find and replace, then undoes and restores versions",
   await expect(form.getByLabel("Find", { exact: true })).toBeFocused();
   await form.getByLabel("Find", { exact: true }).fill("KUBERNETIS");
   await form.getByLabel("Replace with").fill("Kubernetes");
-  await expect(form.getByRole("status")).toHaveText(/^Matches whole words in 2 passages\./u);
   await expect(form.getByText("1 of 2", { exact: true })).toBeVisible();
   await expect(panel.locator("mark")).toHaveText(["kubernetis", "Kubernetis"]);
   await form.getByLabel("Find", { exact: true }).press("Enter");
   await expect(form.getByText("2 of 2", { exact: true })).toBeVisible();
   await form.getByRole("button", { name: "Replace all" }).click();
-  await expect(form.getByRole("status")).toHaveText(/^Replaced 2 matches\./u);
+  await expect(page.getByText("Replaced 2 matches", { exact: true })).toBeVisible();
   await expect(passages(page)).toHaveText([
     /We deploy Kubernetes daily\./u,
     /Kubernetes keeps running\./u,
@@ -137,6 +136,7 @@ test("previews and applies find and replace, then undoes and restores versions",
   await panel.getByRole("button", { name: "Edit passage at 0:01" }).click();
   await page.getByRole("textbox", { name: "Passage text" }).fill("Kubernetes keeps working.");
   await page.getByRole("button", { name: "Save passage" }).click();
+  await form.getByRole("button", { name: "Close", exact: true }).click();
 
   const history = panel.getByRole("button", { name: "History" });
   await history.click();

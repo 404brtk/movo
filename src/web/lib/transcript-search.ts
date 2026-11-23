@@ -3,6 +3,7 @@ import { containsEveryTerm, matchedRanges } from "../../shared/search-text.ts";
 import type { TranscriptPassage } from "../../shared/transcript-passages.ts";
 import type { TranscriptSpeakers } from "../../shared/transcript-speakers.ts";
 import type { PassageMark } from "./passage-marks.ts";
+import { spokenBy } from "./speaker-filter.ts";
 
 export interface PassageHit {
   marks: PassageMark[];
@@ -19,10 +20,12 @@ export function searchPassages(
   passages: readonly TranscriptPassage[],
   speakers: Pick<TranscriptSpeakers, "nameOf">,
   terms: readonly string[],
+  chosen?: readonly number[],
 ) {
   const hits = new Map<number, PassageHit>();
   if (terms.length === 0) return hits;
   for (const passage of passages) {
+    if (chosen !== undefined && !spokenBy(chosen, passage.speaker)) continue;
     const name = passage.speaker === undefined ? null : speakers.nameOf(passage.speaker);
     if (!containsEveryTerm(name === null ? [passage.text] : [passage.text, name], terms)) continue;
     const speakerRanges = name === null ? [] : matchedRanges(name, terms);

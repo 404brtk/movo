@@ -5,18 +5,18 @@ import { transcriptPassages } from "../../shared/transcript-passages.ts";
 import { useMatchStepper, type StepDirection } from "../lib/match-stepper.ts";
 import { marksByPassage, type TranscriptMatches } from "../lib/passage-marks.ts";
 
-export function useFindAndReplace(transcript: Transcript) {
+export function useFindAndReplace(transcript: Transcript, chosen: readonly number[] | undefined) {
   const [find, setFind] = useState("");
   const [replacement, setReplacement] = useState("");
   const previewFind = useDeferredValue(find);
   const previewReplacement = useDeferredValue(replacement);
   const found = useMemo(
-    () => findWords(transcript.words, previewFind),
-    [transcript.words, previewFind],
+    () => findWords(transcript.words, previewFind, chosen),
+    [transcript.words, previewFind, chosen],
   );
   const changeCount = useMemo(
-    () => replaceWords(transcript.words, previewFind, previewReplacement).length,
-    [transcript.words, previewFind, previewReplacement],
+    () => replaceWords(transcript.words, previewFind, previewReplacement, chosen).length,
+    [transcript.words, previewFind, previewReplacement, chosen],
   );
   const passageCount = useMemo(
     () => marksByPassage(transcriptPassages(transcript.words), { ranges: found, current: 0 }).size,
@@ -31,6 +31,7 @@ export function useFindAndReplace(transcript: Transcript) {
   return {
     find,
     replacement,
+    chosen,
     count: found.length,
     changeCount,
     passageCount,

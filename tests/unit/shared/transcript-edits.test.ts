@@ -240,6 +240,26 @@ describe("speakers", () => {
     );
   });
 
+  it("finds and replaces only the words of the chosen speakers when asked", () => {
+    const thanks = [
+      ...spoken(1, timedWords(0, 1000, "Thanks, Anna.")),
+      ...spoken(2, timedWords(1000, 2000, "Thanks a lot")),
+      ...spoken(1, timedWords(2000, 2500, "a lot.")),
+      ...spoken(3, timedWords(2500, 3000, "Thanks!")),
+    ];
+    expect(findWords(thanks, "thanks", [2])).toEqual([{ firstWord: 2, wordCount: 1 }]);
+    expect(findWords(thanks, "thanks", [2, 3])).toEqual([
+      { firstWord: 2, wordCount: 1 },
+      { firstWord: 7, wordCount: 1 },
+    ]);
+    expect(findWords(thanks, "a lot", [1])).toEqual([{ firstWord: 5, wordCount: 2 }]);
+    expect(findWords(thanks, "lot a", [2])).toEqual([]);
+    expect(findWords(thanks, "thanks", [4])).toEqual([]);
+    expect(texts(checkedRoundTrip(thanks, replaceWords(thanks, "thanks", "Cheers", [1, 3])))).toBe(
+      "Cheers, Anna. Thanks a lot a lot. Cheers!",
+    );
+  });
+
   it("gives words added at the start of a passage the passage's speaker", () => {
     expect(
       speakersOf(checkedRoundTrip(words, editWords(words, 2, 3, "Well Hi there, welcome."))),

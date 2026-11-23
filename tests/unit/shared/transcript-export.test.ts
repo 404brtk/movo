@@ -94,6 +94,11 @@ describe("speaker labels", () => {
     expect(transcriptText(conversation)).toBe("Speaker 1: Hello.\nAgain.\n\nAnn & Co: <Hi>.");
   });
 
+  it("keeps only the chosen speakers' passages with their names", () => {
+    expect(transcriptText(conversation, undefined, [2])).toBe("Ann & Co: <Hi>.");
+    expect(transcriptText(conversation, undefined, [1, 2])).toBe(transcriptText(conversation));
+  });
+
   it("names a turn in its first SRT cue and every WebVTT cue as an escaped voice", () => {
     expect(exportTranscript(conversation, "srt")).toBe(
       "1\n00:00:00,000 --> 00:00:00,500\nSpeaker 1: Hello.\n\n" +

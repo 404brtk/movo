@@ -70,7 +70,10 @@ type CopyState = "copying" | "copied" | "failed";
 export const copyFailureMessage =
   "Could not copy text. Allow clipboard access in your browser, or download TXT.";
 
-export function useCopyTranscript(transcript: Transcript | null | undefined) {
+export function useCopyTranscript(
+  transcript: Transcript | null | undefined,
+  spokenBy?: readonly number[],
+) {
   const options = useTranscriptExportOptions();
   const [copy, setCopy] = useState<{ state: CopyState; transcript: Transcript } | null>(null);
   const state = transcript && copy?.transcript === transcript ? copy.state : "idle";
@@ -92,7 +95,7 @@ export function useCopyTranscript(transcript: Transcript | null | undefined) {
     const copied = transcript;
     setCopy({ state: "copying", transcript: copied });
     try {
-      await navigator.clipboard.writeText(transcriptText(copied, options));
+      await navigator.clipboard.writeText(transcriptText(copied, options, spokenBy));
       finishCopy(copied, "copied");
     } catch {
       finishCopy(copied, "failed");
