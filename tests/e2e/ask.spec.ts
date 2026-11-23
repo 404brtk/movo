@@ -1093,6 +1093,15 @@ test("keeps the speaker filter and opens the cited turn on every choice of a mom
   await expect(passage).toBeInViewport();
   expect(await page.evaluate(() => history.length)).toBe(entries);
   await expect(transcript.getByRole("button", { name: "Speaker 1", exact: true })).toBeVisible();
+
+  await transcript.getByRole("button", { name: "Search", exact: true }).click();
+  await transcript.getByRole("searchbox", { name: "Search this transcript" }).fill("passage");
+  await expect(page).toHaveURL(/[?&]q=passage(?:&|$)/u);
+  await moment.click();
+  await expect(page).not.toHaveURL(/[?&]q=/u);
+  expect(await page.evaluate(() => history.length)).toBe(entries + 1);
+  await page.goBack();
+  await expect(page).toHaveURL(/[?&]q=passage(?:&|$)/u);
 });
 
 test("opens an earlier chat about the recording from the panel's history", async ({
