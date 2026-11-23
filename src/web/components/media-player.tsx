@@ -211,7 +211,9 @@ export function MediaPlayer({
       if (startMs !== undefined) event.currentTarget.currentTime = startMs / 1000;
     },
     onError: () => setFailed(true),
-    onSeeking,
+    onSeeking: () => {
+      if (!playback.skipping()) onSeeking?.();
+    },
     onTimeUpdate: (event: SyntheticEvent<HTMLMediaElement>) =>
       onPositionChange?.(event.currentTarget.currentTime * 1000),
   } as const;

@@ -85,8 +85,8 @@ export function useMediaPlayback(
     }),
     [],
   );
-  usePlayOnly(element, segments, controls.seek);
-  return { attach, segments, state: { ...state, duration }, controls };
+  const skipping = usePlayOnly(element, segments, controls.seek);
+  return { attach, segments, skipping, state: { ...state, duration }, controls };
 }
 
 export type MediaPlayback = ReturnType<typeof useMediaPlayback>;

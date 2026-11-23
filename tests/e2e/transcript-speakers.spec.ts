@@ -372,6 +372,10 @@ test("shows only the chosen speakers, scopes search, replace and copy, and plays
   await expect
     .poll(() => player.evaluate((element: HTMLMediaElement) => element.readyState))
     .toBeGreaterThanOrEqual(1);
+  const backToCurrent = panel.getByRole("button", { name: /^Back to current/u });
+  await panel.hover();
+  await page.mouse.wheel(0, 200);
+  await expect(backToCurrent).toBeVisible();
   await player.evaluate(async (element: HTMLMediaElement) => {
     element.muted = true;
     await element.play();
@@ -382,6 +386,7 @@ test("shows only the chosen speakers, scopes search, replace and copy, and plays
   const stoppedAt = await player.evaluate((element: HTMLMediaElement) => element.currentTime);
   expect(stoppedAt).toBeGreaterThanOrEqual(1.85);
   expect(stoppedAt).toBeLessThan(2);
+  await expect(backToCurrent).toBeVisible();
 
   await filterButton.click();
   await page.getByRole("menuitem", { name: "Show everyone" }).click();
