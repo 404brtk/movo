@@ -262,11 +262,6 @@ function ReplaceBar({
           {replace.pending ? "Replacing…" : "Replace all"}
         </Button>
       </div>
-      {replace.error ? (
-        <p role="alert" className="text-xs text-pretty wrap-anywhere text-destructive">
-          {replace.error.message}
-        </p>
-      ) : null}
     </form>
   );
 }

@@ -33,6 +33,12 @@ export function useReplaceAll(mediaId: string) {
     mediaId,
     ({ request }: Replacement) => replaceInTranscript(mediaId, request),
     {
+      onError: (error) =>
+        toastManager.add({
+          title: "Could not replace matches",
+          description: error.message,
+          priority: "high",
+        }),
       onSuccess: (replaced, { notice }) =>
         toastManager.add({
           ...notice,
@@ -42,7 +48,6 @@ export function useReplaceAll(mediaId: string) {
   );
   return {
     pending: replace.isPending,
-    error: replace.error,
     replaceAll: (replacement: Replacement) => replace.mutate(replacement),
   };
 }

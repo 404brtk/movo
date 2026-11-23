@@ -295,6 +295,44 @@ test("offers Undo and reports its failure after leaving the recording", async ({
   await expect.poll(exported).toBe("We deploy Kubernetes daily.\nKubernetes keeps working.");
 });
 
+test("reports a rejected replacement after leaving the recording", async ({ page, recording }) => {
+  const statusUrl = `${recording.origin}/api/media/${recording.mediaId}/transcription`;
+  let saveReplacement: (() => void) | undefined;
+  const replacementGate = new Promise<void>((open) => {
+    saveReplacement = open;
+  });
+  await page.route("**/transcription/replace", async (route) => {
+    await replacementGate;
+    await route.fallback();
+  });
+  const panel = transcription(page);
+  await panel.getByRole("button", { name: "Replace", exact: true }).click();
+  const form = panel.getByRole("form", { name: "Find and replace" });
+  await form.getByLabel("Find", { exact: true }).fill("kubernetis");
+  await form.getByLabel("Replace with").fill("Kubernetes");
+  const replacementStarted = page.waitForRequest(`${statusUrl}/replace`);
+  await form.getByRole("button", { name: "Replace all" }).click();
+  await replacementStarted;
+  try {
+    await page.getByRole("link", { name: "Back to library" }).click();
+    await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
+    const edited = await page.request.post(`${statusUrl}/replace`, {
+      data: { revision: 1, find: "running", replacement: "working" },
+    });
+    expect(edited.status()).toBe(200);
+  } finally {
+    saveReplacement?.();
+  }
+
+  const notifications = page.getByRole("region", { name: "Notifications" });
+  await expect(notifications.getByText("Could not replace matches", { exact: true })).toBeVisible();
+  await expect(
+    notifications.getByText(/The transcript changed since it was loaded/u),
+  ).toBeVisible();
+  const exported = await page.request.get(`${statusUrl}/export/txt`);
+  expect(await exported.text()).toBe("We deploy kubernetis daily.\nKubernetis keeps working.");
+});
+
 test("asks before transcribing again replaces edits and then starts a new history", async ({
   page,
 }) => {
