@@ -1,12 +1,10 @@
 import type { ReactNode, RefObject } from "react";
 import { Search01Icon, TextIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { Toast } from "@base-ui/react/toast";
 import { maxSearchLength } from "../../shared/contracts/library.ts";
 import { maxReplaceCharacters } from "../../shared/contracts/transcriptions.ts";
-import { replaceInTranscript, restoreTranscript } from "../lib/api.ts";
 import { matchCountLabel, type StepDirection, stepOnEnter } from "../lib/match-stepper.ts";
-import { useTranscriptChange } from "../lib/transcript-change.ts";
+import type { ReplaceAll } from "../lib/replace-all.ts";
 import { cn } from "../lib/utils.ts";
 import type { FindAndReplaceState } from "./find-and-replace.tsx";
 import { MatchStepper } from "./match-navigation.tsx";
@@ -165,44 +163,24 @@ function SearchBar({
 }
 
 function ReplaceBar({
-  mediaId,
   revision,
+  replace,
   state,
   filter,
   fieldRef,
   onToolChange,
   onClose,
 }: {
-  mediaId: string;
   revision: number;
+  replace: ReplaceAll;
   state: FindAndReplaceState;
   filter: SpeakerFilter;
   fieldRef: RefObject<HTMLInputElement | null>;
   onToolChange: (tool: FindTool) => void;
   onClose: () => void;
 }) {
-  const { add: addToast } = Toast.useToastManager();
-  const replace = useTranscriptChange(mediaId, () =>
-    replaceInTranscript(mediaId, {
-      revision,
-      find: state.find,
-      replacement: state.replacement,
-      ...(state.chosen === undefined ? {} : { speakers: state.chosen }),
-    }),
-  );
-  const undo = useTranscriptChange(mediaId, (versions: { revision: number; target: number }) =>
-    restoreTranscript(mediaId, versions),
-  );
   const searching = state.find.trim().length > 0;
-  const ready = state.changeCount > 0 && state.previewCurrent && !replace.isPending;
-  const undoReplacement = (versions: { revision: number; target: number }) =>
-    void undo.mutateAsync(versions).catch((error: unknown) =>
-      addToast({
-        title: "Could not undo the replacement",
-        description: error instanceof Error ? error.message : undefined,
-        priority: "high",
-      }),
-    );
+  const ready = state.changeCount > 0 && state.previewCurrent && !replace.pending;
   return (
     <form
       aria-label="Find and replace"
@@ -211,19 +189,20 @@ function ReplaceBar({
       onSubmit={(event) => {
         event.preventDefault();
         if (!ready) return;
-        const count = state.changeCount;
-        replace.mutate(undefined, {
-          onSuccess: (job) =>
-            addToast({
-              title: `Replaced ${plural(count, "match")}`,
-              description:
-                filter.owner === undefined ? undefined : `In passages by ${filter.names}`,
-              actionProps: {
-                children: "Undo",
-                onClick: () => undoReplacement({ revision: job.revision, target: revision }),
-              },
-            }),
-        });
+        replace.replaceAll(
+          {
+            revision,
+            find: state.find,
+            replacement: state.replacement,
+            ...(state.chosen === undefined ? {} : { speakers: state.chosen }),
+          },
+          {
+            title: `Replaced ${plural(state.changeCount, "match")}`,
+            ...(filter.owner === undefined
+              ? {}
+              : { description: `In passages by ${filter.names}` }),
+          },
+        );
       }}
     >
       <div className={cn(controlsClassName, barLayouts.replace)}>
@@ -243,7 +222,7 @@ function ReplaceBar({
               autoComplete="off"
               placeholder={filter.owner === undefined ? "Find" : `Find in ${filter.owner} passages`}
               value={state.find}
-              disabled={replace.isPending}
+              disabled={replace.pending}
               className={fieldInputClassName}
               onChange={(event) => state.setFind(event.currentTarget.value)}
               onKeyDown={stepOnEnter(state.step)}
@@ -253,7 +232,7 @@ function ReplaceBar({
         <BarControls
           tool="replace"
           canReplace
-          steppable={state.count > 0 && !replace.isPending}
+          steppable={state.count > 0 && !replace.pending}
           onStep={state.step}
           onToolChange={onToolChange}
           onClose={onClose}
@@ -266,7 +245,7 @@ function ReplaceBar({
               autoComplete="off"
               placeholder="Replace with"
               value={state.replacement}
-              disabled={replace.isPending}
+              disabled={replace.pending}
               className={fieldInputClassName}
               onChange={(event) => state.setReplacement(event.currentTarget.value)}
             />
@@ -275,15 +254,15 @@ function ReplaceBar({
         <Button
           type="submit"
           size="lg"
-          aria-busy={replace.isPending}
+          aria-busy={replace.pending}
           disabled={!ready}
           className="justify-self-start [grid-area:act] max-sm:justify-self-end"
         >
-          {replace.isPending ? <Spinner /> : null}
-          {replace.isPending ? "Replacing…" : "Replace all"}
+          {replace.pending ? <Spinner /> : null}
+          {replace.pending ? "Replacing…" : "Replace all"}
         </Button>
       </div>
-      {replace.isError ? (
+      {replace.error ? (
         <p role="alert" className="text-xs text-pretty wrap-anywhere text-destructive">
           {replace.error.message}
         </p>
@@ -294,7 +273,7 @@ function ReplaceBar({
 
 export function TranscriptFindBar({
   tool,
-  mediaId,
+  replace,
   revision,
   search,
   find,
@@ -305,7 +284,7 @@ export function TranscriptFindBar({
   onClose,
 }: {
   tool: FindTool;
-  mediaId: string;
+  replace: ReplaceAll;
   revision: number;
   search: TranscriptSearchState;
   find: FindAndReplaceState;
@@ -317,7 +296,7 @@ export function TranscriptFindBar({
 }) {
   return tool === "replace" ? (
     <ReplaceBar
-      mediaId={mediaId}
+      replace={replace}
       revision={revision}
       state={find}
       filter={filter}

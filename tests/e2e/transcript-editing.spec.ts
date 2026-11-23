@@ -198,6 +198,51 @@ test("previews and applies find and replace, then undoes and restores versions",
   await expect(passages(page).last()).toContainText("Kubernetes keeps working.");
 });
 
+test("undoes a replacement after the bar closed mid-save and after switching versions", async ({
+  page,
+  recording,
+}) => {
+  const statusUrl = `${recording.origin}/api/media/${recording.mediaId}/transcription`;
+  const change = async (action: string, body: object) =>
+    expect((await page.request.post(`${statusUrl}/${action}`, { data: body })).status()).toBe(200);
+  await change("replace", { revision: 1, find: "kubernetis", replacement: "Kubernetes" });
+  await change("restore", { revision: 2, target: 1 });
+  await change("restore", { revision: 3, target: 2 });
+  await page.reload();
+  await expect(passages(page)).toHaveText([
+    /We deploy Kubernetes daily\./u,
+    /Kubernetes keeps running\./u,
+  ]);
+
+  const panel = transcription(page);
+  await panel.getByRole("button", { name: "Replace", exact: true }).click();
+  const form = panel.getByRole("form", { name: "Find and replace" });
+  await form.getByLabel("Find", { exact: true }).fill("Kubernetes");
+  await form.getByLabel("Replace with").fill("K8s");
+  await expect(form.getByText("1 of 2", { exact: true })).toBeVisible();
+  let saveReplacement: (() => void) | undefined;
+  const replacementGate = new Promise<void>((open) => {
+    saveReplacement = open;
+  });
+  await page.route("**/transcription/replace", async (route) => {
+    await replacementGate;
+    await route.fallback();
+  });
+  await form.getByRole("button", { name: "Replace all" }).click();
+  await form.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(form).toBeHidden();
+  saveReplacement?.();
+  await page.unroute("**/transcription/replace");
+  await expect(passages(page)).toHaveText([/We deploy K8s daily\./u, /K8s keeps running\./u]);
+  await expect(page.getByText("Replaced 2 matches", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(passages(page)).toHaveText([
+    /We deploy Kubernetes daily\./u,
+    /Kubernetes keeps running\./u,
+  ]);
+  await expect(page.getByText("Could not undo the replacement")).toHaveCount(0);
+});
+
 test("asks before transcribing again replaces edits and then starts a new history", async ({
   page,
 }) => {

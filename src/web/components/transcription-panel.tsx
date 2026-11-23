@@ -7,6 +7,7 @@ import type { Transcript, TranscriptionJob } from "../../shared/contracts/transc
 import { transcriptionOptions } from "../lib/api.ts";
 import { formatDevice } from "../lib/format.ts";
 import { focusOnMount } from "../lib/match-stepper.ts";
+import { useReplaceAll } from "../lib/replace-all.ts";
 import { pinTranscriptBelow } from "../lib/transcript-follow.ts";
 import { replaceShortcut, searchShortcut } from "../lib/transcript-shortcuts.ts";
 import {
@@ -96,6 +97,7 @@ function TranscriptView({
     }
   }
   const find = useFindAndReplace(transcript, filter.chosen);
+  const replace = useReplaceAll(mediaId);
   const field = useRef<HTMLInputElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const { revision, resultRevision } = job;
@@ -164,7 +166,7 @@ function TranscriptView({
         {shown ? (
           <TranscriptFindBar
             tool={shown}
-            mediaId={mediaId}
+            replace={replace}
             revision={revision}
             search={search}
             find={find}
