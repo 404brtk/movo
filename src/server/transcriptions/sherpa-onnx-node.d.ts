@@ -5,8 +5,8 @@ declare module "sherpa-onnx-node/addon.js" {
   }
 
   interface OfflineSpeakerDiarizationConfig {
-    segmentation: { pyannote: { model: string }; numThreads: number };
-    embedding: { model: string; numThreads: number };
+    segmentation: { pyannote: { model: string }; numThreads: number; provider: string };
+    embedding: { model: string; numThreads: number; provider: string };
     clustering: ClusteringConfig;
   }
 

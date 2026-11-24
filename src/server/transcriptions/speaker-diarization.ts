@@ -35,13 +35,13 @@ async function diarizeWithPyannote(
   report: DiarizationReport,
 ) {
   const { default: sherpaOnnx } = await import("sherpa-onnx-node/addon.js");
-  report.device(processorDevice());
   const numThreads = availableParallelism();
   const diarization = sherpaOnnx.createOfflineSpeakerDiarization({
-    segmentation: { pyannote: { model: segmentationPath }, numThreads },
-    embedding: { model: embeddingPath, numThreads },
+    segmentation: { pyannote: { model: segmentationPath }, numThreads, provider: "cpu" },
+    embedding: { model: embeddingPath, numThreads, provider: "cpu" },
     clustering: { numClusters: detectSpeakerCount, threshold: speakerDistanceThreshold },
   });
+  report.device(processorDevice());
   if (sherpaOnnx.getOfflineSpeakerDiarizationSampleRate(diarization) !== 16000)
     throw new Error("The speaker models do not support 16 kHz audio.");
   const diarize = async () =>

@@ -3,7 +3,8 @@ import { maxSpeakers } from "../../../../src/shared/contracts/transcriptions.ts"
 import { diarizeSpeakers } from "../../../../src/server/transcriptions/speaker-diarization.ts";
 import { assignSpeakers } from "../../../../src/server/transcriptions/speakers.ts";
 
-const { processAudio, setConfig, sortformer } = vi.hoisted(() => ({
+const { createDiarization, processAudio, setConfig, sortformer } = vi.hoisted(() => ({
+  createDiarization: vi.fn<(config: unknown) => object>(() => ({})),
   processAudio:
     vi.fn<
       (
@@ -22,7 +23,7 @@ const { processAudio, setConfig, sortformer } = vi.hoisted(() => ({
 
 vi.mock("sherpa-onnx-node/addon.js", () => ({
   default: {
-    createOfflineSpeakerDiarization: () => ({}),
+    createOfflineSpeakerDiarization: createDiarization,
     getOfflineSpeakerDiarizationSampleRate: () => 16000,
     offlineSpeakerDiarizationSetConfig: setConfig,
     offlineSpeakerDiarizationProcessAsync: processAudio,
@@ -56,6 +57,7 @@ const ignored = { device: () => {}, progress: () => {} };
 
 beforeEach(() => {
   processAudio.mockReset();
+  createDiarization.mockClear();
   setConfig.mockClear();
   sortformer.run.mockReset();
   sortformer.arch = "sortformer";
@@ -94,7 +96,7 @@ it.each([
   expect(processAudio).toHaveBeenCalledTimes(passes);
 });
 
-it("reports the processor and the share of audio chunks Pyannote has processed", async () => {
+it("runs Pyannote on the processor it reports, and reports the share of audio chunks processed", async () => {
   processAudio.mockImplementationOnce(async (_handle, _samples, progress) => {
     progress(1, 4);
     progress(4, 4);
@@ -105,6 +107,10 @@ it("reports the processor and the share of audio chunks Pyannote has processed",
   await diarizeSpeakers(pyannote, audio, {
     device: (device) => devices.push(device),
     progress: (fraction) => reported.push(fraction),
+  });
+  expect(createDiarization.mock.calls[0]?.[0]).toMatchObject({
+    segmentation: { provider: "cpu" },
+    embedding: { provider: "cpu" },
   });
   expect(devices).toEqual([{ backend: "cpu", name: expect.any(String) }]);
   expect(reported).toEqual([0.25, 1]);
