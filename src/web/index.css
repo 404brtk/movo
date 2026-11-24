@@ -5,6 +5,7 @@
 
 @custom-variant dark (&:is(.dark *));
 @custom-variant selected (&:is([data-pressed], [aria-current="page"]));
+@custom-variant toggled (&:is([aria-expanded="true"], [data-active]:not([data-active="false"])));
 @custom-variant video-idle {
   @media (hover: hover) {
     &:where([data-playing]:not(:hover, :has(:focus-visible)) *) {

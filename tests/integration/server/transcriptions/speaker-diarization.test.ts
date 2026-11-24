@@ -15,7 +15,7 @@ it("loads the native Pyannote runtime without weights and rejects missing models
         embedding: join(directory, "embedding.onnx"),
       },
       Buffer.alloc(16000 * Float32Array.BYTES_PER_ELEMENT),
-      () => {},
+      { device: () => {}, progress: () => {} },
     ),
   ).rejects.toThrow(/check your config/u);
 });

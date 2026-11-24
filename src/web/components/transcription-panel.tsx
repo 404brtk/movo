@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import { maxSearchLength } from "../../shared/contracts/library.ts";
 import type { Transcript, TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
 import { transcriptionOptions } from "../lib/api.ts";
-import { formatDevice } from "../lib/format.ts";
 import { focusOnMount } from "../lib/match-stepper.ts";
 import { useReplaceAll } from "../lib/replace-all.ts";
 import { pinTranscriptBelow } from "../lib/transcript-follow.ts";
@@ -14,8 +13,7 @@ import {
   hasEdits,
   isActiveTranscription,
   type TranscriptionActionMutation,
-  useModelName,
-  useResultModels,
+  useResultDescription,
 } from "../lib/transcription-actions.ts";
 import { ChangeHistory } from "./change-history.tsx";
 import { ReplaceEditsDialog } from "./confirm-dialog.tsx";
@@ -69,7 +67,6 @@ function TranscriptView({
   mediaId,
   job,
   transcript,
-  modelName,
   playback,
   revealMs,
   toolbarAction,
@@ -78,12 +75,12 @@ function TranscriptView({
   mediaId: string;
   job: TranscriptionJob;
   transcript: Transcript;
-  modelName: string;
   playback: TranscriptPlayback | undefined;
   revealMs: number | undefined;
   toolbarAction: ReactNode;
   status: ReactNode;
 }) {
+  const describeResult = useResultDescription();
   const filter = useSpeakerFilter(transcript);
   const search = useTranscriptSearch(transcript, filter.chosen);
   const [tool, setTool] = useState<FindTool | null>(search.query === undefined ? null : "search");
@@ -154,7 +151,7 @@ function TranscriptView({
         mediaId={mediaId}
         revision={revision}
         resultRevision={resultRevision}
-        modelName={job.device ? `${modelName} · ${formatDevice(job.device)}` : modelName}
+        resultDetails={describeResult(job, { devices: true })}
         open={historyOpen}
         onOpenChange={setHistoryOpen}
         withTrigger={withTrigger}
@@ -284,8 +281,6 @@ export function TranscriptionPanel({
   const [confirmingRetry, setConfirmingRetry] = useState(false);
   const job = query.data;
   const fileAvailable = playback !== undefined;
-  const modelName = useModelName(job?.modelId);
-  const resultModels = useResultModels(job);
   const transcript = job?.transcript;
   const active = isActiveTranscription(job);
   const status = (
@@ -313,7 +308,7 @@ export function TranscriptionPanel({
       {query.isSuccess && job === null && fileAvailable ? (
         <NoTranscriptCard
           title="No transcript yet"
-          description={`${modelName} transcribes this recording on this computer. You can keep browsing while it runs, and search what was said once it finishes.`}
+          description="Movo transcribes this recording on this computer. You can keep browsing while it runs, and search what was said once it finishes."
           action="Transcribe"
           pending={action.isPending}
           onStart={() => action.mutate("start")}
@@ -368,7 +363,6 @@ export function TranscriptionPanel({
           mediaId={mediaId}
           job={job}
           transcript={transcript}
-          modelName={resultModels}
           playback={playback}
           revealMs={revealMs}
           toolbarAction={toolbarAction}

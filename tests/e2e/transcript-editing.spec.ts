@@ -104,7 +104,7 @@ test("edits a passage with the keyboard, keeps it after reload and finds the new
   await page.keyboard.press("Control+Enter");
   await expect(passages(page).first()).toContainText("We deploy Kubernetes clusters daily.");
   await expect(edit).toBeFocused();
-  await expect(page.getByRole("main")).toContainText("Parakeet Ultra · edited");
+  await expect(page.getByRole("main")).toContainText("Transcribed by Parakeet Ultra · edited");
 
   await page.reload();
   await expect(passages(page).first()).toContainText("We deploy Kubernetes clusters daily.");
@@ -144,7 +144,7 @@ test("previews and applies find and replace, then undoes and restores versions",
   await expect(versions).toHaveText([
     /^Edited passage at 0:01.*Current$/u,
     /^Replaced “kubernetis” with “Kubernetes”2 replacements · /u,
-    /^Transcription result/u,
+    /^Transcription resultTranscribed by Parakeet Ultra on Test CPU \(CPU\)/u,
   ]);
   await page.getByRole("button", { name: /^Restore: Replaced “kubernetis”/u }).click();
   await expect(page.getByRole("status").filter({ hasText: "Restored" })).toHaveText(

@@ -1,6 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { and, asc, eq, notInArray, sql } from "drizzle-orm";
+import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
 import {
   maxTranscriptWords,
@@ -59,6 +60,7 @@ export interface TranscriptionRequest {
 export interface TranscriptionReport {
   phase: (phase: TranscriptionPhase) => void;
   device: (device: TranscriptionDevice) => void;
+  speakerDevice: (device: TranscriptionDevice) => void;
   progress: (percent: number) => void;
 }
 
@@ -104,7 +106,7 @@ export function createTranscriptions(
     });
   const updateRunning = (
     id: string,
-    changes: Partial<typeof transcriptionJobs.$inferInsert>,
+    changes: SQLiteUpdateSetSource<typeof transcriptionJobs>,
     executor: Pick<AppDatabase, "update"> = database,
   ) =>
     executor
@@ -175,6 +177,7 @@ export function createTranscriptions(
             {
               phase: (phase) => report({ phase }),
               device: (device) => report({ device }),
+              speakerDevice: (speakerDevice) => report({ speakerDevice }),
               progress: (phaseProgress) => report({ phaseProgress }),
             },
           );
@@ -189,6 +192,7 @@ export function createTranscriptions(
                 "unsupported",
                 "The engine returned words outside this recording.",
               );
+            const labeled = transcript.words.some((word) => word.speaker !== undefined);
             database.transaction((transaction) => {
               const completed = updateRunning(
                 job.mediaId,
@@ -196,9 +200,9 @@ export function createTranscriptions(
                   status: "completed",
                   phase: "finished",
                   transcript,
-                  resultSpeakerModelId: transcript.words.some((word) => word.speaker !== undefined)
-                    ? job.speakerModelId
-                    : null,
+                  resultSpeakerModelId: labeled ? job.speakerModelId : null,
+                  resultDevice: transcriptionJobs.device,
+                  resultSpeakerDevice: labeled ? transcriptionJobs.speakerDevice : null,
                   error: null,
                 },
                 transaction,
@@ -569,6 +573,7 @@ export function createTranscriptions(
               phase: "queued",
               phaseProgress: null,
               device: null,
+              speakerDevice: null,
               error: null,
               updatedAt: Date.now(),
             })

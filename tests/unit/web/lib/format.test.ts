@@ -27,9 +27,9 @@ describe("media display formatting", () => {
     expect(formatBytes(bytes)).toBe(expected);
   });
   it.each([
-    [{ backend: "vulkan", name: "Test GPU" }, "Test GPU · Vulkan"],
-    [{ backend: "cpu", name: "Test CPU" }, "Test CPU · CPU"],
-    [{ backend: "future", name: "Accelerator" }, "Accelerator · future"],
+    [{ backend: "vulkan", name: "Test GPU" }, "Test GPU (Vulkan)"],
+    [{ backend: "cpu", name: "Test CPU" }, "Test CPU (CPU)"],
+    [{ backend: "future", name: "Accelerator" }, "Accelerator (future)"],
   ] as const)("formats transcription device %o", (device, expected) => {
     expect(formatDevice(device)).toBe(expected);
   });

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ModelId } from "../../shared/contracts/models.ts";
 import type {
+  TranscriptionDevice,
   TranscriptionJob,
   TranscriptionRetry,
 } from "../../shared/contracts/transcriptions.ts";
@@ -12,6 +13,7 @@ import {
   retryTranscription,
   transcriptionOptions,
 } from "./api.ts";
+import { formatDevice } from "./format.ts";
 
 export const isActiveTranscription = (job: TranscriptionJob | null | undefined) =>
   job?.status === "queued" || job?.status === "running";
@@ -50,16 +52,15 @@ function useModelNames() {
   return (modelId: ModelId) => models.data?.models.find((model) => model.id === modelId)?.name;
 }
 
-export function useModelName(modelId: TranscriptionJob["modelId"] | undefined) {
+export function useResultDescription() {
   const modelName = useModelNames();
-  return (modelId && modelName(modelId)) ?? "Parakeet Ultra";
-}
-
-export function useResultModels(job: TranscriptionJob | null | undefined) {
-  const modelName = useModelNames();
-  const transcriber = (job && modelName(job.modelId)) ?? "Parakeet Ultra";
-  const speakers = job?.resultSpeakerModelId;
-  return speakers
-    ? `${transcriber} · ${modelName(speakers) ?? speakers} speaker labels`
-    : transcriber;
+  return (job: TranscriptionJob, { devices = false } = {}) => {
+    const onDevice = (device: TranscriptionDevice | null) =>
+      devices && device ? ` on ${formatDevice(device)}` : "";
+    const transcribed = `Transcribed by ${modelName(job.modelId) ?? job.modelId}${onDevice(job.resultDevice)}`;
+    const speakers = job.resultSpeakerModelId;
+    return speakers
+      ? `${transcribed} · Speakers by ${modelName(speakers) ?? speakers}${onDevice(job.resultSpeakerDevice)}`
+      : transcribed;
+  };
 }

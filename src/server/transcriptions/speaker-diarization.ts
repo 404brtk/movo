@@ -1,6 +1,7 @@
 import { availableParallelism } from "node:os";
 import { Schema } from "effect";
-import { maxSpeakers } from "../../shared/contracts/transcriptions.ts";
+import { maxSpeakers, type TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
+import { modelDevice, processorDevice } from "./device.ts";
 import { SpeakerTurns } from "./speakers.ts";
 
 export const SpeakerDiarizer = Schema.Union([
@@ -20,27 +21,33 @@ const SortformerSegments = Schema.Array(
   Schema.Struct({ t0Ms: Schema.Number, t1Ms: Schema.Number, speakerId: Schema.Number }),
 );
 const detectSpeakerCount = -1;
+
+export interface DiarizationReport {
+  device: (device: TranscriptionDevice) => void;
+  progress: (fraction: number) => void;
+}
 const speakerDistanceThreshold = 0.5;
 
 async function diarizeWithPyannote(
   segmentationPath: string,
   embeddingPath: string,
   samples: Float32Array,
-  reportProgress: (fraction: number) => void,
+  report: DiarizationReport,
 ) {
   const { default: sherpaOnnx } = await import("sherpa-onnx-node/addon.js");
   const numThreads = availableParallelism();
   const diarization = sherpaOnnx.createOfflineSpeakerDiarization({
-    segmentation: { pyannote: { model: segmentationPath }, numThreads },
-    embedding: { model: embeddingPath, numThreads },
+    segmentation: { pyannote: { model: segmentationPath }, numThreads, provider: "cpu" },
+    embedding: { model: embeddingPath, numThreads, provider: "cpu" },
     clustering: { numClusters: detectSpeakerCount, threshold: speakerDistanceThreshold },
   });
+  report.device(processorDevice());
   if (sherpaOnnx.getOfflineSpeakerDiarizationSampleRate(diarization) !== 16000)
     throw new Error("The speaker models do not support 16 kHz audio.");
   const diarize = async () =>
     Schema.decodeUnknownSync(PyannoteSegments)(
       await sherpaOnnx.offlineSpeakerDiarizationProcessAsync(diarization, samples, (done, total) =>
-        reportProgress(done / total),
+        report.progress(done / total),
       ),
     );
   let segments = await diarize();
@@ -57,10 +64,15 @@ async function diarizeWithPyannote(
   }));
 }
 
-async function diarizeWithSortformer(modelPath: string, samples: Float32Array) {
+async function diarizeWithSortformer(
+  modelPath: string,
+  samples: Float32Array,
+  report: DiarizationReport,
+) {
   const { TranscribeModel } = await import("transcribe-cpp");
   const model = await TranscribeModel.load(modelPath, { backend: "auto" });
   try {
+    report.device(modelDevice(model));
     if (
       model.arch !== "sortformer" ||
       !model.roles.includes("diarize") ||
@@ -90,7 +102,7 @@ async function diarizeWithSortformer(modelPath: string, samples: Float32Array) {
 export async function diarizeSpeakers(
   diarizer: SpeakerDiarizer,
   pcm: Uint8Array,
-  reportProgress: (fraction: number) => void,
+  report: DiarizationReport,
 ) {
   const samples = new Float32Array(
     pcm.buffer,
@@ -99,12 +111,7 @@ export async function diarizeSpeakers(
   );
   return Schema.decodeUnknownSync(SpeakerTurns)(
     diarizer.model === "pyannote-wespeaker"
-      ? await diarizeWithPyannote(
-          diarizer.segmentation,
-          diarizer.embedding,
-          samples,
-          reportProgress,
-        )
-      : await diarizeWithSortformer(diarizer.diarization, samples),
+      ? await diarizeWithPyannote(diarizer.segmentation, diarizer.embedding, samples, report)
+      : await diarizeWithSortformer(diarizer.diarization, samples, report),
   );
 }

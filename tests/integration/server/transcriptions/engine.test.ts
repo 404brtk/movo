@@ -57,6 +57,7 @@ it.for(["tone.wav", "sample.webm"])(
         {
           phase: (phase) => phases.push(phase),
           device: (device) => devices.push(device),
+          speakerDevice: () => undefined,
           progress: () => undefined,
         },
       ),
@@ -134,7 +135,12 @@ it.for([
     Effect.runPromise(
       engine.transcribe(
         { path: "recording.wav", directory, speakerModelId: null },
-        { phase: () => undefined, device: () => undefined, progress: () => undefined },
+        {
+          phase: () => undefined,
+          device: () => undefined,
+          speakerDevice: () => undefined,
+          progress: () => undefined,
+        },
       ),
     ),
   ).rejects.toMatchObject({
@@ -153,7 +159,7 @@ it.for([
   { speakerModelId: "sortformer-4spk-q8", progress: [] },
   { speakerModelId: "pyannote-wespeaker", progress: [0, 42, 100] },
 ] as const)(
-  "hands the job's $speakerModelId files to the worker by role and accepts its speaker phase, progress and result",
+  "hands the job's $speakerModelId files to the worker by role and accepts its speaker phase, device, progress and result",
   async ({ speakerModelId, progress: expectedProgress }) => {
     const directory = await mkdtemp(join(tmpdir(), "movo-transcription-speakers-"));
     onTestFinished(() =>
@@ -168,6 +174,7 @@ it.for([
     };
     const phases: string[] = [];
     const progress: number[] = [];
+    const speakerDevices: unknown[] = [];
     const workerArguments: string[][] = [];
     const engine = createTranscriptionEngine(
       createMediaTools({ dataDirectory: directory }),
@@ -185,6 +192,7 @@ it.for([
             workerArguments.push(args.slice(1));
             options.onLine?.(deviceReport);
             options.onLine?.("MOVO_PHASE:speakers");
+            options.onLine?.('MOVO_SPEAKER_DEVICE:{"backend":"cpu","name":"Test CPU"}');
             for (const percent of expectedProgress) options.onLine?.(`MOVO_PROGRESS:${percent}`);
             await writeFile(args[3] ?? "", JSON.stringify(expected), { flag: "wx" });
           }
@@ -197,6 +205,7 @@ it.for([
         {
           phase: (phase) => phases.push(phase),
           device: () => undefined,
+          speakerDevice: (device) => speakerDevices.push(device),
           progress: (percent) => progress.push(percent),
         },
       ),
@@ -204,6 +213,7 @@ it.for([
     expect(result).toEqual(expected);
     expect(phases).toEqual(["preparing", "speakers"]);
     expect(progress).toEqual(expectedProgress);
+    expect(speakerDevices).toEqual([{ backend: "cpu", name: "Test CPU" }]);
     expect(workerArguments).toEqual([
       [
         "verified-model.gguf",

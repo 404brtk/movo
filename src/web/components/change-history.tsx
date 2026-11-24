@@ -61,12 +61,12 @@ function HistoryVersions({
   mediaId,
   revision,
   resultRevision,
-  modelName,
+  resultDetails,
 }: {
   mediaId: string;
   revision: number;
   resultRevision: number;
-  modelName: string;
+  resultDetails: string;
 }) {
   const history = useInfiniteQuery(transcriptHistoryOptions(mediaId, revision));
   const restore = useTranscriptChange(mediaId, (target: number) =>
@@ -82,7 +82,7 @@ function HistoryVersions({
       details: describeDetails(change),
     })),
     ...(history.isSuccess && !history.hasNextPage
-      ? [{ revision: resultRevision, description: "Transcription result", details: modelName }]
+      ? [{ revision: resultRevision, description: "Transcription result", details: resultDetails }]
       : []),
   ];
   return (
@@ -134,7 +134,7 @@ function HistoryVersions({
                   <p className="mt-px text-xs text-muted-foreground">{version.details}</p>
                 </div>
                 {current ? (
-                  <span className="rounded-md bg-tint px-[7px] py-[3px] text-[11.5px] font-medium text-primary-strong">
+                  <span className="rounded-md bg-tint px-[7px] py-[3px] text-[11.5px] font-medium text-primary-deep">
                     Current
                   </span>
                 ) : (
@@ -193,7 +193,7 @@ export function ChangeHistory({
   mediaId: string;
   revision: number;
   resultRevision: number;
-  modelName: string;
+  resultDetails: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   withTrigger: boolean;
