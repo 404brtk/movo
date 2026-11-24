@@ -83,7 +83,7 @@ const isTyping = (target: EventTarget | null) =>
 export function AskButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
     <Button
-      variant={open ? "secondary" : "outline"}
+      variant="toggle"
       size="sm"
       aria-expanded={open}
       aria-keyshortcuts="/"

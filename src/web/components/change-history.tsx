@@ -134,7 +134,7 @@ function HistoryVersions({
                   <p className="mt-px text-xs text-muted-foreground">{version.details}</p>
                 </div>
                 {current ? (
-                  <span className="rounded-md bg-tint px-[7px] py-[3px] text-[11.5px] font-medium text-primary-strong">
+                  <span className="rounded-md bg-tint px-[7px] py-[3px] text-[11.5px] font-medium text-primary-deep">
                     Current
                   </span>
                 ) : (

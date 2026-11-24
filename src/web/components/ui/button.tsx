@@ -13,9 +13,7 @@ const buttonStyles = cva(
         default:
           "border-primary-edge bg-linear-to-b from-primary-from to-primary-to font-[550] text-primary-foreground shadow-button-primary hover:from-primary-from-hover hover:to-primary-to-hover active:from-primary-from-pressed active:to-primary-to-pressed active:shadow-button-primary-pressed",
         outline,
-        toggle: `${outline} aria-expanded:border-primary/25 aria-expanded:from-tint aria-expanded:to-highlight aria-expanded:text-primary-strong aria-expanded:shadow-button-tinted data-active:border-primary/25 data-active:from-tint data-active:to-highlight data-active:text-primary-strong data-active:shadow-button-tinted`,
-        secondary:
-          "border-primary/18 bg-linear-to-b from-tint to-highlight text-primary-deep shadow-button-tinted hover:border-primary/28 hover:from-highlight active:shadow-button-pressed",
+        toggle: `${outline} aria-expanded:border-primary/18 aria-expanded:from-tint aria-expanded:to-highlight aria-expanded:text-primary-deep aria-expanded:shadow-button-tinted aria-expanded:hover:border-primary/28 aria-expanded:hover:from-highlight data-active:border-primary/18 data-active:from-tint data-active:to-highlight data-active:text-primary-deep data-active:shadow-button-tinted data-active:hover:border-primary/28 data-active:hover:from-highlight`,
         ghost:
           "text-muted-foreground hover:bg-muted hover:text-foreground active:bg-input/70 aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
         destructive:
