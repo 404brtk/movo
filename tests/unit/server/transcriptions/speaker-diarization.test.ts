@@ -33,6 +33,7 @@ vi.mock("transcribe-cpp", () => ({
   TranscribeModel: {
     load: async () => ({
       arch: sortformer.arch,
+      device: { kind: "vulkan", name: "Vulkan0", description: " Test GPU " },
       roles: ["diarize"],
       diarizeInfo: { sampleRate: 16000, maxSpeakers: 4 },
       createDiarizeSession: () => ({
@@ -51,6 +52,7 @@ const pyannote = {
 } as const;
 const sortformerFiles = { model: "sortformer-4spk-q8", diarization: "sortformer.gguf" } as const;
 const audio = Buffer.alloc(16 * Float32Array.BYTES_PER_ELEMENT);
+const ignored = { device: () => {}, progress: () => {} };
 
 beforeEach(() => {
   processAudio.mockReset();
@@ -81,7 +83,7 @@ it.each([
     );
   const actual = assignSpeakers(
     { language: "en", words },
-    await diarizeSpeakers(pyannote, audio, () => {}),
+    await diarizeSpeakers(pyannote, audio, ignored),
   );
   expect(actual.words).toEqual(
     words.map((word, index) => ({ ...word, speaker: Math.min(index + 1, maxSpeakers) })),
@@ -92,15 +94,30 @@ it.each([
   expect(processAudio).toHaveBeenCalledTimes(passes);
 });
 
-it("reports the share of audio chunks Pyannote has processed", async () => {
+it("reports the processor and the share of audio chunks Pyannote has processed", async () => {
   processAudio.mockImplementationOnce(async (_handle, _samples, progress) => {
     progress(1, 4);
     progress(4, 4);
     return [];
   });
+  const devices: unknown[] = [];
   const reported: number[] = [];
-  await diarizeSpeakers(pyannote, audio, (fraction) => reported.push(fraction));
+  await diarizeSpeakers(pyannote, audio, {
+    device: (device) => devices.push(device),
+    progress: (fraction) => reported.push(fraction),
+  });
+  expect(devices).toEqual([{ backend: "cpu", name: expect.any(String) }]);
   expect(reported).toEqual([0.25, 1]);
+});
+
+it("reports the device Sortformer runs on", async () => {
+  sortformer.run.mockResolvedValueOnce([]);
+  const devices: unknown[] = [];
+  await diarizeSpeakers(sortformerFiles, audio, {
+    device: (device) => devices.push(device),
+    progress: () => {},
+  });
+  expect(devices).toEqual([{ backend: "vulkan", name: "Test GPU" }]);
 });
 
 it("reads Sortformer turns in milliseconds with the offline preset and releases the model", async () => {
@@ -108,7 +125,7 @@ it("reads Sortformer turns in milliseconds with the offline preset and releases 
     { t0Ms: 0, t1Ms: 900, speakerId: 2, p: Number.NaN },
     { t0Ms: 900, t1Ms: 1500, speakerId: 1, p: Number.NaN },
   ]);
-  expect(await diarizeSpeakers(sortformerFiles, audio, () => {})).toEqual([
+  expect(await diarizeSpeakers(sortformerFiles, audio, ignored)).toEqual([
     { startMs: 0, endMs: 900, speaker: 2 },
     { startMs: 900, endMs: 1500, speaker: 1 },
   ]);
@@ -120,7 +137,7 @@ it("reads Sortformer turns in milliseconds with the offline preset and releases 
 
 it("rejects a GGUF file that is not a Sortformer speaker model", async () => {
   sortformer.arch = "parakeet";
-  await expect(diarizeSpeakers(sortformerFiles, audio, () => {})).rejects.toThrow(
+  await expect(diarizeSpeakers(sortformerFiles, audio, ignored)).rejects.toThrow(
     /does not support speaker turns/u,
   );
   expect(sortformer.disposed).toEqual(["model"]);
@@ -154,5 +171,5 @@ it.each([
 ])("rejects $name", async ({ diarizer, turns, cause }) => {
   processAudio.mockResolvedValueOnce(turns);
   sortformer.run.mockResolvedValueOnce(turns);
-  await expect(diarizeSpeakers(diarizer, audio, () => {})).rejects.toThrow(cause);
+  await expect(diarizeSpeakers(diarizer, audio, ignored)).rejects.toThrow(cause);
 });

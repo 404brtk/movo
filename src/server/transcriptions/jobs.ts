@@ -59,6 +59,7 @@ export interface TranscriptionRequest {
 export interface TranscriptionReport {
   phase: (phase: TranscriptionPhase) => void;
   device: (device: TranscriptionDevice) => void;
+  speakerDevice: (device: TranscriptionDevice) => void;
   progress: (percent: number) => void;
 }
 
@@ -175,6 +176,7 @@ export function createTranscriptions(
             {
               phase: (phase) => report({ phase }),
               device: (device) => report({ device }),
+              speakerDevice: (speakerDevice) => report({ speakerDevice }),
               progress: (phaseProgress) => report({ phaseProgress }),
             },
           );
@@ -569,6 +571,7 @@ export function createTranscriptions(
               phase: "queued",
               phaseProgress: null,
               device: null,
+              speakerDevice: null,
               error: null,
               updatedAt: Date.now(),
             })

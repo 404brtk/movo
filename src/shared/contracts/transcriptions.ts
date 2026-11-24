@@ -118,6 +118,7 @@ export const TranscriptionJob = Schema.Struct({
   revision: Count,
   resultRevision: Count,
   device: Schema.NullOr(TranscriptionDevice),
+  speakerDevice: Schema.NullOr(TranscriptionDevice),
   error: Schema.NullOr(Schema.String),
   cleanupError: Schema.NullOr(Schema.String),
   createdAt: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),

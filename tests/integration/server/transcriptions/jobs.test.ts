@@ -33,6 +33,7 @@ const transcript = {
   ],
 };
 const device = { backend: "cpu", name: "Test CPU" };
+const speakerDevice = { backend: "vulkan", name: "Test GPU" };
 
 async function withRecording(
   signal: AbortSignal,
@@ -215,7 +216,7 @@ it("keeps the speaker labels chosen when a job was queued, takes the current or 
   );
 });
 
-it("reports speaker progress, stops active inference before cleanup, continues the queue and accepts only one concurrent retry", async ({
+it("reports the speaker device and progress, stops active inference before cleanup, continues the queue and accepts only one concurrent retry", async ({
   signal,
 }) => {
   await withRecording(signal, (database, directory, tools, library, media) =>
@@ -234,6 +235,7 @@ it("reports speaker progress, stops active inference before cleanup, continues t
             report.phase("transcribing");
             if (attempts === 1) {
               report.phase("speakers");
+              report.speakerDevice(speakerDevice);
               report.progress(42);
               yield* Deferred.succeed(began, undefined);
               yield* Effect.never;
@@ -251,13 +253,18 @@ it("reports speaker progress, stops active inference before cleanup, continues t
       yield* jobs.enqueue(second.id);
       const worker = yield* jobs.start();
       yield* Deferred.await(began);
-      expect(yield* jobs.get(media.id)).toMatchObject({ phase: "speakers", phaseProgress: 42 });
+      expect(yield* jobs.get(media.id)).toMatchObject({
+        phase: "speakers",
+        phaseProgress: 42,
+        speakerDevice,
+      });
       expect((yield* jobs.get(second.id))?.status).toBe("queued");
       yield* jobs.cancel(media.id);
       expect(stopped).toBe(true);
       expect(yield* jobs.get(media.id)).toMatchObject({
         status: "cancelled",
         device,
+        speakerDevice,
         phaseProgress: null,
       });
       expect(
@@ -270,7 +277,9 @@ it("reports speaker progress, stops active inference before cleanup, continues t
         [Effect.result(jobs.retry(media.id)), Effect.result(jobs.retry(media.id))],
         { concurrency: "unbounded" },
       );
-      expect(retries.filter(Result.isSuccess)).toMatchObject([{ success: { device: null } }]);
+      expect(retries.filter(Result.isSuccess)).toMatchObject([
+        { success: { device: null, speakerDevice: null } },
+      ]);
       expect(retries.filter(Result.isFailure)).toMatchObject([{ failure: { reason: "invalid" } }]);
       yield* waitFor(jobs, media.id, "completed");
       expect(attempts).toBe(3);

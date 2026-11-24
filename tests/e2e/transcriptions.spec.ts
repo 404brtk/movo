@@ -39,6 +39,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
         revision: 0,
         resultRevision: 0,
         device: null,
+        speakerDevice: null,
         error: null,
         cleanupError: null,
         createdAt: Date.now(),
@@ -93,6 +94,7 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
     revision: 0,
     resultRevision: 0,
     device: { backend: "vulkan", name: "Test GPU" },
+    speakerDevice: null,
     error: null,
     cleanupError: null,
     createdAt: Date.now(),
@@ -149,6 +151,7 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
     revision: 0,
     resultRevision: 0,
     device: { backend: "vulkan", name: "Test GPU" },
+    speakerDevice: null,
     error: null,
     cleanupError: null,
     createdAt: Date.now(),
@@ -190,13 +193,19 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   await expect(panel.getByRole("status")).toContainText("Transcribing");
   await expect(device).toBeVisible();
   await expect(panel.getByText("Identifying speakers", { exact: true })).toBeVisible();
-  job = { ...job, phase: "speakers", phaseProgress: 42 };
+  job = {
+    ...job,
+    phase: "speakers",
+    phaseProgress: 42,
+    speakerDevice: { backend: "cpu", name: "Test CPU" },
+  };
   const speakerProgress = panel.getByRole("progressbar", {
     name: "Identifying speakers",
     exact: true,
   });
   await expect(speakerProgress).toHaveAttribute("aria-valuenow", "42");
   await expect(panel.getByText("42%", { exact: true })).toBeVisible();
+  await expect(panel.getByText("On Test CPU · CPU", { exact: true })).toBeVisible();
   await expect(device).toHaveCount(0);
   job = {
     ...job,
@@ -268,6 +277,7 @@ test("keeps retry progress when an older failed status arrives after retry succe
     revision: 0,
     resultRevision: 0,
     device: null,
+    speakerDevice: null,
     error: "The previous transcription failed.",
     cleanupError: null,
     createdAt: Date.now(),
@@ -348,6 +358,7 @@ test("transcribes a completed recording again while keeping the previous transcr
     revision: 0,
     resultRevision: 0,
     device: { backend: "cpu", name: "Test CPU" },
+    speakerDevice: null,
     error: null,
     cleanupError: null,
     createdAt: Date.now(),
@@ -438,6 +449,7 @@ test("transcribes a completed recording again while keeping the previous transcr
     revision: 0,
     resultRevision: 0,
     device: { backend: "vulkan", name: "Test GPU" },
+    speakerDevice: null,
   };
   await expect(panel.getByText("The replacement transcript.", { exact: true })).toBeVisible();
   await expect(previousText).toHaveCount(0);
@@ -476,6 +488,7 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
     revision: 0,
     resultRevision: 0,
     device: null,
+    speakerDevice: null,
     error: null,
     cleanupError: null,
     createdAt: Date.now(),

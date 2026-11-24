@@ -151,7 +151,13 @@ export function TranscribingCard({
           const state =
             position > index + 1 ? "done" : position === index + 1 ? "current" : "pending";
           const shownDevice =
-            state === "current" && step.phase === "transcribing" ? job.device : null;
+            state !== "current"
+              ? null
+              : step.phase === "transcribing"
+                ? job.device
+                : step.phase === "speakers"
+                  ? job.speakerDevice
+                  : null;
           const shownProgress =
             state === "current" && step.phase === "speakers" ? job.phaseProgress : null;
           return (

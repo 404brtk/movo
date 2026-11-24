@@ -52,6 +52,7 @@ async function openTranscribedVideo(
     revision: 0,
     resultRevision: 0,
     device: { backend: "cpu", name: "Test CPU" },
+    speakerDevice: null,
     error: null,
     cleanupError: null,
     createdAt: Date.now(),

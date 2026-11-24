@@ -18,6 +18,9 @@ import { SpeakerDiarizer } from "./speaker-diarization.ts";
 
 const EnginePhase = Schema.Literals(["loading", "transcribing", "speakers"]);
 
+const readDevice = (line: string, prefix: string) =>
+  Schema.decodeUnknownSync(TranscriptionDevice)(JSON.parse(line.slice(prefix.length)));
+
 const missingFile = () =>
   new MediaError("unavailable", "The model catalog is missing a required file.");
 
@@ -121,12 +124,12 @@ export function createTranscriptionEngine(
             ipc: true,
             onLine: (line) => {
               if (line.startsWith("MOVO_DEVICE:")) {
-                report.device(
-                  Schema.decodeUnknownSync(TranscriptionDevice)(
-                    JSON.parse(line.slice("MOVO_DEVICE:".length)),
-                  ),
-                );
+                report.device(readDevice(line, "MOVO_DEVICE:"));
                 deviceReported = true;
+                return;
+              }
+              if (line.startsWith("MOVO_SPEAKER_DEVICE:")) {
+                report.speakerDevice(readDevice(line, "MOVO_SPEAKER_DEVICE:"));
                 return;
               }
               if (line.startsWith("MOVO_PROGRESS:")) {
