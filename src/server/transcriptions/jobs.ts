@@ -1,6 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { and, asc, eq, notInArray, sql } from "drizzle-orm";
+import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import { Cause, Effect, Exit, Fiber, Result, Schema, Semaphore } from "effect";
 import {
   maxTranscriptWords,
@@ -105,7 +106,7 @@ export function createTranscriptions(
     });
   const updateRunning = (
     id: string,
-    changes: Partial<typeof transcriptionJobs.$inferInsert>,
+    changes: SQLiteUpdateSetSource<typeof transcriptionJobs>,
     executor: Pick<AppDatabase, "update"> = database,
   ) =>
     executor
@@ -191,6 +192,7 @@ export function createTranscriptions(
                 "unsupported",
                 "The engine returned words outside this recording.",
               );
+            const labeled = transcript.words.some((word) => word.speaker !== undefined);
             database.transaction((transaction) => {
               const completed = updateRunning(
                 job.mediaId,
@@ -198,9 +200,9 @@ export function createTranscriptions(
                   status: "completed",
                   phase: "finished",
                   transcript,
-                  resultSpeakerModelId: transcript.words.some((word) => word.speaker !== undefined)
-                    ? job.speakerModelId
-                    : null,
+                  resultSpeakerModelId: labeled ? job.speakerModelId : null,
+                  resultDevice: transcriptionJobs.device,
+                  resultSpeakerDevice: labeled ? transcriptionJobs.speakerDevice : null,
                   error: null,
                 },
                 transaction,

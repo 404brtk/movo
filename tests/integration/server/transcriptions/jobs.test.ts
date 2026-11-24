@@ -216,6 +216,58 @@ it("keeps the speaker labels chosen when a job was queued, takes the current or 
   );
 });
 
+it("keeps the devices that produced the saved transcript through a failed attempt on other hardware", async ({
+  signal,
+}) => {
+  await withRecording(signal, (database, directory, tools, _library, media) =>
+    Effect.gen(function* () {
+      const labeled = {
+        ...transcript,
+        words: transcript.words.map((word) => ({ ...word, speaker: 1 })),
+      };
+      let attempts = 0;
+      const jobs = createTranscriptions(database, { dataDirectory: directory }, tools, {
+        check: () => Effect.void,
+        transcribe: ({ speakerModelId }, report) =>
+          Effect.gen(function* () {
+            attempts++;
+            const used = attempts === 1 ? speakerDevice : device;
+            report.device(used);
+            if (speakerModelId !== null) report.speakerDevice(used);
+            if (attempts === 2)
+              return yield* Effect.fail(new MediaError("unavailable", "The engine stopped."));
+            return speakerModelId === null ? transcript : labeled;
+          }),
+      });
+      saveSpeakerModelId(database, "sortformer-4spk-q8");
+      yield* jobs.enqueue(media.id);
+      const worker = yield* jobs.start();
+      yield* waitFor(jobs, media.id, "completed");
+      const saved = {
+        resultSpeakerModelId: "sortformer-4spk-q8",
+        resultDevice: speakerDevice,
+        resultSpeakerDevice: speakerDevice,
+      };
+      expect(yield* jobs.get(media.id)).toMatchObject(saved);
+      yield* jobs.retry(media.id, "pyannote-wespeaker");
+      yield* waitFor(jobs, media.id, "failed");
+      expect(yield* jobs.get(media.id)).toMatchObject({
+        ...saved,
+        device,
+        speakerDevice: device,
+      });
+      yield* jobs.retry(media.id, null);
+      yield* waitFor(jobs, media.id, "completed");
+      expect(yield* jobs.get(media.id)).toMatchObject({
+        resultSpeakerModelId: null,
+        resultDevice: device,
+        resultSpeakerDevice: null,
+      });
+      yield* Fiber.interrupt(worker);
+    }),
+  );
+});
+
 it("reports the speaker device and progress, stops active inference before cleanup, continues the queue and accepts only one concurrent retry", async ({
   signal,
 }) => {

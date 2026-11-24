@@ -49,6 +49,8 @@ const completedJob = (mediaId: string, text: string): TranscriptionJob => ({
   resultRevision: 0,
   device: null,
   speakerDevice: null,
+  resultDevice: null,
+  resultSpeakerDevice: null,
   error: null,
   cleanupError: null,
   createdAt: Date.now(),

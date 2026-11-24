@@ -252,6 +252,8 @@ function speakerJob(revision: number, words: TranscriptWord[]): TranscriptionJob
     resultRevision: 1,
     device: null,
     speakerDevice: null,
+    resultDevice: null,
+    resultSpeakerDevice: null,
     error: null,
     cleanupError: null,
     createdAt: 1,

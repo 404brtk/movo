@@ -57,10 +57,10 @@ export function useResultDescription() {
   return (job: TranscriptionJob, { devices = false } = {}) => {
     const onDevice = (device: TranscriptionDevice | null) =>
       devices && device ? ` on ${formatDevice(device)}` : "";
-    const transcribed = `Transcribed by ${modelName(job.modelId) ?? job.modelId}${onDevice(job.device)}`;
+    const transcribed = `Transcribed by ${modelName(job.modelId) ?? job.modelId}${onDevice(job.resultDevice)}`;
     const speakers = job.resultSpeakerModelId;
     return speakers
-      ? `${transcribed} · Speakers by ${modelName(speakers) ?? speakers}${onDevice(job.speakerDevice)}`
+      ? `${transcribed} · Speakers by ${modelName(speakers) ?? speakers}${onDevice(job.resultSpeakerDevice)}`
       : transcribed;
   };
 }

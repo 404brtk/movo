@@ -31,6 +31,8 @@ async function openRecording(
       resultRevision: 0,
       device: { backend: "cpu", name: "Test CPU" },
       speakerDevice: null,
+      resultDevice: null,
+      resultSpeakerDevice: null,
       error: null,
       cleanupError: null,
       createdAt: Date.now(),

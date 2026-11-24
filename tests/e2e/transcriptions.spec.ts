@@ -40,6 +40,8 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
         resultRevision: 0,
         device: null,
         speakerDevice: null,
+        resultDevice: null,
+        resultSpeakerDevice: null,
         error: null,
         cleanupError: null,
         createdAt: Date.now(),
@@ -95,6 +97,8 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
     resultRevision: 0,
     device: { backend: "vulkan", name: "Test GPU" },
     speakerDevice: null,
+    resultDevice: null,
+    resultSpeakerDevice: null,
     error: null,
     cleanupError: null,
     createdAt: Date.now(),
@@ -154,6 +158,8 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
     resultRevision: 0,
     device: { backend: "vulkan", name: "Test GPU" },
     speakerDevice: null,
+    resultDevice: null,
+    resultSpeakerDevice: null,
     error: null,
     cleanupError: null,
     createdAt: Date.now(),
@@ -280,6 +286,8 @@ test("keeps retry progress when an older failed status arrives after retry succe
     resultRevision: 0,
     device: null,
     speakerDevice: null,
+    resultDevice: null,
+    resultSpeakerDevice: null,
     error: "The previous transcription failed.",
     cleanupError: null,
     createdAt: Date.now(),
@@ -359,8 +367,10 @@ test("transcribes a completed recording again while keeping the previous transcr
     transcript: previous,
     revision: 0,
     resultRevision: 0,
-    device: { backend: "cpu", name: "Test CPU" },
-    speakerDevice: null,
+    device: { backend: "vulkan", name: "Test GPU" },
+    speakerDevice: { backend: "vulkan", name: "Test GPU" },
+    resultDevice: { backend: "vulkan", name: "Test GPU" },
+    resultSpeakerDevice: { backend: "vulkan", name: "Test GPU" },
     error: null,
     cleanupError: null,
     createdAt: Date.now(),
@@ -430,10 +440,27 @@ test("transcribes a completed recording again while keeping the previous transcr
   await page.reload();
   await expect(previousText).toBeVisible();
   await expect(notice).toBeVisible();
-  job = { ...job, status: "failed", phase: "finished", error: "The new attempt failed." };
+  job = {
+    ...job,
+    status: "failed",
+    phase: "finished",
+    device: { backend: "cpu", name: "Retry CPU" },
+    speakerDevice: { backend: "cpu", name: "Retry CPU" },
+    error: "The new attempt failed.",
+  };
   await expect(panel.getByRole("alert")).toContainText("The new attempt failed.");
   await expect(previousText).toBeVisible();
   await expect(notice).toBeVisible();
+  await page.route(`**/api/media/${media.id}/transcription/changes?*`, (route) =>
+    route.fulfill({ json: { changes: [], total: 0 } }),
+  );
+  await panel.getByRole("button", { name: "History", exact: true }).click();
+  await expect(
+    page.getByRole("list", { name: "Transcript versions" }).getByRole("listitem"),
+  ).toHaveText([
+    /^Transcription resultTranscribed by Parakeet Ultra on Test GPU \(Vulkan\) · Speakers by Sortformer on Test GPU \(Vulkan\)Current$/u,
+  ]);
+  await page.keyboard.press("Escape");
   const copyButton = panel.getByRole("button", { name: "Copy transcript", exact: true });
   const copied = panel.getByText("Transcript copied.", { exact: true });
   await copyButton.click();
@@ -455,6 +482,8 @@ test("transcribes a completed recording again while keeping the previous transcr
     resultRevision: 0,
     device: { backend: "vulkan", name: "Test GPU" },
     speakerDevice: null,
+    resultDevice: null,
+    resultSpeakerDevice: null,
   };
   await expect(panel.getByText("The replacement transcript.", { exact: true })).toBeVisible();
   await expect(previousText).toHaveCount(0);
@@ -494,6 +523,8 @@ test("offers transcribing again after a cancelled, rejected or failed repeat att
     resultRevision: 0,
     device: null,
     speakerDevice: null,
+    resultDevice: null,
+    resultSpeakerDevice: null,
     error: null,
     cleanupError: null,
     createdAt: Date.now(),

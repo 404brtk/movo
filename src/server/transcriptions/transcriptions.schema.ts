@@ -28,6 +28,10 @@ export const transcriptionJobs = sqliteTable(
     resultRevision: integer("result_revision").notNull().default(0),
     device: text("device", { mode: "json" }).$type<TranscriptionDevice>(),
     speakerDevice: text("speaker_device", { mode: "json" }).$type<TranscriptionDevice>(),
+    resultDevice: text("result_device", { mode: "json" }).$type<TranscriptionDevice>(),
+    resultSpeakerDevice: text("result_speaker_device", {
+      mode: "json",
+    }).$type<TranscriptionDevice>(),
     error: text("error"),
     cleanupError: text("cleanup_error"),
     createdAt: integer("created_at").notNull(),
