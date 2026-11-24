@@ -26,7 +26,7 @@ import { chosenSegments } from "../lib/speaker-filter.ts";
 import {
   hasEdits,
   type TranscriptionActionMutation,
-  useResultModels,
+  useResultDescription,
   useTranscriptionAction,
 } from "../lib/transcription-actions.ts";
 
@@ -120,7 +120,7 @@ function RecordingHeading({
   split: boolean;
   job: TranscriptionJob | null | undefined;
 }) {
-  const resultModels = useResultModels(job);
+  const describeResult = useResultDescription();
   return (
     <div className={split ? "order-1 mt-5" : "mt-1"}>
       <h1
@@ -134,7 +134,7 @@ function RecordingHeading({
       <RecordingDetails item={item} />
       {job?.transcript ? (
         <p className="mt-1 text-xs text-muted-foreground">
-          {resultModels}
+          {describeResult(job)}
           {hasEdits(job) ? " · edited" : ""}
         </p>
       ) : null}

@@ -102,7 +102,9 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
   };
   await page.getByRole("link", { name: `Open ${title}`, exact: true }).click();
   await expect(panel.getByText("Second saved passage.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("main").getByText("Parakeet Ultra", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText("Transcribed by Parakeet Ultra", { exact: true }),
+  ).toBeVisible();
   await page.reload();
   await expect(panel.getByText("First saved passage.", { exact: true })).toBeVisible();
   const passages = panel.getByRole("list", { name: "Timestamped passages" }).getByRole("listitem");
@@ -182,7 +184,7 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/media/${media.id}`);
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
-  const device = panel.getByText("On Test GPU · Vulkan", { exact: true });
+  const device = panel.getByText("On Test GPU (Vulkan)", { exact: true });
   await expect(panel.getByRole("status")).toContainText("Loading model");
   await expect(device).toHaveCount(0);
   await panel.getByRole("button", { name: "Cancel transcription", exact: true }).click();
@@ -205,7 +207,7 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   });
   await expect(speakerProgress).toHaveAttribute("aria-valuenow", "42");
   await expect(panel.getByText("42%", { exact: true })).toBeVisible();
-  await expect(panel.getByText("On Test CPU · CPU", { exact: true })).toBeVisible();
+  await expect(panel.getByText("On Test CPU (CPU)", { exact: true })).toBeVisible();
   await expect(device).toHaveCount(0);
   job = {
     ...job,
@@ -396,10 +398,13 @@ test("transcribes a completed recording again while keeping the previous transcr
   const previousText = panel.getByText("The previous transcript.", { exact: true });
   const notice = panel.getByText(/^Showing the previous transcript/u);
   await expect(previousText).toBeVisible();
-  const resultModels = page.getByText("Parakeet Ultra · Sortformer speaker labels", {
-    exact: true,
-  });
-  await expect(resultModels).toBeVisible();
+  const resultDescription = page.getByText(
+    "Transcribed by Parakeet Ultra · Speakers by Sortformer",
+    {
+      exact: true,
+    },
+  );
+  await expect(resultDescription).toBeVisible();
   await expect(notice).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Retry transcription", exact: true })).toHaveCount(
     0,
@@ -419,7 +424,7 @@ test("transcribes a completed recording again while keeping the previous transcr
   await expect(panel.getByRole("status").filter({ hasText: "Transcribing" })).toBeVisible();
   expect(retryBodies).toEqual([{ speakerModelId: null }]);
   await expect(previousText).toBeVisible();
-  await expect(resultModels).toBeVisible();
+  await expect(resultDescription).toBeVisible();
   await expect(notice).toBeVisible();
   await expect(panel.getByRole("button", { name: "Copy transcript", exact: true })).toBeVisible();
   await page.reload();

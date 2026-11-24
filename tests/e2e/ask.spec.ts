@@ -342,7 +342,7 @@ test("keeps the transcript toolbar on one row with Ask and its actions at the ri
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/media/${media.id}`);
-  await expect(page.getByText("Parakeet Ultra · edited")).toBeVisible();
+  await expect(page.getByText("Transcribed by Parakeet Ultra · edited")).toBeVisible();
   const top = async (name: string) => {
     const found = await page.getByRole("button", { name, exact: true }).boundingBox();
     if (!found) throw new Error(`${name} has no box.`);

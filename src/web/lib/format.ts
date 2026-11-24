@@ -43,7 +43,7 @@ const backendNames: Record<string, string> = {
 };
 
 export const formatDevice = (device: TranscriptionDevice) =>
-  `${device.name} · ${backendNames[device.backend] ?? device.backend}`;
+  `${device.name} (${backendNames[device.backend] ?? device.backend})`;
 
 const dayFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 const dayMs = 86_400_000;
