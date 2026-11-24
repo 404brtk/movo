@@ -26,7 +26,7 @@ import { Progress } from "./ui/progress.tsx";
 
 const steps = [
   { phase: "preparing", label: "Preparing audio" },
-  { phase: "loading", label: "Loading Parakeet Ultra" },
+  { phase: "loading", label: "Loading model" },
   { phase: "transcribing", label: "Transcribing" },
   { phase: "speakers", label: "Identifying speakers" },
 ] as const satisfies readonly { phase: TranscriptionPhase; label: string }[];
@@ -74,17 +74,13 @@ export function NoTranscriptCard({
             {pending ? <Spinner /> : null}
             {pending ? "Starting…" : action}
           </Button>
-          {model ? (
-            model.state === "ready" ? (
-              <span className="text-xs text-muted-foreground">{model.name} · installed</span>
-            ) : (
-              <Link
-                to="/settings"
-                className="rounded-sm text-xs text-muted-foreground underline decoration-border-strong underline-offset-3 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              >
-                Download {model.name} in Settings
-              </Link>
-            )
+          {model && model.state !== "ready" ? (
+            <Link
+              to="/settings"
+              className="rounded-sm text-xs text-muted-foreground underline decoration-border-strong underline-offset-3 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              Download {model.name} in Settings
+            </Link>
           ) : null}
         </div>
       </div>

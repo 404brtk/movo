@@ -50,11 +50,6 @@ function useModelNames() {
   return (modelId: ModelId) => models.data?.models.find((model) => model.id === modelId)?.name;
 }
 
-export function useModelName(modelId: TranscriptionJob["modelId"] | undefined) {
-  const modelName = useModelNames();
-  return (modelId && modelName(modelId)) ?? "Parakeet Ultra";
-}
-
 export function useResultModels(job: TranscriptionJob | null | undefined) {
   const modelName = useModelNames();
   const transcriber = (job && modelName(job.modelId)) ?? "Parakeet Ultra";

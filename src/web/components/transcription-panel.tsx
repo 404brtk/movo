@@ -14,7 +14,6 @@ import {
   hasEdits,
   isActiveTranscription,
   type TranscriptionActionMutation,
-  useModelName,
   useResultModels,
 } from "../lib/transcription-actions.ts";
 import { ChangeHistory } from "./change-history.tsx";
@@ -284,7 +283,6 @@ export function TranscriptionPanel({
   const [confirmingRetry, setConfirmingRetry] = useState(false);
   const job = query.data;
   const fileAvailable = playback !== undefined;
-  const modelName = useModelName(job?.modelId);
   const resultModels = useResultModels(job);
   const transcript = job?.transcript;
   const active = isActiveTranscription(job);
@@ -313,7 +311,7 @@ export function TranscriptionPanel({
       {query.isSuccess && job === null && fileAvailable ? (
         <NoTranscriptCard
           title="No transcript yet"
-          description={`${modelName} transcribes this recording on this computer. You can keep browsing while it runs, and search what was said once it finishes.`}
+          description="Movo transcribes this recording on this computer. You can keep browsing while it runs, and search what was said once it finishes."
           action="Transcribe"
           pending={action.isPending}
           onStart={() => action.mutate("start")}

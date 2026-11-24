@@ -180,7 +180,7 @@ test("cancels, recovers after a rejected retry and shows an empty transcript wit
   await page.goto(`/media/${media.id}`);
   const panel = page.getByRole("region", { name: "Transcription", exact: true });
   const device = panel.getByText("On Test GPU · Vulkan", { exact: true });
-  await expect(panel.getByRole("status")).toContainText("Loading Parakeet Ultra");
+  await expect(panel.getByRole("status")).toContainText("Loading model");
   await expect(device).toHaveCount(0);
   await panel.getByRole("button", { name: "Cancel transcription", exact: true }).click();
   await expect(panel.getByRole("heading", { name: "Transcription stopped" })).toBeVisible();
