@@ -1,7 +1,7 @@
 import { serveStatic } from "@hono/node-server/serve-static";
 import { sValidator } from "@hono/standard-validator";
 import { sql } from "drizzle-orm";
-import { Effect, Result, Schema } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
@@ -76,9 +76,10 @@ const errorStatuses = {
 } as const satisfies Record<MediaErrorReason, number>;
 
 async function runMedia<A>(operation: Effect.Effect<A, MediaError>, signal?: AbortSignal) {
-  const result = await Effect.runPromise(Effect.result(operation), { signal });
-  if (Result.isFailure(result)) throw result.failure;
-  return result.success;
+  const exit = await Effect.runPromiseExit(operation, { signal });
+  if (Exit.isSuccess(exit)) return exit.value;
+  if (signal?.aborted && Cause.hasInterruptsOnly(exit.cause)) throw signal.reason;
+  throw Cause.squash(exit.cause);
 }
 
 async function readJson<S extends Schema.ConstraintDecoder<unknown>>(
@@ -668,6 +669,7 @@ export function createApp(
     app.get("*", serveStatic({ path: `${staticDirectory}/index.html` }));
   }
   app.onError((error, context) => {
+    if (error === context.req.raw.signal.reason) return new Response(null, { status: 499 });
     if (error instanceof MediaError) {
       if (error.reason === "storage") console.error(error);
       return context.json({ error: error.message }, errorStatuses[error.reason]);
