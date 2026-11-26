@@ -21,7 +21,11 @@ import {
   maxTermCharacters,
   maxTermVariants,
 } from "../../shared/contracts/dictionary.ts";
-import { DownloadPreviewRequest, DownloadRequest } from "../../shared/contracts/downloads.ts";
+import {
+  DownloadCollectionRequest,
+  DownloadPreviewRequest,
+  DownloadRequest,
+} from "../../shared/contracts/downloads.ts";
 import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
 import { SpeakerLabels } from "../../shared/contracts/models.ts";
 import { ImportMediaQuery, RenameMediaRequest } from "../../shared/contracts/media.ts";
@@ -146,12 +150,7 @@ export function createApp(
   {
     tools = createMediaTools(config),
     ytdlp = createYtdlp(config),
-    downloads = createDownloads(
-      database,
-      config,
-      tools,
-      createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools),
-    ),
+    downloads: downloadsService,
     models = createModels({ database }),
     transcriptions = createTranscriptions(
       database,
@@ -171,6 +170,8 @@ export function createApp(
     ask?: Ask;
   } = {},
 ) {
+  const downloader = createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools);
+  const downloads = downloadsService ?? createDownloads(database, config, tools, downloader);
   const library = createMediaLibrary(database, config.dataDirectory, () =>
     tools.resolve("ffprobe"),
   );
@@ -257,6 +258,16 @@ export function createApp(
         ),
       ),
     )
+    .post("/downloads/collection", async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        DownloadCollectionRequest,
+        "Provide a YouTube collection URL and a valid page.",
+      );
+      return context.json(
+        await runMedia(downloader.previewCollection(request), context.req.raw.signal),
+      );
+    })
     .post("/downloads", async (context) =>
       context.json(
         await runMedia(

@@ -10,6 +10,8 @@ import {
   type DownloadSource,
   isAudioOnlySite,
   recognizeDownloadSource,
+  recognizeYouTubeCollection,
+  type YouTubeCollection,
 } from "../../shared/download-sources.ts";
 import type { StatusTone } from "./status-tone.ts";
 import { formatSourceHost } from "./format.ts";
@@ -23,36 +25,56 @@ export interface LinkRow {
   kind: SaveKind;
 }
 
+export type CollectionOffer = { source: YouTubeCollection; fromWatch: boolean };
+
 export const countLabel = (count: number, noun: string) =>
   `${count} ${count === 1 ? noun : `${noun}s`}`;
 
 export function addLinks(rows: readonly LinkRow[], text: string, kind: SaveKind) {
+  const inputs = text.split(/\s+/u).filter(Boolean);
   const added: LinkRow[] = [];
+  const collections = new Map<string, CollectionOffer>();
   const notLinks: string[] = [];
   const later: string[] = [];
   let duplicates = 0;
-  for (const input of text.split(/\s+/u).filter(Boolean)) {
+  let standaloneMix = false;
+  for (const input of inputs) {
     if (!/^https?:\/\//iu.test(input)) {
       notLinks.push(input);
       continue;
     }
     const source = recognizeDownloadSource(input);
+    const collection = recognizeYouTubeCollection(input);
+    if (collection?.kind === "mix" && !source) {
+      standaloneMix = true;
+      continue;
+    }
+    if (collection && collection.kind !== "mix") {
+      collections.set(collection.url, { source: collection, fromWatch: Boolean(source) });
+      if (!source) continue;
+    }
     const key = source?.url ?? input;
     if ([...rows, ...added].some((row) => row.key === key)) duplicates++;
     else if (rows.length + added.length >= maxDownloadLinks) later.push(input);
     else added.push({ key, input, source, kind });
   }
+  const collection = [...collections.values()][0];
+  const note =
+    notLinks.length > 0
+      ? "Paste full links that start with https://."
+      : later.length > 0
+        ? "The rest are added after you download these."
+        : duplicates > 0 && added.length === 0
+          ? "Already in the list."
+          : null;
   return {
     rows: [...rows, ...added],
+    collections: [...collections.values()],
+    openCollection: inputs.length === 1 && !collection?.fromWatch ? collection?.source : undefined,
     remaining: [...notLinks, ...later].join(" "),
-    note:
-      notLinks.length > 0
-        ? "Paste full links that start with https://."
-        : later.length > 0
-          ? "The rest are added after you download these."
-          : duplicates > 0 && added.length === 0
-            ? "Already in the list."
-            : null,
+    note: standaloneMix
+      ? `This is a YouTube Mix. Paste a link to a specific video.${note ? ` ${note}` : ""}`
+      : note,
   };
 }
 

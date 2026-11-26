@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadJob } from "../../../../src/shared/contracts/downloads.ts";
+import { recognizeYouTubeCollection } from "../../../../src/shared/download-sources.ts";
 import {
   addLinks,
   canChooseKind,
@@ -9,6 +10,8 @@ import {
 
 const youtube = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
 const episode = "https://podcasts.apple.com/us/podcast/a-show/id1?i=2";
+const playlist = "https://www.youtube.com/playlist?list=PLabcdefghijk";
+const channel = "https://www.youtube.com/@example/videos";
 
 const job = (changes: Partial<DownloadJob>): DownloadJob => ({
   id: "6f1f4f8e-8a7c-4d2b-9a55-0d7c2f4b9e11",
@@ -30,6 +33,66 @@ const job = (changes: Partial<DownloadJob>): DownloadJob => ({
 });
 
 describe("adding pasted links", () => {
+  it("opens a single direct collection and keeps collections separate in a mixed paste", () => {
+    const direct = addLinks([], "https://m.youtube.com/@Example/?si=123", "video");
+    expect(direct.openCollection).toEqual({ kind: "channel", id: "@example", url: channel });
+    expect(direct.rows).toEqual([]);
+    const mixed = addLinks(
+      [],
+      `${episode} ${playlist}&si=share ${channel} https://youtu.be/aaaaaaaaaaa?list=PLabcdefghijk`,
+      "audio",
+    );
+    expect(mixed.openCollection).toBeUndefined();
+    expect(mixed.collections.map(({ source, fromWatch }) => [source.url, fromWatch])).toEqual([
+      [playlist, true],
+      [channel, false],
+    ]);
+    expect(mixed.rows.map((row) => [row.source?.url, row.kind])).toEqual([
+      ["https://podcasts.apple.com/podcast/id1?i=2", "audio"],
+      [youtube, "audio"],
+    ]);
+  });
+
+  it("keeps a Mix video and gives actionable feedback for a standalone Mix", () => {
+    const watch = addLinks([], `${youtube}&list=RDMM`, "video");
+    expect(watch.rows.map((row) => row.key)).toEqual([youtube]);
+    expect(watch.collections).toEqual([]);
+    expect(watch.note).toBeNull();
+    const mixed = addLinks([], `${episode} https://www.youtube.com/playlist?list=RDMM`, "video");
+    expect(mixed.note).toBe("This is a YouTube Mix. Paste a link to a specific video.");
+    expect(mixed.rows.map((row) => row.source?.site)).toEqual(["applePodcasts"]);
+    expect(mixed.remaining).toBe("");
+    expect(mixed.collections).toEqual([]);
+  });
+
+  it("only recognizes collection links that can be listed without sign-in", () => {
+    const channelId = "UCabcdefghijklmnopqrstuv";
+    expect(recognizeYouTubeCollection(`https://youtube.com/channel/${channelId}`)).toEqual({
+      kind: "channel",
+      id: channelId,
+      url: `https://www.youtube.com/channel/${channelId}/videos`,
+    });
+    expect(
+      recognizeYouTubeCollection("https://youtube.com/@%C5%BC%C3%B3%C5%82ty/videos"),
+    ).toMatchObject({
+      id: "@żółty",
+    });
+    for (const input of [
+      "https://www.youtube.com.evil.example/@example",
+      "https://a@www.youtube.com/@example",
+      "http://www.youtube.com/@example",
+      "https://www.youtube.com:123/@example",
+      "https://www.youtube.com/@example/shorts",
+      "https://www.youtube.com/@example/streams",
+      "https://www.youtube.com/user/example",
+      "https://www.youtube.com/@example%2Fvideos",
+      "https://www.youtube.com/@%ff",
+      "https://www.youtube.com/playlist?list=WL",
+      "https://www.youtube.com/watch?v=bad&list=PLabcdefghijk",
+    ])
+      expect(recognizeYouTubeCollection(input)).toBeUndefined();
+  });
+
   it("adds every link as a row in order and keeps text that is not a link", () => {
     const result = addLinks(
       [],

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Cancel01Icon, Download04Icon, Link01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Toast } from "@base-ui/react/toast";
@@ -18,10 +18,18 @@ import {
   downloadSiteNames,
   getDownloadPreset,
 } from "../../shared/contracts/downloads.ts";
-import { downloadsOptions, enqueueDownload, previewOptions, ytdlpOptions } from "../lib/api.ts";
+import type { YouTubeCollection } from "../../shared/download-sources.ts";
+import {
+  collectionOptions,
+  downloadsOptions,
+  enqueueDownload,
+  previewOptions,
+  ytdlpOptions,
+} from "../lib/api.ts";
 import {
   addLinks,
   canChooseKind,
+  type CollectionOffer,
   countLabel,
   type LinkRow,
   linkPreset,
@@ -32,6 +40,7 @@ import {
 } from "../lib/download-links.ts";
 import { formatDuration } from "../lib/format.ts";
 import { cn } from "../lib/utils.ts";
+import { DownloadCollection } from "./download-collection.tsx";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
 import { SegmentedChoice } from "./segmented-choice.tsx";
 import { SourceSite } from "./source-site.tsx";
@@ -184,11 +193,14 @@ export function DownloadLink() {
   const [field, setField] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [rows, setRows] = useState<LinkRow[]>([]);
+  const [collections, setCollections] = useState<CollectionOffer[]>([]);
+  const [activeCollection, setActiveCollection] = useState<YouTubeCollection | null>(null);
   const [lastKind, setLastKind] = useState<SaveKind>("video");
   const [videoPreset, setVideoPreset] = useState<DownloadPreset>(defaultDownloadPreset);
   const [transcribe, setTranscribe] = useState(false);
   const [ytdlpDismissed, setYtdlpDismissed] = useState(false);
   const linksInput = useRef<HTMLInputElement>(null);
+  const restoreInputFocus = useRef(false);
   const ytdlp = useQuery(ytdlpOptions);
   const jobs = useQuery(downloadsOptions);
   const queryClient = useQueryClient();
@@ -231,6 +243,12 @@ export function DownloadLink() {
       ? (choosable[0]?.kind ?? null)
       : null;
   const videoLinks = queued.filter((view) => getDownloadPreset(view.preset).kind === "video");
+  const rememberCollections = (offers: CollectionOffer[]) => {
+    if (offers.length === 0) return;
+    setCollections((current) => [
+      ...new Map([...current, ...offers].map((offer) => [offer.source.url, offer])).values(),
+    ]);
+  };
   const download = useMutation({
     mutationFn: enqueueDownload,
     onSuccess: async (_jobs, request) => {
@@ -238,7 +256,15 @@ export function DownloadLink() {
       setRows(rest.rows);
       setField(rest.remaining);
       setNote(rest.note);
-      setOpen(rest.rows.length > 0);
+      rememberCollections(rest.collections);
+      const hasLoadedCollection = collections.some(({ source }) =>
+        queryClient.getQueryData(collectionOptions(source.url).queryKey),
+      );
+      setOpen(
+        (current) =>
+          rest.rows.length > 0 || rest.collections.length > 0 || (current && hasLoadedCollection),
+      );
+      if (hasLoadedCollection) restoreInputFocus.current = true;
       await queryClient.invalidateQueries({ queryKey: downloadsOptions.queryKey });
       toastManager.add({
         title: `${countLabel(request.links.length, "download")} added`,
@@ -254,12 +280,23 @@ export function DownloadLink() {
       });
     },
   });
+  useEffect(() => {
+    if (activeCollection || !open || download.isPending || !restoreInputFocus.current) return;
+    restoreInputFocus.current = false;
+    linksInput.current?.focus();
+  }, [activeCollection, download.isPending, open]);
   const add = (text: string) => {
     const result = addLinks(rows, text, lastKind);
     setRows(result.rows);
     setField(result.remaining);
     setNote(result.note);
+    rememberCollections(result.collections);
+    if (result.openCollection) setActiveCollection(result.openCollection);
     download.reset();
+  };
+  const backToLinks = () => {
+    restoreInputFocus.current = true;
+    setActiveCollection(null);
   };
   const updateRows = (change: (row: LinkRow) => LinkRow) => {
     setRows((current) => current.map(change));
@@ -273,13 +310,24 @@ export function DownloadLink() {
     setRows((current) => current.filter((row) => !keys.includes(row.key)));
     download.reset();
   };
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" />} data-download-link-trigger="">
-        <HugeiconsIcon icon={Link01Icon} data-icon="inline-start" aria-hidden="true" />
-        Download from link
-      </DialogTrigger>
-      <DialogContent className="flex flex-col overflow-hidden sm:max-w-[580px]">
+  let content: ReactNode;
+  if (activeCollection) {
+    content = (
+      <DownloadCollection
+        key={activeCollection.url}
+        source={activeCollection}
+        rows={rows}
+        onBack={backToLinks}
+        onAdd={(urls) => {
+          setRows(addLinks(rows, urls.join(" "), lastKind).rows);
+          download.reset();
+          backToLinks();
+        }}
+      />
+    );
+  } else {
+    content = (
+      <>
         <DialogHeader>
           <DialogTitle>Download from links</DialogTitle>
         </DialogHeader>
@@ -319,6 +367,53 @@ export function DownloadLink() {
               {note ??
                 `Videos and podcast episodes from ${downloadSiteNames}. Sign-in is not supported.`}
             </p>
+          ) : null}
+          {collections.length > 0 ? (
+            <ul
+              aria-label="YouTube collections"
+              className="mt-3 shrink-0 rounded-xl shadow-[inset_0_0_0_1px_var(--color-border)]"
+            >
+              {collections.map(({ source, fromWatch }) => {
+                const loaded = queryClient.getQueryData(collectionOptions(source.url).queryKey);
+                const title =
+                  loaded?.pages[0]?.title ?? source.url.replace(/^https:\/\/www\./u, "");
+                return (
+                  <li
+                    key={source.url}
+                    className="flex flex-wrap items-center gap-2 border-t px-2.5 py-2 first:border-t-0"
+                  >
+                    <span
+                      className="min-w-0 flex-1 basis-32 truncate text-[13px]/[18px] font-medium"
+                      title={title}
+                    >
+                      {title}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={download.isPending}
+                      onClick={() => setActiveCollection(source)}
+                    >
+                      {fromWatch ? "Choose from playlist" : "Choose videos"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Remove ${title}`}
+                      disabled={download.isPending}
+                      onClick={() => {
+                        setCollections((current) =>
+                          current.filter((offer) => offer.source.url !== source.url),
+                        );
+                        linksInput.current?.focus();
+                      }}
+                    >
+                      <HugeiconsIcon icon={Cancel01Icon} size={14} aria-hidden="true" />
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
           ) : null}
           {rows.length > 0 &&
           ytdlp.data &&
@@ -476,6 +571,23 @@ export function DownloadLink() {
             </Button>
           </div>
         </DialogFooter>
+      </>
+    );
+  }
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setActiveCollection(null);
+        setOpen(next);
+      }}
+    >
+      <DialogTrigger render={<Button variant="outline" />} data-download-link-trigger="">
+        <HugeiconsIcon icon={Link01Icon} data-icon="inline-start" aria-hidden="true" />
+        Download from link
+      </DialogTrigger>
+      <DialogContent className="flex flex-col overflow-hidden sm:max-w-[580px]">
+        {content}
       </DialogContent>
     </Dialog>
   );

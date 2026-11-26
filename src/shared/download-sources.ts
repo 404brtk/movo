@@ -1,5 +1,10 @@
 type Located = { id: string; url: string } | undefined;
 
+const youtubeHost = /^(?:(?:www\.|m\.)?youtube\.com|youtu\.be)$/u;
+const youtubeOrigin = "https://www.youtube.com";
+const isYouTubeVideoId = (id: string) => /^[\w-]{11}$/u.test(id);
+const youtubeVideoUrl = (id: string) => `${youtubeOrigin}/watch?v=${id}`;
+
 const youtubeId = (url: URL) => {
   if (url.hostname === "youtu.be") return url.pathname.slice(1);
   if (url.pathname === "/watch") return url.searchParams.get("v");
@@ -19,12 +24,10 @@ const googleDriveId = (url: URL) =>
 const sites = [
   {
     site: "youtube",
-    host: /^(?:(?:www\.|m\.)?youtube\.com|youtu\.be)$/u,
+    host: youtubeHost,
     locate: (url: URL): Located => {
       const id = youtubeId(url);
-      return id && /^[\w-]{11}$/u.test(id)
-        ? { id, url: `https://www.youtube.com/watch?v=${id}` }
-        : undefined;
+      return id && isYouTubeVideoId(id) ? { id, url: youtubeVideoUrl(id) } : undefined;
     },
   },
   {
@@ -130,11 +133,60 @@ const audioOnlySites: ReadonlySet<DownloadSite> = new Set(["applePodcasts"]);
 
 export const isAudioOnlySite = (site: DownloadSite) => audioOnlySites.has(site);
 
-export function recognizeDownloadSource(input: string): DownloadSource | undefined {
+function parseDownloadUrl(input: string) {
   if (input.length > maxDownloadLinkLength) return undefined;
   const url = URL.parse(input.trim());
   if (!url || url.protocol !== "https:" || url.username || url.password || url.port)
     return undefined;
+  return url;
+}
+
+export type YouTubeCollection = { kind: "playlist" | "channel"; id: string; url: string };
+
+export const isYouTubeChannelId = (id: string) => /^UC[\w-]{22}$/u.test(id);
+
+export function recognizeYouTubeCollection(
+  input: string,
+): YouTubeCollection | { kind: "mix" } | undefined {
+  const url = parseDownloadUrl(input);
+  if (!url || !youtubeHost.test(url.hostname)) return undefined;
+  const videoId = youtubeId(url);
+  if (
+    (url.hostname !== "youtu.be" && /^\/playlist\/?$/u.test(url.pathname)) ||
+    (videoId &&
+      isYouTubeVideoId(videoId) &&
+      (url.pathname === "/watch" || url.hostname === "youtu.be"))
+  ) {
+    const id = url.searchParams.get("list");
+    if (id && /^RD[\w-]*$/u.test(id)) return { kind: "mix" };
+    if (id && /^(?:PL|LL|EC|UU|FL|UL|TL|PU|OLAK5uy_)[\w-]{10,100}$/u.test(id))
+      return { kind: "playlist", id, url: `${youtubeOrigin}/playlist?list=${id}` };
+    return undefined;
+  }
+  if (url.hostname === "youtu.be") return undefined;
+  const channel = /^\/channel\/([^/]+)(?:\/videos)?\/?$/u.exec(url.pathname)?.[1];
+  if (channel && isYouTubeChannelId(channel))
+    return { kind: "channel", id: channel, url: `${youtubeOrigin}/channel/${channel}/videos` };
+  const encoded = /^\/(@[^/]+)(?:\/videos)?\/?$/u.exec(url.pathname)?.[1];
+  if (!encoded) return undefined;
+  let handle: string;
+  try {
+    handle = decodeURIComponent(encoded);
+  } catch {
+    return undefined;
+  }
+  if (!/^@[\p{L}\p{M}\p{N}._-]{3,30}$/u.test(handle)) return undefined;
+  const id = handle.toLowerCase();
+  return {
+    kind: "channel",
+    id,
+    url: `${youtubeOrigin}/@${encodeURIComponent(id.slice(1))}/videos`,
+  };
+}
+
+export function recognizeDownloadSource(input: string): DownloadSource | undefined {
+  const url = parseDownloadUrl(input);
+  if (!url) return undefined;
   for (const { site, host, locate } of sites) {
     const located = host.test(url.hostname) ? locate(url) : undefined;
     if (located) return { site, ...located };

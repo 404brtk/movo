@@ -138,7 +138,7 @@ export function createDownloads(
   database: AppDatabase,
   config: DownloadsConfig,
   tools: MediaTools,
-  downloader: MediaDownloader,
+  downloader: Pick<MediaDownloader, "preview" | "download">,
 ) {
   const retryLock = Semaphore.makeUnsafe(1);
   const library = createMediaLibrary(database, config.dataDirectory, () =>

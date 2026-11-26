@@ -2,16 +2,19 @@ import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join } from "node:path";
 import { Effect, Schema } from "effect";
 import {
+  collectionPageSize,
   defaultDownloadPreset,
   DownloadSourceDetails,
   getDownloadPreset,
+  type DownloadCollectionRequest,
   type DownloadPreset,
 } from "../../shared/contracts/downloads.ts";
 import { maxImportBytes } from "../../shared/contracts/media.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
 import { runCommand } from "../process/command.ts";
-import type { DownloadSite } from "../../shared/download-sources.ts";
+import { recognizeYouTubeCollection, type DownloadSite } from "../../shared/download-sources.ts";
+import { readCollectionPage } from "./collection.ts";
 import { downloadSource } from "./url.ts";
 
 type SiteProfile = {
@@ -152,7 +155,6 @@ const baseArguments = [
   "--no-js-runtimes",
   "--js-runtimes",
   `node:${process.execPath}`,
-  "--no-playlist",
   "--socket-timeout",
   "20",
   "--retries",
@@ -191,6 +193,7 @@ export function createMediaDownloader(
       const raw = yield* run(
         [
           ...baseArguments,
+          "--no-playlist",
           "--use-extractors",
           profile.extractor,
           "--simulate",
@@ -246,6 +249,40 @@ export function createMediaDownloader(
 
   return {
     preview: (url: string) => inspect(url).pipe(Effect.map((result) => result.preview)),
+    previewCollection: ({ url, page }: DownloadCollectionRequest) =>
+      Effect.gen(function* () {
+        const source = recognizeYouTubeCollection(url);
+        if (!source || source.kind === "mix" || source.url !== url)
+          return yield* Effect.fail(
+            new MediaError("invalid", "Choose a public YouTube playlist or channel."),
+          );
+        const start = 1 + page * collectionPageSize;
+        const raw = yield* run(
+          [
+            ...baseArguments,
+            "--use-extractors",
+            "youtube:tab",
+            "--extractor-args",
+            "youtube:raise_incomplete_data",
+            "--flat-playlist",
+            "--simulate",
+            "--dump-single-json",
+            "--playlist-items",
+            `${start}:${start + collectionPageSize}`,
+            "--",
+            url,
+          ],
+          { timeoutMs: 45000, maxOutputBytes: 4 * 1024 * 1024 },
+          "Could not load these videos. Open a public playlist or channel, or try again.",
+        );
+        return yield* Effect.try({
+          try: () => readCollectionPage(raw, source, start),
+          catch: (cause) =>
+            cause instanceof MediaError
+              ? cause
+              : new MediaError("unsupported", "Could not read this YouTube collection.", cause),
+        });
+      }),
     download: (
       url: string,
       directory: string,
@@ -294,6 +331,7 @@ export function createMediaDownloader(
         yield* run(
           [
             ...baseArguments,
+            "--no-playlist",
             "--load-info-json",
             join(directory, "source.info.json"),
             "--no-simulate",

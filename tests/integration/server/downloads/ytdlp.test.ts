@@ -5,9 +5,12 @@ import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { maxImportBytes } from "../../../../src/shared/contracts/media.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { createYtdlp } from "../../../../src/server/media-tools/ytdlp.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
 import { runCommand } from "../../../../src/server/process/command.ts";
 import { createMediaDownloader } from "../../../../src/server/downloads/ytdlp.ts";
+import { openDatabase } from "../../../../src/server/db/database.ts";
+import { createApp } from "../../../../src/server/http/app.ts";
 
 vi.mock("../../../../src/server/process/command.ts", () => ({
   runCommand: vi.fn<typeof runCommand>(),
@@ -29,7 +32,204 @@ const xMetadata = {
   display_id: "123",
   extractor_key: "Twitter",
 };
+const playlist = "https://www.youtube.com/playlist?list=PLabcdefghijk";
+const collectionMetadata = {
+  _type: "playlist",
+  extractor_key: "YoutubeTab",
+  id: "PLabcdefghijk",
+  webpage_url: playlist,
+  title: "A public playlist",
+  availability: null,
+};
+const collectionVideo = {
+  _type: "url",
+  ie_key: "Youtube",
+  id: metadata.id,
+  url,
+  title: metadata.title,
+  duration: 2,
+};
 afterEach(() => vi.resetAllMocks());
+
+describe("YouTube collection preview", () => {
+  it("lists bounded source positions through HTTP without enqueuing downloads", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "movo-collection-http-"));
+    try {
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const database = yield* openDatabase(join(directory, "app.sqlite"));
+            const config = { dataDirectory: directory, ytdlpPath: process.execPath };
+            const resolver = createYtdlp(config, { run: async () => "2026.10.26" });
+            yield* Effect.addFinalizer(() => resolver.close());
+            const app = createApp(database, config, undefined, { ytdlp: resolver });
+            yield* Effect.promise(async () => {
+              const base = "http://127.0.0.1:4310/api/downloads";
+              const preview = (body: unknown) =>
+                app.request(`${base}/collection`, {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify(body),
+                });
+              for (const body of [
+                { url: playlist, page: -1 },
+                { url: playlist, page: "1:500" },
+                { url: playlist, page: Number.MAX_SAFE_INTEGER },
+                { url: `${url}&list=PLabcdefghijk`, page: 0 },
+                { url: "https://www.youtube.com/playlist?list=RDMM", page: 0 },
+                { url: "https://www.youtube.com.evil.example/@example/videos", page: 0 },
+                { url: "x".repeat(2049), page: 0 },
+              ])
+                expect((await preview(body)).status).toBe(400);
+              expect((await preview({ url: "x".repeat(1_100_000), page: 0 })).status).toBe(413);
+              expect(command).not.toHaveBeenCalled();
+              const secondId = "bbbbbbbbbbb";
+              const secondUrl = `https://www.youtube.com/watch?v=${secondId}`;
+              const entries = [
+                collectionVideo,
+                collectionVideo,
+                { ...collectionVideo, id: secondId, url: secondUrl, availability: "private" },
+                { ...collectionVideo, id: secondId, url: secondUrl, live_status: "is_upcoming" },
+                { ...collectionVideo, id: secondId, url: secondUrl, live_status: "post_live" },
+                { ...collectionVideo, id: secondId, url: secondUrl, is_live: true },
+                {
+                  ...collectionVideo,
+                  id: secondId,
+                  url: secondUrl,
+                  _type: "playlist",
+                  entries: [collectionVideo],
+                },
+                { ...collectionVideo, id: secondId, url: "https://other.example/video" },
+                { ...collectionVideo, id: secondId },
+                { ...collectionVideo, id: secondId, url: secondUrl, title: "[Deleted video]" },
+                {
+                  ...collectionVideo,
+                  id: secondId,
+                  url: `https://youtu.be/${secondId}`,
+                  title: null,
+                  duration: null,
+                },
+                null,
+              ];
+              command.mockReturnValueOnce(
+                Effect.succeed(
+                  JSON.stringify({
+                    ...collectionMetadata,
+                    requested_entries: [...entries.slice(1).keys()]
+                      .map((index) => index + 1)
+                      .concat(51),
+                    entries,
+                  }),
+                ),
+              );
+              const first = await preview({ url: playlist, page: 0 });
+              expect(first.status).toBe(200);
+              expect(await first.json()).toEqual({
+                title: collectionMetadata.title,
+                videos: [
+                  { url, title: metadata.title, durationSeconds: 2 },
+                  { url: secondUrl, title: `Video ${secondId}`, durationSeconds: null },
+                ],
+                hasMore: true,
+              });
+              command.mockReturnValueOnce(
+                Effect.succeed(
+                  JSON.stringify({
+                    ...collectionMetadata,
+                    requested_entries: [51],
+                    entries: [collectionVideo],
+                    playlist_count: 900,
+                  }),
+                ),
+              );
+              const second = await preview({ url: playlist, page: 1 });
+              expect(second.status).toBe(200);
+              expect(await second.json()).toMatchObject({ hasMore: false, videos: [{ url }] });
+              for (const [index, window] of ["1:51", "51:101"].entries()) {
+                const args = command.mock.calls[index]?.[1] ?? [];
+                expect(args.slice(-4)).toEqual(["--playlist-items", window, "--", playlist]);
+                expect(args).toEqual(
+                  expect.arrayContaining([
+                    "--ignore-config",
+                    "--no-cache-dir",
+                    "--no-plugin-dirs",
+                    "--no-remote-components",
+                    "youtube:raise_incomplete_data",
+                    "--flat-playlist",
+                    "--simulate",
+                    "--dump-single-json",
+                  ]),
+                );
+                expect(args[args.indexOf("--use-extractors") + 1]).toBe("youtube:tab");
+                expect(args).not.toContain("--no-playlist");
+                expect(command.mock.calls[index]?.[2]).toMatchObject({
+                  timeoutMs: 45000,
+                  maxOutputBytes: 4194304,
+                });
+              }
+              expect(await (await app.request(base)).json()).toEqual([]);
+            });
+          }),
+        ),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    }
+  });
+
+  it("requires the requested identity and a YouTube tab playlist envelope", async () => {
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));
+    for (const invalid of [
+      { _type: "video" },
+      { extractor_key: "Generic" },
+      { id: "PLdifferentcollection" },
+      { webpage_url: "https://www.youtube.com/playlist?list=PLdifferentcollection" },
+      { requested_entries: [52] },
+    ]) {
+      command.mockReturnValueOnce(
+        Effect.succeed(
+          JSON.stringify({
+            ...collectionMetadata,
+            entries: [collectionVideo],
+            ...invalid,
+          }),
+        ),
+      );
+      await expect(
+        Effect.runPromise(downloader.previewCollection({ url: playlist, page: 0 })),
+      ).rejects.toMatchObject({ reason: "unsupported" });
+    }
+    command.mockReturnValueOnce(
+      Effect.succeed(
+        JSON.stringify({
+          ...collectionMetadata,
+          entries: [],
+          requested_entries: [],
+        }),
+      ),
+    );
+    await expect(
+      Effect.runPromise(downloader.previewCollection({ url: playlist, page: 1 })),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+
+    const channel = "https://www.youtube.com/@example/videos";
+    command.mockReturnValueOnce(
+      Effect.succeed(
+        JSON.stringify({
+          ...collectionMetadata,
+          id: "UCabcdefghijklmnopqrstuv",
+          webpage_url: channel,
+          uploader_id: "@Example",
+          entries: [collectionVideo],
+          title: null,
+        }),
+      ),
+    );
+    expect(
+      await Effect.runPromise(downloader.previewCollection({ url: channel, page: 0 })),
+    ).toMatchObject({ title: null, hasMore: false, videos: [{ url }] });
+  });
+});
 
 describe("Media downloader protocol", () => {
   it("previews an X post using its post identity rather than its media ID", async () => {

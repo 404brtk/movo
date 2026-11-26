@@ -2,11 +2,22 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { Schema } from "effect";
-import { type DownloadJob, DownloadPreviewRequest } from "../../src/shared/contracts/downloads.ts";
+import {
+  DownloadCollectionRequest,
+  type DownloadJob,
+  DownloadPreviewRequest,
+} from "../../src/shared/contracts/downloads.ts";
 import type { YtdlpStatus } from "../../src/shared/contracts/media-tools.ts";
 import { MediaItem } from "../../src/shared/contracts/media.ts";
 
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
+const playlist = "https://www.youtube.com/playlist?list=PLabcdefghijk";
+const channel = "https://www.youtube.com/@example/videos";
+const collectionVideo = (index: number) => ({
+  title: `Collection video ${index}`,
+  url: `https://www.youtube.com/watch?v=${String(index).padStart(11, "0")}`,
+  durationSeconds: index === 51 ? null : 62,
+});
 const wave = readFileSync(new URL("../fixtures/tone.wav", import.meta.url));
 const readyYtdlp: YtdlpStatus = {
   ytdlp: { state: "ready", source: "system", version: "2026.10.26" },
@@ -45,6 +56,207 @@ const jobFixture = (): DownloadJob => ({
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/ytdlp", (route) => route.fulfill({ json: readyYtdlp }));
+});
+
+test("keeps video links in a mixed paste and offers only supported collections", async ({
+  page,
+}) => {
+  const watch = collectionVideo(8);
+  const mixWatch = collectionVideo(9);
+  const collectionReads: unknown[] = [];
+  await page.route("**/api/downloads/collection", (route) => {
+    collectionReads.push(route.request().postDataJSON());
+    return route.fulfill({ json: { title: "Public channel", videos: [watch], hasMore: false } });
+  });
+  await page.route("**/api/downloads/preview", (route) => {
+    const { url: videoUrl } = Schema.decodeUnknownSync(DownloadPreviewRequest)(
+      route.request().postDataJSON(),
+    );
+    const video = videoUrl === watch.url ? watch : mixWatch;
+    return route.fulfill({ json: { ...video, saved: [] } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
+  const field = page.getByRole("textbox", { name: "Add links" });
+  await field.evaluate(
+    (element, value) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", value);
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    },
+    [
+      `${watch.url}&list=PLabcdefghijk`,
+      "https://m.youtube.com/@Example",
+      "https://www.youtube.com/playlist?list=RDMM",
+      `${mixWatch.url}&list=RDMM`,
+    ].join("\n"),
+  );
+  const form = page.getByRole("dialog", { name: "Download from links" });
+  await expect(form.getByRole("status")).toContainText(
+    "This is a YouTube Mix. Paste a link to a specific video.",
+  );
+  await expect(
+    form.getByRole("list", { name: "Links", exact: true }).getByRole("listitem"),
+  ).toHaveCount(2);
+  await expect(form.getByRole("list", { name: "Links", exact: true })).toContainText(watch.title);
+  await expect(form.getByRole("list", { name: "Links", exact: true })).toContainText(
+    mixWatch.title,
+  );
+  await expect(form.getByRole("button", { name: "Choose from playlist", exact: true })).toHaveCount(
+    1,
+  );
+  await expect(form.getByRole("button", { name: "Choose videos", exact: true })).toHaveCount(1);
+  expect(collectionReads).toEqual([]);
+
+  await form.getByRole("button", { name: "Choose videos", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Choose videos" });
+  await expect(picker.getByText("Public channel", { exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await expect(picker.getByRole("checkbox", { name: new RegExp(watch.title) })).toBeDisabled();
+  await expect(picker.getByRole("button", { name: "Load more" })).toHaveCount(0);
+  await picker.getByRole("button", { name: "Back to links" }).press("Enter");
+  await expect(field).toBeFocused();
+  await expect(
+    form.getByRole("list", { name: "Links", exact: true }).getByRole("listitem"),
+  ).toHaveCount(2);
+  expect(collectionReads).toEqual([{ url: channel, page: 0 }]);
+});
+
+test("loads collection pages on demand, preserves selection and queues videos in source order", async ({
+  page,
+}) => {
+  const draft = [
+    collectionVideo(0),
+    ...Array.from({ length: 17 }, (_, index) => collectionVideo(index + 100)),
+  ];
+  const firstPage = Array.from({ length: 50 }, (_, index) => collectionVideo(index));
+  const earlier = collectionVideo(49);
+  const later = collectionVideo(51);
+  const pages: number[] = [];
+  const enqueued: unknown[] = [];
+  await page.route("**/api/downloads/collection", (route) => {
+    expect(route.request().method()).toBe("POST");
+    const request = Schema.decodeUnknownSync(DownloadCollectionRequest)(
+      route.request().postDataJSON(),
+    );
+    expect(request.url).toBe(playlist);
+    pages.push(request.page);
+    if (request.page === 1 && pages.length === 2)
+      return route.fulfill({ status: 503, json: { error: "YouTube is temporarily unavailable." } });
+    return route.fulfill({
+      json: {
+        title: "Public playlist",
+        videos: request.page === 0 ? firstPage : [earlier, collectionVideo(50), later],
+        hasMore: request.page === 0,
+      },
+    });
+  });
+  await page.route("**/api/downloads/preview", (route) => {
+    const { url: videoUrl } = Schema.decodeUnknownSync(DownloadPreviewRequest)(
+      route.request().postDataJSON(),
+    );
+    const index = Number(new URL(videoUrl).searchParams.get("v"));
+    return route.fulfill({ json: { ...collectionVideo(index), saved: [] } });
+  });
+  await page.route("**/api/downloads", (route) => {
+    if (route.request().method() === "POST") {
+      enqueued.push(route.request().postDataJSON());
+      return route.fulfill({ status: 202, json: [] });
+    }
+    return route.fulfill({ json: [] });
+  });
+
+  await page.setViewportSize({ width: 320, height: 620 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
+  const form = page.getByRole("dialog", { name: "Download from links" });
+  const field = form.getByRole("textbox", { name: "Add links" });
+  await field.fill([...draft.map((video) => video.url), "https://youtu.be/00000000000"].join(" "));
+  await field.press("Enter");
+  await expect(
+    form.getByRole("list", { name: "Links", exact: true }).getByRole("listitem"),
+  ).toHaveCount(18);
+  const quality = form
+    .getByRole("group", { name: "Quality" })
+    .getByRole("button", { name: "720p" });
+  const transcribe = form.getByRole("switch", { name: "Transcribe after download" });
+  await quality.click();
+  await transcribe.click();
+  await field.fill(`${playlist}&si=share`);
+  await field.press("Enter");
+  const picker = page.getByRole("dialog", { name: "Choose videos" });
+  await expect(picker.getByText("Public playlist", { exact: true })).toBeVisible();
+  await expect(picker.getByRole("button", { name: "Back to links" })).toBeFocused();
+  const videos = picker.getByRole("list", { name: "Collection videos" });
+  const checkbox = (index: number) =>
+    videos.getByRole("checkbox", { name: new RegExp(`^Collection video ${index}(?: |$)`) });
+  await expect(videos.getByRole("checkbox")).toHaveCount(50);
+  await expect(checkbox(0)).toBeDisabled();
+  expect(await picker.evaluate(scrollingAreas)).toEqual(["Collection videos"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  await expect(videos.getByText("1:02").first()).toBeVisible();
+  await checkbox(49).press("Space");
+  await expect(checkbox(49)).toBeChecked();
+  await expect(picker.getByText("1 selected", { exact: true })).toBeVisible();
+  expect(pages).toEqual([0]);
+  const scroll = await videos.evaluate((element) => element.scrollTop);
+  expect(scroll).toBeGreaterThan(0);
+  await picker.getByRole("button", { name: "Load more", exact: true }).click();
+  await expect(picker.getByRole("alert")).toHaveText("YouTube is temporarily unavailable.");
+  await expect(checkbox(49)).toBeChecked();
+  await picker.getByRole("button", { name: "Retry load more" }).click();
+  await expect(videos.getByRole("checkbox")).toHaveCount(52);
+  expect(await videos.evaluate((element) => element.scrollTop)).toBe(scroll);
+  await expect(checkbox(49)).toBeChecked();
+  await expect(picker.getByRole("button", { name: "Load more", exact: true })).toHaveCount(0);
+
+  await checkbox(49).press("Space");
+  await checkbox(51).press("Space");
+  await checkbox(49).press("Space");
+  await expect(checkbox(50)).toBeDisabled();
+  await expect(picker.getByText("20-link limit reached.")).toBeVisible();
+  await picker.getByRole("button", { name: "Add 2 videos" }).click();
+  await expect(field).toBeFocused();
+  await expect(quality).toHaveAttribute("aria-pressed", "true");
+  await expect(transcribe).toBeChecked();
+  await expect(
+    form.getByRole("list", { name: "Links", exact: true }).getByRole("listitem"),
+  ).toHaveCount(20);
+  await expect(form.getByText(later.title, { exact: true })).toBeVisible();
+  await form.getByRole("button", { name: "Download 20", exact: true }).click();
+  await expect(form.getByText("Public playlist", { exact: true })).toBeVisible();
+  await expect(form.getByRole("list", { name: "Links", exact: true })).toHaveCount(0);
+  expect(enqueued).toEqual([
+    {
+      links: [...draft, earlier, later].map(({ url: videoUrl, title }) => ({
+        url: videoUrl,
+        title,
+        preset: "video-720p",
+      })),
+      transcribe: true,
+    },
+  ]);
+  await form.getByRole("button", { name: "Choose videos", exact: true }).click();
+  await expect(videos.getByRole("checkbox")).toHaveCount(52);
+  await expect(picker.getByText("0 selected", { exact: true })).toBeVisible();
+  expect(pages).toEqual([0, 1, 1]);
+  await checkbox(50).press("Space");
+  await picker.getByRole("button", { name: "Add 1 video" }).click();
+  await expect(quality).toHaveAttribute("aria-pressed", "true");
+  await expect(transcribe).toBeChecked();
+  await form
+    .getByRole("group", { name: `Save ${collectionVideo(50).title} as` })
+    .getByRole("button", { name: "Audio" })
+    .click();
+  await form.getByRole("button", { name: "Download", exact: true }).click();
+  await expect
+    .poll(() => enqueued.at(-1))
+    .toEqual({
+      links: [{ url: collectionVideo(50).url, title: collectionVideo(50).title, preset: "audio" }],
+      transcribe: true,
+    });
 });
 
 test("keeps saved media available when temporary download cleanup fails", async ({ page }) => {

@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { maxDownloadLinkLength, recognizeDownloadSource } from "../download-sources.ts";
 import { MediaId } from "./media.ts";
 
 export const downloadPresets = [
@@ -62,6 +63,32 @@ export const DownloadPreview = Schema.Struct({
   saved: Schema.Array(SavedDownload),
 });
 export type DownloadPreview = typeof DownloadPreview.Type;
+export const collectionPageSize = 50;
+export const DownloadCollectionRequest = Schema.Struct({
+  url: Schema.String.check(Schema.isMaxLength(maxDownloadLinkLength)),
+  page: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(0),
+    Schema.isLessThan(Math.floor(Number.MAX_SAFE_INTEGER / collectionPageSize)),
+  ),
+});
+export type DownloadCollectionRequest = typeof DownloadCollectionRequest.Type;
+const CollectionVideo = Schema.Struct({
+  ...DownloadSourceDetails.fields,
+  url: Schema.String.check(
+    Schema.makeFilter((url) => {
+      const source = recognizeDownloadSource(url);
+      return (
+        (source?.site === "youtube" && source.url === url) || "Use a canonical YouTube video URL."
+      );
+    }),
+  ),
+});
+export const DownloadCollectionPage = Schema.Struct({
+  title: Schema.NullOr(DownloadTitle),
+  videos: Schema.Array(CollectionVideo).check(Schema.isMaxLength(collectionPageSize)),
+  hasMore: Schema.Boolean,
+});
 export const DownloadJob = Schema.Struct({
   id: MediaId,
   url: Schema.String,
