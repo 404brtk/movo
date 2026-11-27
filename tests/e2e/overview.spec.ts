@@ -7,7 +7,10 @@ import type {
   RecordingOverview,
   RecordingSummary,
 } from "../../src/shared/contracts/overview.ts";
-import type { TranscriptionJob } from "../../src/shared/contracts/transcriptions.ts";
+import type {
+  TranscriptionJob,
+  TranscriptWord,
+} from "../../src/shared/contracts/transcriptions.ts";
 import { timedWords } from "../helpers/timed-words.ts";
 
 const choice: ModelChoice = {
@@ -36,7 +39,19 @@ const empty: RecordingOverview = {
   failure: null,
 };
 
-async function openRecording(page: Page, api: APIRequestContext, initial: RecordingOverview) {
+const meetingWords = [
+  ...timedWords(0, 900, "Welcome to the planning meeting."),
+  ...timedWords(1200, 1900, "The hiring budget grows next year."),
+];
+const spoken = (speaker: number, startMs: number, endMs: number, text: string) =>
+  timedWords(startMs, endMs, text).map((word) => ({ ...word, speaker }));
+
+async function openRecording(
+  page: Page,
+  api: APIRequestContext,
+  initial: RecordingOverview,
+  words: TranscriptWord[] = meetingWords,
+) {
   const uploaded = await api.post("/api/media", {
     data: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
     headers: { "x-file-name": `${randomUUID()}.wav` },
@@ -53,10 +68,7 @@ async function openRecording(page: Page, api: APIRequestContext, initial: Record
     phaseProgress: null,
     transcript: {
       language: "en",
-      words: [
-        ...timedWords(0, 900, "Welcome to the planning meeting."),
-        ...timedWords(1200, 1900, "The hiring budget grows next year."),
-      ],
+      words,
     },
     revision: 0,
     resultRevision: 0,
@@ -330,6 +342,49 @@ test("keeps a chapter edit open until its save finishes before editing another",
   await list.getByRole("button", { name: "0:00 Opening", exact: true }).focus();
   await page.keyboard.press("F2");
   await expect(title).toHaveValue("Opening");
+});
+
+test("places chapter headings beside their passages inside a folded speaker", async ({
+  page,
+  request,
+}) => {
+  await openRecording(
+    page,
+    request,
+    {
+      ...empty,
+      chapters: [
+        { id: randomUUID(), startMs: 0, title: "Opening" },
+        { id: randomUUID(), startMs: 600, title: "Hiring budget" },
+      ],
+      chaptersSource: "model",
+    },
+    [
+      ...spoken(1, 0, 500, "Welcome to the planning meeting."),
+      ...spoken(1, 600, 1100, "The hiring budget grows next year."),
+      ...spoken(2, 1200, 1700, "Thanks for joining."),
+    ],
+  );
+  const transcript = page.getByRole("list", { name: "Timestamped passages" });
+  await page.getByRole("button", { name: "Speakers", exact: true }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Speaker 2" }).click();
+  await page.keyboard.press("Escape");
+  await expect(transcript.getByRole("listitem")).toHaveText([
+    /Opening$/u,
+    /Hiring budget$/u,
+    /^Speaker 1 · 2 passages/u,
+    /Thanks for joining\./u,
+  ]);
+
+  await transcript.getByRole("button", { name: /^Speaker 1 · 2 passages/u }).click();
+  await expect(transcript.getByRole("listitem")).toHaveText([
+    /Opening$/u,
+    /^Hide Speaker 1/u,
+    /Welcome to the planning meeting\./u,
+    /Hiring budget$/u,
+    /The hiring budget grows next year\./u,
+    /Thanks for joining\./u,
+  ]);
 });
 
 test("edits the summary and its key points by hand", async ({ page, request }) => {
