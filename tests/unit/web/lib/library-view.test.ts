@@ -22,6 +22,7 @@ const item: LibraryItem = {
   durationSeconds: 4868,
   importedAt: at(2026, 10, 10),
   sourceUrl: "https://www.youtube.com/watch?v=8pDqJVdNa44",
+  tags: [],
   fileRemovedAt: null,
   transcription: "done",
 };

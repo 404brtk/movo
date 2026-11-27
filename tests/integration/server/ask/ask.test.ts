@@ -26,6 +26,8 @@ import { createApp } from "../../../../src/server/http/app.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
 import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { createTags } from "../../../../src/server/tags/tags.ts";
+import { mediaTags, tags } from "../../../../src/server/tags/tags.schema.ts";
 import { createTranscriptions } from "../../../../src/server/transcriptions/jobs.ts";
 import { timedWords } from "../../../helpers/timed-words.ts";
 
@@ -157,7 +159,11 @@ function withAsk(
             };
             const ask = yield* Effect.acquireRelease(
               Effect.sync(() =>
-                createAsk(database, { library, downloads, transcriptions }, boundaries),
+                createAsk(
+                  database,
+                  { library, downloads, transcriptions, tags: createTags(database, library) },
+                  boundaries,
+                ),
               ),
               (service) => service.close(),
             );
@@ -707,6 +713,50 @@ it(
       expect(
         (await request(`/chats/${panel}/scope`, json({ scope: { kind: "audio" } }, "PUT"))).status,
       ).toBe(400);
+    },
+  ),
+);
+
+it(
+  "limits a library chat to recordings that have every chosen tag when each question is asked",
+  withAsk(
+    (_options, index) => {
+      if (index === 0 || index === 2) return stream(call("search_library", { q: "" }));
+      return stream(text("Listed."));
+    },
+    async ({ request, mediaId, otherMediaId, calls, database }) => {
+      const tagId = "11111111-1111-4111-8111-111111111111";
+      database
+        .insert(tags)
+        .values({ id: tagId, name: "Klient", nameKey: "klient", color: "sky", createdAt: 1 })
+        .run();
+      database.insert(mediaTags).values({ mediaId, tagId }).run();
+      expect(
+        (
+          await request(
+            "/chats",
+            json({ mediaId: null, scope: { tagIds: ["22222222-2222-4222-8222-222222222222"] } }),
+          )
+        ).status,
+      ).toBe(404);
+      const chatId = await connectAndCreateChat(request, null, { tagIds: [tagId] });
+      await request(`/chats/${chatId}/messages`, json({ text: "Which ones?" }));
+      expect(parts(await settled(request, chatId))).toEqual(["done", "text"]);
+      expect(JSON.stringify(calls[0]?.prompt[0])).toContain("recordings tagged “Klient”");
+      const firstResult = JSON.stringify(calls[1]?.prompt.at(-1));
+      expect(firstResult).toContain('"total":1');
+      expect(firstResult).not.toContain(otherMediaId);
+      database.insert(mediaTags).values({ mediaId: otherMediaId, tagId }).run();
+      await request(`/chats/${chatId}/messages`, json({ text: "And now?" }));
+      await settled(request, chatId);
+      expect(JSON.stringify(calls[3]?.prompt.at(-1))).toContain('"total":2');
+      await Effect.runPromise(
+        createTags(database, { get: () => Effect.die("unused") }).remove(tagId),
+      );
+      expect(
+        Schema.decodeUnknownSync(ChatDetail)(await (await request(`/chats/${chatId}`)).json()).chat
+          .scope,
+      ).toBeNull();
     },
   ),
 );

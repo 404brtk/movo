@@ -15,7 +15,7 @@ import type { LibraryItem, LibraryList } from "../../shared/contracts/library.ts
 import { AccentIcon } from "../components/accent-icon.tsx";
 import { AskComposer, AskConversation, type ComposerBlock } from "../components/ask-chat.tsx";
 import { AskConnect } from "../components/ask-connect.tsx";
-import { ScopePicker } from "../components/ask-scope.tsx";
+import { ScopePicker, scopePlaceholder } from "../components/ask-scope.tsx";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { Spinner } from "../components/spinner.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
@@ -35,6 +35,7 @@ import {
   mediaListKey,
   mediaListOptions,
   retryTranscription,
+  tagsOptions,
 } from "../lib/api.ts";
 import { useAskChat } from "../lib/ask-chat.ts";
 import { formatDay } from "../lib/format.ts";
@@ -123,6 +124,7 @@ function LibraryStart() {
   const openChat = useOpenChat();
   const needsConnection = useNeedsConnection();
   const [scope, setScope] = useState<ChatScope | null>(null);
+  const tags = useQuery(tagsOptions);
   const { library, transcribed } = useLibrary();
   const chats = useQuery(chatListOptions(null));
   const state = useAskChat({ mediaId: null, chatId: null, onChatChange: openChat, scope });
@@ -147,7 +149,7 @@ function LibraryStart() {
           <div className="-mx-3 mt-6">
             <AskComposer
               state={state}
-              placeholder="Ask across your library…"
+              placeholder={scopePlaceholder(scope, tags.data ?? [])}
               block={block}
               passage={null}
               onPassageChange={() => undefined}
@@ -273,6 +275,7 @@ function LibraryChat({ chatId }: { chatId: string }) {
   const { recordings } = useLibrary();
   const state = useAskChat({ mediaId: null, chatId, onChatChange: openChat });
   const detail = state.detail;
+  const tags = useQuery(tagsOptions);
   return (
     <main className="mx-auto flex h-[calc(100svh-104px)] max-w-[800px] flex-col px-5 pt-5 sm:h-[calc(100svh-56px)]">
       <div className="-mr-1.5 -ml-2.5 flex items-center justify-between">
@@ -306,7 +309,7 @@ function LibraryChat({ chatId }: { chatId: string }) {
         <div className="-mx-3 pb-2">
           <AskComposer
             state={state}
-            placeholder="Ask across your library…"
+            placeholder={scopePlaceholder(detail?.chat.scope ?? null, tags.data ?? [])}
             block={null}
             passage={null}
             onPassageChange={() => undefined}

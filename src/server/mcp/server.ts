@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { McpProtocol, McpServer } from "effect/ai";
 import { HttpRouter, HttpServer } from "effect/http";
 import type {
@@ -11,6 +11,9 @@ import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { requestDownload, type Downloads } from "../downloads/jobs.ts";
 import { MediaError } from "../media/error.ts";
 import type { createMediaLibrary } from "../media/library.ts";
+import { ChangeRecordingTags } from "../../shared/contracts/media.ts";
+import { tagIdList } from "../../shared/contracts/tags.ts";
+import type { Tags } from "../tags/tags.ts";
 import type { Transcriptions } from "../transcriptions/jobs.ts";
 import { defaultListLimit, movoTools } from "./tools.ts";
 import { defaultPagePassages, transcriptPage } from "./transcript-page.ts";
@@ -19,6 +22,7 @@ export interface McpServices {
   library: ReturnType<typeof createMediaLibrary>;
   downloads: Downloads;
   transcriptions: Transcriptions;
+  tags: Tags;
   port: number;
 }
 
@@ -42,14 +46,23 @@ const reported = <A>(operation: Effect.Effect<A, MediaError>) =>
     error.reason === "storage" ? Effect.sync(() => console.error(error)) : Effect.void,
   );
 
+const changeRequest = Schema.decodeUnknownEffect(ChangeRecordingTags);
+
 export const toolHandlers = (
-  { library, downloads, transcriptions }: Omit<McpServices, "port">,
+  { library, downloads, transcriptions, tags }: Omit<McpServices, "port">,
   source: TranscriptChangeSource,
+  scopeTagIds: readonly string[] = [],
 ) =>
   ({
-    search_library: ({ limit = defaultListLimit, offset = 0, ...query }) =>
+    search_library: ({ limit = defaultListLimit, offset = 0, tags: tagNames = [], ...query }) =>
       reported(
-        library.browse(query).pipe(
+        tags.idsForNames(tagNames).pipe(
+          Effect.flatMap((tagIds) =>
+            library.browse({
+              ...query,
+              tags: tagIdList([...new Set([...scopeTagIds, ...tagIds])]),
+            }),
+          ),
           Effect.map(({ items, transcribing }) => ({
             items: items.slice(offset, offset + limit),
             total: items.length,
@@ -90,13 +103,23 @@ export const toolHandlers = (
       ),
     get_download: ({ downloadId }) => reported(downloads.get(downloadId)),
     preview_link: ({ url }) => reported(downloads.preview(url)),
-    download_links: (request) =>
+    download_links: ({ tags: tagNames = [], ...request }) =>
       reported(
-        requestDownload(downloads, transcriptions, request).pipe(Effect.map((jobs) => ({ jobs }))),
+        tags.idsForNames(tagNames).pipe(
+          Effect.flatMap((tagIds) =>
+            requestDownload(downloads, transcriptions, { ...request, tagIds }),
+          ),
+          Effect.map((jobs) => ({ jobs })),
+        ),
       ),
     cancel_download: ({ downloadId }) => reported(downloads.cancel(downloadId)),
     retry_download: ({ downloadId }) => reported(downloads.retry(downloadId)),
-    import_file: ({ path }) => reported(library.importPath(path)),
+    import_file: ({ path, tags: tagNames = [] }) =>
+      reported(
+        tags
+          .idsForNames(tagNames)
+          .pipe(Effect.flatMap((tagIds) => library.importPath(path, tagIds))),
+      ),
     transcribe_recording: ({ mediaId }) =>
       reported(transcriptions.enqueue(mediaId).pipe(Effect.map(summarize))),
     cancel_transcription: ({ mediaId }) =>
@@ -120,6 +143,37 @@ export const toolHandlers = (
     rename_recording: ({ mediaId, title }) => reported(library.rename(mediaId, title)),
     remove_saved_copy: ({ mediaId }) => reported(transcriptions.removeMediaFile(mediaId)),
     delete_recording: ({ mediaId }) => reported(transcriptions.removeMedia(mediaId)),
+    list_tags: () => reported(tags.list().pipe(Effect.map((list) => ({ tags: list })))),
+    create_tag: (request) => reported(tags.create(request)),
+    update_tag: ({ tag, ...change }) =>
+      reported(
+        Effect.gen(function* () {
+          if (change.name === undefined && change.color === undefined)
+            return yield* Effect.fail(new MediaError("invalid", "Give a new name or colour."));
+          return yield* tags.update(yield* tags.idForName(tag), change);
+        }),
+      ),
+    delete_tag: ({ tag }) => reported(tags.idForName(tag).pipe(Effect.flatMap(tags.remove))),
+    tag_recordings: ({ mediaIds, add = [], remove = [] }) =>
+      reported(
+        Effect.gen(function* () {
+          const request = yield* changeRequest({
+            mediaIds,
+            add: yield* tags.idsForNames(add),
+            remove: yield* tags.idsForNames(remove),
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new MediaError(
+                  "invalid",
+                  "List each recording once, and name at least one tag to add or remove, never the same tag in both.",
+                  cause,
+                ),
+            ),
+          );
+          return { recordings: yield* tags.change(request) };
+        }),
+      ),
   }) satisfies Parameters<typeof movoTools.toLayer>[0];
 
 export function createMcpHandler(services: McpServices) {

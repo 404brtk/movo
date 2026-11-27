@@ -1298,6 +1298,7 @@ test("keeps long recording titles inside the Choose recordings dialog", async ({
       durationSeconds: 2,
       importedAt: Date.now(),
       sourceUrl: null,
+      tags: [],
       fileRemovedAt: null,
       transcription: "done",
     })),
@@ -1439,6 +1440,7 @@ test("asks across the library within a chosen scope and shows the sources groupe
     durationSeconds: 2,
     importedAt: Date.now(),
     sourceUrl: null,
+    tags: [],
     fileRemovedAt: null,
   };
   const library: LibraryList = {
@@ -1540,4 +1542,21 @@ test("asks across the library within a chosen scope and shows the sources groupe
     .boundingBox();
   await page.mouse.click((arrow?.x ?? 0) + (arrow?.width ?? 0) / 2, (arrow?.y ?? 0) + 4);
   await expect(page).toHaveURL(new RegExp(`/media/${mediaId}$`, "u"));
+});
+
+test("selects a dynamic library scope by tag name", async ({ page, request }) => {
+  const name = `Research ${randomUUID().slice(0, 8)}`;
+  const response = await request.post("/api/tags", { data: { name } });
+  expect(response.status()).toBe(201);
+  await connectedModel(page);
+  await page.goto("/ask");
+  await page.getByRole("button", { name: "Scope: All recordings" }).click();
+  await page.getByRole("menuitem", { name: "With tags" }).hover();
+  await page.getByRole("menuitemcheckbox", { name, exact: true }).click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: `Scope: ${name}` })).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: `Ask about recordings tagged ${name}…` }),
+  ).toBeVisible();
 });

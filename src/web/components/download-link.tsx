@@ -37,6 +37,7 @@ import { SegmentedChoice } from "./segmented-choice.tsx";
 import { SourceSite } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
 import { StatusIndicator } from "./status-indicator.tsx";
+import { TagsField } from "./tags-field.tsx";
 import { Button } from "./ui/button.tsx";
 import {
   Dialog,
@@ -187,6 +188,7 @@ export function DownloadLink() {
   const [lastKind, setLastKind] = useState<SaveKind>("video");
   const [videoPreset, setVideoPreset] = useState<DownloadPreset>(defaultDownloadPreset);
   const [transcribe, setTranscribe] = useState(false);
+  const [tagIds, setTagIds] = useState<readonly string[]>([]);
   const [ytdlpDismissed, setYtdlpDismissed] = useState(false);
   const linksInput = useRef<HTMLInputElement>(null);
   const ytdlp = useQuery(ytdlpOptions);
@@ -426,6 +428,16 @@ export function DownloadLink() {
                   />
                   <label htmlFor="download-transcribe">Transcribe after download</label>
                 </div>
+                <span className="text-[12.5px] font-medium text-muted-foreground">Tags</span>
+                <TagsField
+                  id="download-tags"
+                  value={tagIds}
+                  disabled={download.isPending}
+                  onChange={(next) => {
+                    setTagIds(next);
+                    download.reset();
+                  }}
+                />
               </div>
             </>
           ) : null}
@@ -460,6 +472,7 @@ export function DownloadLink() {
                       : [],
                   ),
                   transcribe,
+                  ...(tagIds.length ? { tagIds } : {}),
                 })
               }
             >

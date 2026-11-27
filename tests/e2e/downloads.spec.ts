@@ -29,6 +29,7 @@ const jobFixture = (): DownloadJob => ({
   id: randomUUID(),
   url,
   preset: "video-1080p",
+  tagIds: [],
   transcribe: false,
   title: "A queued video",
   durationSeconds: null,
@@ -248,6 +249,14 @@ for (const choice of [
 test("checks several links, explains skipped ones and queues each with its own choice", async ({
   page,
 }) => {
+  const tag = {
+    id: randomUUID(),
+    name: "Interviews",
+    color: "teal",
+    recordingCount: 0,
+    createdAt: Date.now(),
+  };
+  await page.route("**/api/tags", (route) => route.fulfill({ json: [tag] }));
   const xUrl = "https://x.com/i/web/status/123";
   const episode = "https://podcasts.apple.com/podcast/id1?i=2";
   const titles: Record<string, string> = {
@@ -292,6 +301,7 @@ test("checks several links, explains skipped ones and queues each with its own c
           { url: xUrl, preset: "audio", title: titles[xUrl] },
           { url: episode, preset: "audio", title: titles[episode] },
         ],
+        tagIds: [tag.id],
         transcribe: false,
       });
       queued = true;
@@ -322,6 +332,9 @@ test("checks several links, explains skipped ones and queues each with its own c
     .click();
   await expect(page.getByRole("group", { name: "Quality" })).toHaveCount(0);
   await expect(list).not.toContainText("Already saved");
+  await page.getByRole("button", { name: "Add tags" }).click();
+  await page.getByRole("option", { name: /Interviews/u }).click();
+  await page.getByRole("combobox", { name: "Find or create a tag" }).press("Escape");
   await page.getByRole("button", { name: "Download 3", exact: true }).click();
   await expect(links).toBeDisabled();
   await expect(page.getByRole("button", { name: "Remove A short post" })).toBeDisabled();

@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { MediaId, mediaKinds } from "./media.ts";
+import { TagIds } from "./tags.ts";
 
 export const providerKinds = ["anthropic", "openai", "openrouter"] as const;
 export type ProviderKind = (typeof providerKinds)[number];
@@ -109,7 +110,15 @@ export const ChatScope = Schema.Struct({
   mediaIds: Schema.optional(
     Schema.Array(MediaId).check(Schema.isMinLength(1), Schema.isMaxLength(maxScopeRecordings)),
   ),
-});
+  tagIds: Schema.optional(TagIds.check(Schema.isMinLength(1))),
+}).check(
+  Schema.makeFilter(
+    (scope) =>
+      scope.mediaIds === undefined ||
+      scope.tagIds === undefined ||
+      "Limit a chat to chosen recordings or to tags, not both.",
+  ),
+);
 export type ChatScope = typeof ChatScope.Type;
 export const NewChat = Schema.Struct({
   mediaId: Schema.NullOr(MediaId),
