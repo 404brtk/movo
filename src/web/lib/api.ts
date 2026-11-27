@@ -25,6 +25,13 @@ import {
 } from "../../shared/contracts/dictionary.ts";
 import { LibraryList, type LibraryQuery } from "../../shared/contracts/library.ts";
 import {
+  RecordingOverview,
+  type ChapterCreate,
+  type ChapterUpdate,
+  type OverviewScope,
+  type SummaryEdit,
+} from "../../shared/contracts/overview.ts";
+import {
   ApiErrorResponse,
   maxImportBytes,
   MediaItem,
@@ -339,6 +346,51 @@ export const transcriptionOptions = (id: string) =>
       ["queued", "running"].includes(query.state.data?.status ?? "") ? 1000 : false,
     retry: false,
   });
+export const overviewOptions = (id: string) =>
+  queryOptions({
+    queryKey: ["overview", id],
+    queryFn: ({ signal }) =>
+      readResponse(
+        client.api.media[":id"].overview.$get({ param: { id } }, { init: { signal } }),
+        RecordingOverview,
+      ),
+    refetchInterval: (query) => (query.state.data?.writing ? 1000 : false),
+    retry: false,
+  });
+export const writeOverview = (id: string, scope: OverviewScope) =>
+  readResponse(
+    client.api.media[":id"].overview.write.$post({ param: { id } }, jsonBody({ scope })),
+    RecordingOverview,
+  );
+export const stopOverview = (id: string) =>
+  readResponse(client.api.media[":id"].overview.stop.$post({ param: { id } }), RecordingOverview);
+export const editSummary = (id: string, edit: SummaryEdit) =>
+  readResponse(
+    client.api.media[":id"].summary.$put({ param: { id } }, jsonBody(edit)),
+    RecordingOverview,
+  );
+export const deleteSummary = (id: string) =>
+  readResponse(client.api.media[":id"].summary.$delete({ param: { id } }), RecordingOverview);
+export const createChapter = (id: string, chapter: ChapterCreate) =>
+  readResponse(
+    client.api.media[":id"].chapters.$post({ param: { id } }, jsonBody(chapter)),
+    RecordingOverview,
+  );
+export const updateChapter = (id: string, chapterId: string, update: ChapterUpdate) =>
+  readResponse(
+    client.api.media[":id"].chapters[":chapterId"].$patch(
+      { param: { id, chapterId } },
+      jsonBody(update),
+    ),
+    RecordingOverview,
+  );
+export const deleteChapter = (id: string, chapterId: string) =>
+  readResponse(
+    client.api.media[":id"].chapters[":chapterId"].$delete({ param: { id, chapterId } }),
+    RecordingOverview,
+  );
+export const deleteChapters = (id: string) =>
+  readResponse(client.api.media[":id"].chapters.$delete({ param: { id } }), RecordingOverview);
 export const enqueueTranscription = (id: string) =>
   readResponse(client.api.media[":id"].transcription.$post({ param: { id } }), TranscriptionJob);
 export const cancelTranscription = (id: string) =>

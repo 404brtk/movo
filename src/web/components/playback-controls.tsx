@@ -6,6 +6,7 @@ import {
   PlayIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { currentChapterIndex, formatMoment, type ChapterRange } from "../../shared/chapters.ts";
 import { usePlayOnly } from "../lib/play-only.ts";
 import type { PlaySegment } from "../lib/speaker-filter.ts";
 import { cn } from "../lib/utils.ts";
@@ -35,6 +36,7 @@ const idle = { playing: false, currentTime: 0, mediaDuration: 0, rate: 1, muted:
 export function useMediaPlayback(
   fallbackDuration: number,
   segments: readonly PlaySegment[] | undefined,
+  chapters: readonly ChapterRange[] = [],
 ) {
   const media = useRef<HTMLMediaElement | null>(null);
   const [element, setElement] = useState<HTMLMediaElement | null>(null);
@@ -86,7 +88,7 @@ export function useMediaPlayback(
     [],
   );
   const skipping = usePlayOnly(element, segments, controls.seek);
-  return { attach, segments, skipping, state: { ...state, duration }, controls };
+  return { attach, segments, chapters, skipping, state: { ...state, duration }, controls };
 }
 
 export type MediaPlayback = ReturnType<typeof useMediaPlayback>;
@@ -155,10 +157,17 @@ export function SeekSlider({
   className?: string;
 }) {
   const { currentTime, duration } = playback.state;
+  const { chapters } = playback;
   return (
     <Slider
       aria-label="Position"
       tone={tone}
+      segments={chapters.map(({ chapter, startMs, endMs }, index) => ({
+        from: index === 0 ? 0 : startMs / 1000,
+        to: endMs / 1000,
+        label: chapter.title,
+        time: formatMoment(startMs),
+      }))}
       highlights={playback.segments?.map(({ startMs, endMs }) => ({
         from: startMs / 1000,
         to: endMs / 1000,
@@ -167,7 +176,10 @@ export function SeekSlider({
       max={Math.max(duration, 0.001)}
       step={0.1}
       value={Math.min(currentTime, duration)}
-      getAriaValueText={(_, value) => `${spokenTime(value)} of ${spokenTime(duration)}`}
+      getAriaValueText={(_, value) => {
+        const chapter = chapters[currentChapterIndex(chapters, value * 1000)]?.chapter;
+        return `${spokenTime(value)} of ${spokenTime(duration)}${chapter ? `, chapter ${chapter.title}` : ""}`;
+      }}
       onValueChange={playback.controls.seek}
       className={cn("min-w-0 flex-1", className)}
     />

@@ -30,6 +30,8 @@ import { downloadJobs } from "../downloads/downloads.schema.ts";
 import { transcriptionJobs } from "../transcriptions/transcriptions.schema.ts";
 import { clearHistory } from "../transcriptions/history.ts";
 import { queueTranscription } from "../transcriptions/queue.ts";
+import { normalizeSiteChapters, type SiteChapter } from "../overview/chapters.ts";
+import { removeOverview, saveSiteChapters } from "../overview/storage.ts";
 import { addTagsToRecording, readTagRefs, requireTags } from "../tags/tags.ts";
 import { mediaTags } from "../tags/tags.schema.ts";
 import { tagIdsIn, type TagRef } from "../../shared/contracts/tags.ts";
@@ -240,8 +242,15 @@ export function createMediaLibrary(
     source: MediaSource | null,
     byteSize: number,
     id: string,
-    transcribe = false,
-    tagIds: readonly string[] = [],
+    {
+      transcribe = false,
+      tagIds = [],
+      chapters,
+    }: {
+      transcribe?: boolean;
+      tagIds?: readonly string[];
+      chapters?: readonly SiteChapter[] | undefined;
+    } = {},
   ) =>
     Effect.gen(function* () {
       const ffprobePath = yield* resolveProbe();
@@ -282,6 +291,11 @@ export function createMediaLibrary(
               requireTags(transaction, tagIds);
               addTagsToRecording(transaction, item.id, tagIds);
               addSearchEntry(transaction, item);
+              saveSiteChapters(
+                transaction,
+                item.id,
+                normalizeSiteChapters(chapters, item.durationSeconds),
+              );
               if (transcribe) queueTranscription(transaction, item.id);
             });
             committed = true;
@@ -420,8 +434,7 @@ export function createMediaLibrary(
           null,
           byteSize,
           id,
-          transcribe,
-          tagIds,
+          { transcribe, tagIds },
         );
       }).pipe(
         Effect.ensuring(
@@ -465,7 +478,13 @@ export function createMediaLibrary(
         },
         catch: storageError,
       }),
-    adoptDownload: (path: string, title: string, source: MediaSource, id: string) =>
+    adoptDownload: (
+      path: string,
+      title: string,
+      source: MediaSource,
+      id: string,
+      chapters?: readonly SiteChapter[],
+    ) =>
       Effect.gen(function* () {
         yield* Effect.try({
           try: () => Schema.decodeUnknownSync(MediaId)(id),
@@ -494,7 +513,9 @@ export function createMediaLibrary(
           },
           catch: storageError,
         });
-        return yield* save(path, basename(path), title, source, stored.size, id);
+        return yield* save(path, basename(path), title, source, stored.size, id, {
+          chapters,
+        });
       }),
     syncSearchIndex: () =>
       Effect.try({ try: () => syncSearchIndex(database), catch: storageError }),
@@ -553,6 +574,7 @@ export function createMediaLibrary(
               ])
                 rmSync(directory, { recursive: true, force: true });
               clearHistory(transaction, id);
+              removeOverview(transaction, id);
               transaction.delete(transcriptionJobs).where(eq(transcriptionJobs.mediaId, id)).run();
               transaction
                 .delete(downloadJobs)

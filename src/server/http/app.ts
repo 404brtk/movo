@@ -61,6 +61,15 @@ import {
   TranscriptReplace,
   TranscriptRestore,
 } from "../../shared/contracts/transcriptions.ts";
+import {
+  ChapterCreate,
+  ChapterUpdate,
+  maxChapterTitleCharacters,
+  maxKeyPoints,
+  maxSummaryCharacters,
+  OverviewWriteRequest,
+  SummaryEdit,
+} from "../../shared/contracts/overview.ts";
 import { exportTranscript } from "../../shared/transcript-export.ts";
 import {
   createDownloads,
@@ -80,6 +89,7 @@ import { createTranscriptionEngine } from "../transcriptions/engine.ts";
 import { createDictionary } from "../transcriptions/dictionary.ts";
 import type { McpHandler } from "../mcp/server.ts";
 import { createAsk, type Ask, type LiveAnswerEvent } from "../ask/ask.ts";
+import { createOverviews, type Overviews } from "../overview/overviews.ts";
 import { createTags } from "../tags/tags.ts";
 import { attachmentDisposition } from "./attachment.ts";
 
@@ -172,6 +182,14 @@ const transcriptChangeLimit = bodyLimit({
     context.json({ error: "Transcript changes must be 64 KiB or smaller." }, 413),
 });
 
+const overviewLimit = bodyLimit({
+  maxSize: 64 * 1024,
+  onError: (context) =>
+    context.json({ error: "Summary and chapter changes must be 64 KiB or smaller." }, 413),
+});
+
+const chapterMessage = `Provide a time inside the recording and a single-line title of at most ${maxChapterTitleCharacters} characters.`;
+
 export function createApp(
   database: AppDatabase,
   config: DownloadsConfig,
@@ -190,6 +208,7 @@ export function createApp(
     ),
     mcp,
     ask: askService,
+    overviews: overviewService,
   }: {
     tools?: MediaTools;
     ytdlp?: Ytdlp;
@@ -199,14 +218,17 @@ export function createApp(
     transcriptions?: Transcriptions;
     mcp?: Pick<McpHandler, "handler">;
     ask?: Ask;
+    overviews?: Overviews;
   } = {},
 ) {
   const downloads = downloadsService ?? createDownloads(database, config, tools, downloader);
   const library = createMediaLibrary(database, config.dataDirectory, () =>
     tools.resolve("ffprobe"),
   );
+  const overviews = overviewService ?? createOverviews(database, { library, transcriptions });
   const tags = createTags(database, library);
-  const ask = askService ?? createAsk(database, { library, downloads, transcriptions, tags });
+  const ask =
+    askService ?? createAsk(database, { library, downloads, transcriptions, overviews, tags });
   const dictionary = createDictionary(database, transcriptions);
   const app = new Hono();
   app.use("*", async (context, next) => {
@@ -511,6 +533,57 @@ export function createApp(
         await runMedia(transcriptions.renameSpeaker(context.req.param("id"), request)),
       );
     })
+    .get("/media/:id/overview", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(overviews.get(context.req.param("id"))));
+    })
+    .post("/media/:id/overview/write", overviewLimit, async (context) => {
+      const { scope } = await readJson(
+        context.req.json(),
+        OverviewWriteRequest,
+        "Choose to write the summary, the chapters or both.",
+      );
+      return context.json(await runMedia(overviews.write(context.req.param("id"), scope)), 202);
+    })
+    .post("/media/:id/overview/stop", async (context) =>
+      context.json(await runMedia(overviews.stop(context.req.param("id")))),
+    )
+    .put("/media/:id/summary", overviewLimit, async (context) => {
+      const edit = await readJson(
+        context.req.json(),
+        SummaryEdit,
+        `Provide a summary of at most ${maxSummaryCharacters} characters and up to ${maxKeyPoints} key points, each with a time and a single line of text.`,
+      );
+      return context.json(await runMedia(overviews.editSummary(context.req.param("id"), edit)));
+    })
+    .delete("/media/:id/summary", async (context) =>
+      context.json(await runMedia(overviews.deleteSummary(context.req.param("id")))),
+    )
+    .post("/media/:id/chapters", overviewLimit, async (context) => {
+      const chapter = await readJson(context.req.json(), ChapterCreate, chapterMessage);
+      return context.json(
+        await runMedia(overviews.createChapter(context.req.param("id"), chapter)),
+        201,
+      );
+    })
+    .delete("/media/:id/chapters", async (context) =>
+      context.json(await runMedia(overviews.deleteChapters(context.req.param("id")))),
+    )
+    .patch("/media/:id/chapters/:chapterId", overviewLimit, async (context) => {
+      const update = await readJson(context.req.json(), ChapterUpdate, chapterMessage);
+      return context.json(
+        await runMedia(
+          overviews.updateChapter(context.req.param("id"), context.req.param("chapterId"), update),
+        ),
+      );
+    })
+    .delete("/media/:id/chapters/:chapterId", async (context) =>
+      context.json(
+        await runMedia(
+          overviews.deleteChapter(context.req.param("id"), context.req.param("chapterId")),
+        ),
+      ),
+    )
     .get("/dictionary", async (context) => {
       context.header("Cache-Control", "no-store");
       return context.json(await runMedia(dictionary.list()));

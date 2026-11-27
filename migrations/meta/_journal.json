@@ -169,6 +169,13 @@
       "when": 1795778475750,
       "tag": "0023_library_tags",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1795801792679,
+      "tag": "0024_recording_overview",
+      "breakpoints": true
     }
   ]
 }

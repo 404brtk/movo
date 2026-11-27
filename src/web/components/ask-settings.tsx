@@ -116,7 +116,7 @@ function DefaultModelField() {
           ) : groups.length === 0 ? (
             "Connect a model below to start asking."
           ) : (
-            "Any chat can switch from its own field."
+            "Also used to write recording summaries. Each chat can switch models."
           )
         }
         trailing={

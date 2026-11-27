@@ -153,7 +153,7 @@ test("shares transcript actions and their order with the library and exports fro
   ];
   const more = page.getByRole("button", { name: "More actions", exact: true });
   await more.click();
-  await expect(page.getByRole("menu").getByRole("menuitem")).toHaveText(actions);
+  await expect(page.getByRole("menu").getByRole("menuitem")).toHaveText(["Chapters…", ...actions]);
   await page.getByRole("menuitem", { name: "Copy transcript", exact: true }).click();
   await expect(
     page

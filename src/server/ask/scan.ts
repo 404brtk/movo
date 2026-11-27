@@ -42,7 +42,7 @@ export interface ScanRequest {
   onProgress: (read: number, total: number) => void;
 }
 
-const joined = (notes: readonly string[]) => notes.join("\n\n");
+const joinNotes = (notes: readonly string[]) => notes.join("\n\n");
 
 async function readEach(
   groups: readonly string[][],
@@ -79,20 +79,23 @@ const notesDoNotFit = () =>
     "The notes from this transcript don't fit the model's context. Ask about a narrower topic.",
   );
 
-export async function scanTranscript(request: ScanRequest) {
-  if (request.resultCharacters <= 0) throw notesDoNotFit();
-  const partCharacters =
+function partCharacters(request: ScanRequest) {
+  const characters =
     request.callCharacters -
     Math.max(partInstructions.length, combineInstructions.length) -
     partPrompt(request.instruction, `Part ${request.lines.length}`, request.title, "").length;
   const longestLine = request.lines.reduce((longest, line) => Math.max(longest, line.length), 0);
-  if (partCharacters <= longestLine)
+  if (characters <= longestLine)
     throw new MediaError(
       "invalid",
       "The model's context is too small to read this transcript in parts.",
     );
-  let notes = await readEach(
-    groupBySize(request.lines, partCharacters),
+  return characters;
+}
+
+function readTranscriptParts(request: ScanRequest) {
+  return readEach(
+    groupBySize(request.lines, partCharacters(request)),
     request,
     async (part, index) => {
       const heading = `Part ${index + 1}`;
@@ -104,20 +107,59 @@ export async function scanTranscript(request: ScanRequest) {
     },
     request.onProgress,
   );
-  const partCount = notes.length;
-  while (joined(notes).length > request.resultCharacters) {
+}
+
+async function combineNotes(
+  request: ScanRequest,
+  notes: readonly string[],
+  maxCharacters: number,
+  partCount = notes.length,
+) {
+  const groupCharacters = partCharacters(request);
+  let combined = notes;
+  while (joinNotes(combined).length > maxCharacters) {
     request.onProgress(partCount, partCount);
-    const combined = await readEach(
-      groupBySize(notes, partCharacters),
+    const shorter = await readEach(
+      groupBySize(combined, groupCharacters),
       request,
       async (group) =>
         (
-          await request.read(combineInstructions, combinePrompt(request.instruction, joined(group)))
+          await request.read(
+            combineInstructions,
+            combinePrompt(request.instruction, joinNotes(group)),
+          )
         ).trim(),
       () => undefined,
     );
-    if (combined.length >= notes.length) throw notesDoNotFit();
-    notes = combined;
+    if (shorter.length >= combined.length) throw notesDoNotFit();
+    combined = shorter;
   }
-  return { partCount, notes: joined(notes) };
+  return combined;
+}
+
+export async function scanTranscript(request: ScanRequest) {
+  if (request.resultCharacters <= 0) throw notesDoNotFit();
+  const notes = await readTranscriptParts(request);
+  return {
+    partCount: notes.length,
+    notes: joinNotes(await combineNotes(request, notes, request.resultCharacters)),
+  };
+}
+
+export async function answerFromTranscriptParts(
+  request: ScanRequest,
+  answer: (notes: string) => Promise<string>,
+) {
+  const parts = await readTranscriptParts(request);
+  let notes: readonly string[] = parts;
+  let room = request.resultCharacters;
+  for (;;) {
+    notes = await combineNotes(request, notes, room, parts.length);
+    try {
+      return await answer(joinNotes(notes));
+    } catch (error) {
+      if (!request.tooLong(error)) throw error;
+      room = Math.floor(joinNotes(notes).length / 2);
+    }
+  }
 }

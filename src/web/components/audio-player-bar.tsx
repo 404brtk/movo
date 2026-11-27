@@ -1,4 +1,6 @@
 import { formatDuration } from "../lib/format.ts";
+import type { ChapterContext } from "./chapter-list.tsx";
+import { CurrentChapter } from "./chapter-sheet.tsx";
 import { cn } from "../lib/utils.ts";
 import {
   type MediaPlayback,
@@ -18,11 +20,13 @@ export function AudioPlayerBar({
   playback,
   title,
   docked,
+  chapterContext,
   className,
 }: {
   playback: MediaPlayback;
   title: string;
   docked: boolean;
+  chapterContext: ChapterContext;
   className?: string | undefined;
 }) {
   const { currentTime, duration } = playback.state;
@@ -59,8 +63,12 @@ export function AudioPlayerBar({
       )}
     >
       <PlayButton playback={playback} className={playClassName} />
-      <div className="w-[150px] min-w-0 max-sm:w-24">
-        <p className="truncate text-[12.5px]/[normal] font-medium">{title}</p>
+      <div className="w-[150px] min-w-0 max-sm:w-32">
+        {playback.chapters.length > 0 ? (
+          <CurrentChapter playback={playback} context={chapterContext} />
+        ) : (
+          <p className="truncate text-[12.5px]/[normal] font-medium">{title}</p>
+        )}
         <p className="text-[11.5px]/[normal] text-muted-foreground tabular-nums">
           {formatDuration(currentTime)} of {formatDuration(duration)}
         </p>

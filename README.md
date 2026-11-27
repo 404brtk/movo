@@ -79,13 +79,13 @@ The local API lists and creates tags at `GET /api/tags` and `POST /api/tags`. Re
 
 ## Search the library
 
-Type in **Search** above the library list to find recordings by title and saved transcript text. Every word must appear in the title or transcript, and each word also matches longer words that start with it, so `nagra` finds “nagranie” and “nagrania”. Case and Latin diacritics are ignored, including letters such as ł, ø, đ and ħ: `lodz` finds “Łódź”. Search punctuation and operators are treated as plain text.
+Type in **Search** above the library list to find recordings by title, transcript, speaker name, summary or key point. Every word must appear somewhere in the recording’s indexed text, and each word also matches longer words that start with it, so `nagra` finds “nagranie” and “nagrania”. Case and Latin diacritics are ignored, including letters such as ł, ø, đ and ħ: `lodz` finds “Łódź”. Search punctuation and operators are treated as plain text.
 
 Transcript results show up to three matching passages with their timestamps and the number of further matches. Choose a passage to open the recording at that moment; the player starts there and the transcript scrolls to the passage. A transcript kept during a replacement transcription remains searchable until the new one completes. Recordings whose saved copy was removed stay searchable; their passage links open the transcript at that passage.
 
 **Type** limits results to audio or video, **Transcript** to recordings with or without a saved transcript, and **Sort by** orders them by best match (while searching), newest, oldest or title. The search, filters and order are kept in the page address, so they survive a refresh and the browser's back button. **Clear search and filters** appears when nothing matches. While any transcription is queued or running, the library refreshes every two seconds, so a finished transcript appears in filtered and search results without reloading.
 
-Search uses two SQLite FTS5 full-text indexes in `app.sqlite`: one row per recording (title and transcript) decides which recordings match and how they rank, and one row per transcript passage, with its start time, supplies the previews. Search therefore never reads the stored transcripts. Movo updates both indexes in the same transaction as imports, renames, deletions and completed transcripts. When the passage rules or the search text folding change, Movo rebuilds the indexes once at startup.
+Search uses two SQLite FTS5 full-text indexes in `app.sqlite`: one row per recording (title, transcript, speakers, summary and key points) decides which recordings match and how they rank, and one row per transcript passage, with its start time, supplies the previews. Search therefore never reads the stored transcripts. Movo updates both indexes in the same transaction as imports, renames, deletions, transcript changes and summary changes. When the passage rules or the search text folding change, Movo rebuilds the indexes once at startup.
 
 ## Download from a link
 
@@ -138,6 +138,16 @@ One transcription runs at a time; other recordings wait in the persistent queue.
 Completed transcripts with speech offer **Copy transcript** and **Export transcript** (**Download TXT**, **Download SRT**, **Download VTT**) above the passages and in **More actions**. The toolbar icons show labels on hover or keyboard focus. TXT and copying contain plain text; SRT and VTT contain timestamped subtitles. Downloads use UTF-8 and the recording title as the suggested filename. Clipboard failures show guidance and leave TXT available. Exporting reuses the saved result without running the model again.
 
 Completed transcripts survive restarts. Queued work resumes; an active operation interrupted by shutdown needs an explicit retry. Temporary audio is separate from saved media and shared model weights. Long recordings need additional disk space and memory for decoded audio. See [local transcription](docs/transcriptions.md) for storage, resource use and HTTP endpoints.
+
+## Summaries and chapters
+
+Open a transcribed recording and choose **Write summary and chapters**. The default Ask model writes a short summary in the transcript’s language, with a bold opening sentence and key points that link to the recording. Generation starts only when you ask. You can leave the page while it runs, or choose **Stop** to keep the previous version.
+
+New downloads keep chapters supplied by the source. When chapters already exist, **Write summary** preserves them. Choose a chapter in the left column or tap the chapter title in the phone player to jump to it. The transcript shows chapter headings and the timeline shows their boundaries.
+
+Use **More actions → Chapters…** to add the first chapter by hand. In **Chapter actions** you can add a chapter at the current time, copy the list for a video description or replace it using the model. On a focused chapter, **F2** edits its title and time, and **Delete** offers **Undo**. The summary’s menu lets you edit the text and timed key points. After a transcript edit, **Update** lets you write a fresh summary.
+
+Library search matches the summary and key points. Ask chats about the recording receive the summary and chapters, and MCP clients read them with `get_recording`. Transcript exports contain only the transcript; choose **Copy summary** in the summary’s menu to take it elsewhere.
 
 ## Use Movo from an AI agent
 

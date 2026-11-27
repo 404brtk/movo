@@ -19,7 +19,10 @@ import { useSpeakerFilter } from "../components/speaker-filter.tsx";
 import { TranscriptionPanel } from "../components/transcription-panel.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Skeleton } from "../components/ui/skeleton.tsx";
-import { ApiError, mediaItemOptions, transcriptionOptions } from "../lib/api.ts";
+import { ApiError, mediaItemOptions, overviewOptions, transcriptionOptions } from "../lib/api.ts";
+import { chapterRanges } from "../../shared/chapters.ts";
+import { ChapterList, type ChapterContext } from "../components/chapter-list.tsx";
+import { RecordingSummary } from "../components/recording-summary.tsx";
 import { formatBytes, formatDuration } from "../lib/format.ts";
 import { useMediaQuery } from "../lib/media-query.ts";
 import { cn } from "../lib/utils.ts";
@@ -274,6 +277,24 @@ function RecordingWorkspace({
     [only, chosen, passages, names],
   );
   const fileAvailable = item.fileRemovedAt === null;
+  const overview = useQuery(overviewOptions(item.id));
+  const previousRevision = useRef(job?.revision);
+  const { refetch: refetchOverview } = overview;
+  useEffect(() => {
+    if (previousRevision.current !== undefined && previousRevision.current !== job?.revision)
+      void refetchOverview();
+    previousRevision.current = job?.revision;
+  }, [job?.revision, refetchOverview]);
+  const durationMs = item.durationSeconds * 1000;
+  const chapters = overview.data?.chapters;
+  const ranges = useMemo(() => chapterRanges(chapters ?? [], durationMs), [chapters, durationMs]);
+  const chapterContext: ChapterContext = {
+    mediaId: item.id,
+    durationMs,
+    sourceUrl: item.sourceUrl,
+    positionMs: fileAvailable ? sync.positionMs : undefined,
+    onSeek: fileAvailable ? sync.seek : undefined,
+  };
   const floatingPlayer = fileAvailable && item.kind === "audio" && !split;
   const compactPlayer = fileAvailable && item.kind === "video" && !split;
   return (
@@ -292,13 +313,20 @@ function RecordingWorkspace({
     >
       <div
         className={
-          split ? "sticky top-[calc(var(--app-header)+1.25rem)] mt-5 flex flex-col" : "contents"
+          split
+            ? "sticky top-[calc(var(--app-header)+1.25rem)] mt-5 flex max-h-[calc(100dvh-var(--app-header)-1.25rem)] flex-col"
+            : "contents"
         }
       >
         <BackRow
           split={split}
           actions={
-            <RecordingMenu item={item} transcribe={transcribe} onTags={() => setTagging(true)} />
+            <RecordingMenu
+              item={item}
+              transcribe={transcribe}
+              chapterContext={chapterContext}
+              onTags={() => setTagging(true)}
+            />
           }
         />
         <RecordingHeading
@@ -320,10 +348,13 @@ function RecordingWorkspace({
             onSeeking={sync.resumeFollowing}
             onShowVideo={sync.stopFollowing}
             playOnly={playOnly}
+            chapters={ranges}
+            chapterContext={chapterContext}
           />
         ) : (
           <SavedCopyRemoved className={split ? undefined : "mt-5"} />
         )}
+        {split ? <ChapterList context={chapterContext} className="order-2 mt-7" /> : null}
       </div>
       <div className={split ? "min-w-0" : "contents"}>
         <TranscriptionPanel
@@ -332,6 +363,18 @@ function RecordingWorkspace({
           action={transcribe}
           toolbarAction={askButton}
           revealMs={startMs}
+          chapters={ranges}
+          summary={
+            <RecordingSummary
+              context={{
+                mediaId: item.id,
+                durationMs,
+                language: job?.transcript?.language ?? null,
+                positionMs: fileAvailable ? sync.positionMs : undefined,
+                onSeek: fileAvailable ? sync.seek : undefined,
+              }}
+            />
+          }
           playback={
             fileAvailable
               ? {

@@ -13,6 +13,7 @@ import { MediaError } from "../media/error.ts";
 import type { createMediaLibrary } from "../media/library.ts";
 import { ChangeRecordingTags } from "../../shared/contracts/media.ts";
 import { tagIdList } from "../../shared/contracts/tags.ts";
+import type { Overviews } from "../overview/overviews.ts";
 import type { Tags } from "../tags/tags.ts";
 import type { Transcriptions } from "../transcriptions/jobs.ts";
 import { defaultListLimit, movoTools } from "./tools.ts";
@@ -22,6 +23,7 @@ export interface McpServices {
   library: ReturnType<typeof createMediaLibrary>;
   downloads: Downloads;
   transcriptions: Transcriptions;
+  overviews: Pick<Overviews, "get">;
   tags: Tags;
   port: number;
 }
@@ -49,7 +51,7 @@ const reported = <A>(operation: Effect.Effect<A, MediaError>) =>
 const changeRequest = Schema.decodeUnknownEffect(ChangeRecordingTags);
 
 export const toolHandlers = (
-  { library, downloads, transcriptions, tags }: Omit<McpServices, "port">,
+  { library, downloads, transcriptions, overviews, tags }: Omit<McpServices, "port">,
   source: TranscriptChangeSource,
   scopeTagIds: readonly string[] = [],
 ) =>
@@ -75,7 +77,18 @@ export const toolHandlers = (
         Effect.all({
           recording: library.get(mediaId),
           transcription: transcriptions.get(mediaId).pipe(Effect.map(summarize)),
-        }),
+          overview: overviews.get(mediaId),
+        }).pipe(
+          Effect.map(({ recording, transcription, overview }) => ({
+            recording,
+            transcription,
+            summary: overview.summary && {
+              text: overview.summary.text,
+              keyPoints: overview.summary.keyPoints,
+            },
+            chapters: overview.chapters.map(({ startMs, title }) => ({ startMs, title })),
+          })),
+        ),
       ),
     read_transcript: ({ mediaId, fromMs = 0, maxPassages = defaultPagePassages }) =>
       reported(

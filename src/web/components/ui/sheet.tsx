@@ -18,13 +18,33 @@ function SheetClose({ ...props }: SheetPrimitive.Close.Props) {
   return <SheetPrimitive.Close data-slot="sheet-close" {...props} />;
 }
 
-function SheetContent({ className, children, ...props }: SheetPrimitive.Popup.Props) {
+const sides = {
+  right:
+    "inset-y-3 right-3 w-[380px] max-w-[calc(100%-1.5rem)] rounded-[18px] data-open:slide-in-from-right-4 data-closed:slide-out-to-right-4",
+  bottom:
+    "inset-x-0 bottom-0 max-h-[85dvh] rounded-t-[18px] pb-[max(1.25rem,env(safe-area-inset-bottom))] data-open:slide-in-from-bottom-4 data-closed:slide-out-to-bottom-4",
+} as const;
+
+function SheetContent({
+  className,
+  children,
+  side = "right",
+  ...props
+}: SheetPrimitive.Popup.Props & { side?: keyof typeof sides }) {
   return (
     <SheetPrimitive.Portal data-slot="sheet-portal">
+      {side === "bottom" ? (
+        <SheetPrimitive.Backdrop
+          data-slot="sheet-overlay"
+          className="fixed inset-0 z-50 bg-scrim duration-200 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+        />
+      ) : null}
       <SheetPrimitive.Popup
         data-slot="sheet-content"
+        data-side={side}
         className={cn(
-          "fixed inset-y-3 right-3 z-50 flex w-[380px] max-w-[calc(100%-1.5rem)] flex-col overflow-y-auto overscroll-contain rounded-[18px] bg-background/92 pb-5 text-[13px] text-foreground shadow-sheet backdrop-blur-xl backdrop-saturate-[1.8] duration-200 outline-none data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-right-4 data-closed:animate-out data-closed:fade-out-0 data-closed:slide-out-to-right-4",
+          "fixed z-50 flex flex-col overflow-y-auto overscroll-contain bg-background/92 pb-5 text-[13px] text-foreground shadow-sheet backdrop-blur-xl backdrop-saturate-[1.8] duration-200 outline-none data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+          sides[side],
           className,
         )}
         {...props}

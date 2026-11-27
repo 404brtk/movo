@@ -6,6 +6,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
+import { formatMoment, type ChapterRange } from "../../shared/chapters.ts";
 import type { Transcript } from "../../shared/contracts/transcriptions.ts";
 import {
   currentWordIndex,
@@ -309,6 +310,19 @@ function FoldRow({
   );
 }
 
+function ChapterHeading({ range }: { range: ChapterRange }) {
+  return (
+    <li className="mt-6 mb-0.5 scroll-mt-14">
+      <p className="text-xs/4 text-muted-foreground tabular-nums">
+        {formatMoment(range.startMs)}–{formatMoment(range.endMs)}
+      </p>
+      <h3 className="mt-0.5 text-[19px]/[26px] font-semibold tracking-[-0.015em] text-balance wrap-anywhere">
+        {range.chapter.title}
+      </h3>
+    </li>
+  );
+}
+
 const contains = (passage: TranscriptPassage, word: number) =>
   word >= passage.firstWord && word < passage.firstWord + passage.words.length;
 
@@ -322,7 +336,9 @@ export function TranscriptReader({
   skipping = false,
   matches,
   found,
+  chapters = [],
 }: {
+  chapters?: readonly ChapterRange[] | undefined;
   transcript: Transcript;
   playback?: TranscriptPlayback | undefined;
   revealMs?: number | undefined;
@@ -352,6 +368,19 @@ export function TranscriptReader({
   const currentIndex = passages.findIndex((passage) => contains(passage, currentWord));
   const currentPassage = passages[currentIndex];
   const rows = useMemo(() => transcriptRows(passages, chosenSpeakers), [passages, chosenSpeakers]);
+  const headings = useMemo(() => {
+    const byPassage = new Map<number, ChapterRange[]>();
+    for (const range of chapters) {
+      const passage = passages.findIndex((entry) => entry.startMs >= range.startMs);
+      if (passage >= 0) byPassage.set(passage, [...(byPassage.get(passage) ?? []), range]);
+    }
+    return byPassage;
+  }, [chapters, passages]);
+  const chapterHeadings = (start: number, end = start + 1) =>
+    passages
+      .slice(start, end)
+      .flatMap((_, offset) => headings.get(start + offset) ?? [])
+      .map((range) => <ChapterHeading key={`chapter-${range.chapter.id}`} range={range} />);
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
   const toggleFold = (firstWord: number) => {
     const next = new Set(expanded);
@@ -391,7 +420,7 @@ export function TranscriptReader({
     suspended,
     onFollowingChange: playback?.onFollowingChange,
   });
-  const passageAt = (index: number, opensFold: boolean) => {
+  const passageAt = (index: number, afterHeading: boolean) => {
     const passage = passages[index];
     if (!passage) return null;
     const previousSpeaker = passages[index - 1]?.speaker;
@@ -419,7 +448,7 @@ export function TranscriptReader({
             ? undefined
             : previousSpeaker === passage.speaker
               ? "continued"
-              : index > 0 && !opensFold
+              : index > 0 && !afterHeading
                 ? "turn"
                 : undefined
         }
@@ -440,12 +469,14 @@ export function TranscriptReader({
     <>
       <ol ref={list} aria-label="Timestamped passages">
         {rows.flatMap((row, rowIndex) => {
-          if (row.kind === "passage") return [passageAt(row.index, false)];
+          if (row.kind === "passage")
+            return [...chapterHeadings(row.index), passageAt(row.index, headings.has(row.index))];
           const folded = passages.slice(row.start, row.end);
           const firstWord = folded[0]?.firstWord ?? row.start;
           const open = foldOpen(row);
           const previous = rows[rowIndex - 1];
           return [
+            ...(open ? chapterHeadings(row.start) : chapterHeadings(row.start, row.end)),
             <FoldRow
               key={`fold-${firstWord}`}
               label={row.speaker === undefined ? "No speaker" : speakers.label(row.speaker)}
@@ -463,7 +494,13 @@ export function TranscriptReader({
               }
               onToggle={() => toggleFold(firstWord)}
             />,
-            ...(open ? folded.map((_, offset) => passageAt(row.start + offset, offset === 0)) : []),
+            ...(open
+              ? folded.flatMap((_, offset) => {
+                  const index = row.start + offset;
+                  if (offset === 0) return [passageAt(index, true)];
+                  return [...chapterHeadings(index), passageAt(index, headings.has(index))];
+                })
+              : []),
           ];
         })}
       </ol>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
+import { BookOpen01Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Toast } from "@base-ui/react/toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,21 +16,33 @@ import { copyFailureMessage } from "../lib/transcript-sharing.ts";
 import { useRecordingActions } from "./recording-actions.tsx";
 import { RenameRecordingDialog } from "./rename-recording-dialog.tsx";
 import { Button } from "./ui/button.tsx";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
+import { MenuIcon } from "./menu-icon.tsx";
+import type { ChapterContext } from "./chapter-list.tsx";
+import { ChapterSheetContent } from "./chapter-sheet.tsx";
+import { Sheet } from "./ui/sheet.tsx";
 
 export function RecordingMenu({
   item,
   transcribe,
+  chapterContext,
   onTags,
 }: {
   item: MediaItem;
   transcribe: TranscriptionActionMutation;
+  chapterContext: ChapterContext;
   onTags: () => void;
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const trigger = useRef<HTMLButtonElement>(null);
   const [renaming, setRenaming] = useState(false);
+  const [showChapters, setShowChapters] = useState(false);
   const { add: addToast } = Toast.useToastManager();
   const leaveRecording = async () => {
     await navigate({ to: "/", replace: true });
@@ -90,9 +102,16 @@ export function RecordingMenu({
           <HugeiconsIcon icon={MoreHorizontalIcon} aria-hidden="true" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-[236px]">
+          <DropdownMenuItem onClick={() => setShowChapters(true)}>
+            <MenuIcon icon={BookOpen01Icon} />
+            Chapters…
+          </DropdownMenuItem>
           {actions.items}
         </DropdownMenuContent>
       </DropdownMenu>
+      <Sheet open={showChapters} onOpenChange={setShowChapters}>
+        <ChapterSheetContent context={chapterContext} onPicked={() => setShowChapters(false)} />
+      </Sheet>
       <RenameRecordingDialog
         item={item}
         open={renaming}
