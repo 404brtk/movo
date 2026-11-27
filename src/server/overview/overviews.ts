@@ -267,7 +267,11 @@ export function createOverviews(
         updateOverview(database, mediaId, { writingPart: null, writingParts: null });
         answer = await read(instructions, notesPrompt(context.title, notes.notes));
       }
-      const written = normalizeOverview(parseOverview(answer, scope), context.moments);
+      const written = normalizeOverview(
+        parseOverview(answer, scope),
+        context.moments,
+        item.durationSeconds * 1000,
+      );
       signal.throwIfAborted();
       database.transaction((transaction) => {
         if (!transaction.select().from(mediaItems).where(eq(mediaItems.id, mediaId)).get()) return;

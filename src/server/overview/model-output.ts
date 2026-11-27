@@ -107,6 +107,7 @@ export function nearestMoment(moments: readonly number[], startMs: number) {
 export function normalizeOverview(
   answer: ReturnType<typeof parseOverview>,
   moments: readonly number[],
+  endMs: number,
 ) {
   const snap = (startMs: number) => nearestMoment(moments, Math.max(0, Math.round(startMs)));
   const keyPoints = uniqueByStart(
@@ -126,6 +127,8 @@ export function normalizeOverview(
     if (!previous) chapters.push({ ...chapter, startMs: moments[0] ?? 0 });
     else if (chapter.startMs - previous.startMs >= minChapterMs) chapters.push(chapter);
   }
+  const last = chapters.at(-1);
+  if (last && endMs - last.startMs < minChapterMs) chapters.pop();
   return {
     summary: answer.summary === undefined ? null : summaryText(answer.summary),
     keyPoints,

@@ -66,6 +66,7 @@ describe("model overview output", () => {
           ],
         },
         moments,
+        460_000,
       ),
     ).toEqual({
       summary: "First line.\nSecond  line.\n\nThird.",
@@ -81,9 +82,22 @@ describe("model overview output", () => {
     });
   });
 
+  it("merges a final chapter that ends less than a minute later into the one before", () => {
+    const chapters = [
+      { startMs: 0, title: "Opening" },
+      { startMs: 130_000, title: "Budget" },
+      { startMs: 400_000, title: "Thanks" },
+    ];
+    expect(normalizeOverview({ chapters }, moments, 450_000).chapters).toEqual([
+      { startMs: 0, title: "Opening" },
+      { startMs: 130_000, title: "Budget" },
+    ]);
+  });
+
   it("writes no chapters when fewer than two remain", () => {
     expect(
-      normalizeOverview({ chapters: [{ startMs: 0, title: "Everything" }] }, moments).chapters,
+      normalizeOverview({ chapters: [{ startMs: 0, title: "Everything" }] }, moments, 460_000)
+        .chapters,
     ).toEqual([]);
   });
 });
