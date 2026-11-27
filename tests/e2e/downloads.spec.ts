@@ -115,6 +115,7 @@ test("keeps video links in a mixed paste and offers only supported collections",
   await expect(picker.getByText("Public channel", { exact: true })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(1);
   await expect(picker.getByRole("checkbox", { name: new RegExp(watch.title) })).toBeDisabled();
+  await expect(picker.getByRole("checkbox", { name: "Select all loaded" })).toHaveCount(0);
   await expect(picker.getByRole("button", { name: "Load more" })).toHaveCount(0);
   await picker.getByRole("button", { name: "Back to links" }).press("Enter");
   await expect(field).toBeFocused();
@@ -124,7 +125,7 @@ test("keeps video links in a mixed paste and offers only supported collections",
   expect(collectionReads).toEqual([{ url: channel }]);
 });
 
-test("loads collection pages on demand, preserves selection and queues videos in source order", async ({
+test("selects all loaded videos and queues a large collection in source order", async ({
   page,
 }) => {
   const draft = [
@@ -198,13 +199,26 @@ test("loads collection pages on demand, preserves selection and queues videos in
   await expect(checkbox(0)).toBeDisabled();
   await expect(videos.getByText("In draft", { exact: true })).toBeVisible();
   const loadMore = picker.getByRole("button", { name: "Load more", exact: true });
+  const selectAll = picker.getByRole("checkbox", { name: "Select all loaded" });
+  const selectedCount = picker.getByRole("group", { name: "Loaded videos" }).getByRole("status");
+  await expect(selectAll).toBeInViewport();
   await expect(loadMore).toBeInViewport();
+  await expect(selectedCount).toHaveText("0 of 49 selected");
   expect(await picker.evaluate(scrollingAreas)).toEqual(["Collection videos"]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
   await expect(videos.getByText("1:02").first()).toBeVisible();
   await checkbox(49).press("Space");
   await expect(checkbox(49)).toBeChecked();
-  await expect(picker.getByText("1 selected", { exact: true })).toBeVisible();
+  await expect(selectAll).toHaveAttribute("aria-checked", "mixed");
+  await expect(selectedCount).toHaveText("1 of 49 selected");
+  await selectAll.press("Space");
+  await expect(selectAll).toBeChecked();
+  await expect(selectedCount).toHaveText("49 of 49 selected");
+  await expect(checkbox(0)).not.toBeChecked();
+  await selectAll.press("Space");
+  await expect(picker.getByRole("button", { name: "Add videos", exact: true })).toBeDisabled();
+  await selectAll.press("Space");
+  await expect(selectAll).toBeChecked();
   expect(pages).toEqual([undefined]);
   const scroll = await videos.evaluate((element) => element.scrollTop);
   expect(scroll).toBeGreaterThan(0);
@@ -217,24 +231,26 @@ test("loads collection pages on demand, preserves selection and queues videos in
   await expect(checkbox(49)).toBeChecked();
   await expect(picker.getByRole("button", { name: "Load more", exact: true })).toHaveCount(0);
 
-  await checkbox(49).press("Space");
+  await expect(selectAll).toHaveAttribute("aria-checked", "mixed");
+  await expect(selectedCount).toHaveText("49 of 51 selected");
+  await expect(checkbox(50)).not.toBeChecked();
+  await expect(checkbox(51)).not.toBeChecked();
   await videos.getByText(later.title, { exact: true }).click();
-  await checkbox(49).press("Space");
-  await expect(checkbox(50)).toBeEnabled();
-  await picker.getByRole("button", { name: "Add 2 videos" }).click();
+  await picker.getByRole("button", { name: "Add 50 videos" }).click();
   await expect(field).toBeFocused();
   await expect(quality).toHaveAttribute("aria-pressed", "true");
   await expect(transcribe).toBeChecked();
   await expect(
     form.getByRole("list", { name: "Links", exact: true }).getByRole("listitem"),
-  ).toHaveCount(20);
+  ).toHaveCount(68);
   await expect(form.getByText(later.title, { exact: true })).toBeVisible();
-  await form.getByRole("button", { name: "Download 20", exact: true }).click();
+  await expect(form.getByText(/^(?:Waiting to check|Checking…)$/u)).toHaveCount(0);
+  await form.getByRole("button", { name: "Download 68", exact: true }).click();
   await expect(form.getByText("Public playlist", { exact: true })).toBeVisible();
   await expect(form.getByRole("list", { name: "Links", exact: true })).toHaveCount(0);
   expect(enqueued).toEqual([
     {
-      links: [...draft, earlier, later].map(({ url: videoUrl, title }) => ({
+      links: [...draft, ...firstPage.slice(1), later].map(({ url: videoUrl, title }) => ({
         url: videoUrl,
         title,
         preset: "video-720p",
@@ -244,7 +260,7 @@ test("loads collection pages on demand, preserves selection and queues videos in
   ]);
   await form.getByRole("button", { name: "Choose videos", exact: true }).click();
   await expect(videos.getByRole("checkbox")).toHaveCount(52);
-  await expect(picker.getByText("0 selected", { exact: true })).toBeVisible();
+  await expect(selectedCount).toHaveText("0 of 52 selected");
   expect(pages).toEqual([undefined, cursor, cursor]);
   await checkbox(50).press("Space");
   await picker.getByRole("button", { name: "Add 1 video" }).click();

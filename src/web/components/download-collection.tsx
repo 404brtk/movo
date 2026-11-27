@@ -77,6 +77,9 @@ export function DownloadCollection({
     ) ?? [];
   const title = collection.data?.pages[0]?.title;
   const existing = new Set(rows.map((row) => row.key));
+  const selectable = videos.filter((video) => !existing.has(video.url));
+  const allSelected = selectable.length > 0 && selected.size === selectable.length;
+  const selectAllId = `${id}-all`;
   const error = ytdlp.error ?? collection.error;
   const loadingMore = collection.isFetchingNextPage;
   const pageError = collection.isFetchNextPageError ? collection.error : null;
@@ -146,72 +149,106 @@ export function DownloadCollection({
             )}
           >
             {videos.length > 0 ? (
-              <ul
-                ref={list}
-                tabIndex={-1}
-                aria-label="Collection videos"
+              <div
                 className={cn(
-                  "max-h-72 min-h-0 overflow-y-auto overscroll-contain outline-none scroll-shadow-y",
-                  pageError && "rounded-xl border",
+                  "flex min-h-0 flex-col",
+                  pageError && "overflow-hidden rounded-xl border bg-background",
                 )}
               >
-                {videos.map((video, index) => {
-                  const checkboxId = `${id}-${index}`;
-                  const checked = selected.has(video.url);
-                  const duplicate = existing.has(video.url);
-                  return (
-                    <li
-                      key={video.url}
-                      className={cn(
-                        "flex items-center gap-2.5 border-t bg-background px-3 first:border-t-0 max-sm:px-2.5",
-                        !duplicate && "hover:bg-subtle",
-                        checked && "bg-tint hover:bg-highlight",
-                      )}
+                {selectable.length > 0 ? (
+                  <fieldset
+                    aria-label="Loaded videos"
+                    className="m-0 flex min-w-0 shrink-0 items-center gap-2.5 border-0 border-b px-3 py-2 max-sm:px-2.5"
+                  >
+                    <Checkbox
+                      id={selectAllId}
+                      checked={allSelected}
+                      indeterminate={selected.size > 0 && !allSelected}
+                      onCheckedChange={(checked) =>
+                        setSelected(new Set(checked ? selectable.map((video) => video.url) : []))
+                      }
+                    />
+                    <label
+                      htmlFor={selectAllId}
+                      className="text-[13px] font-medium whitespace-nowrap"
                     >
-                      <Checkbox
-                        id={checkboxId}
-                        checked={checked}
-                        disabled={duplicate}
-                        onCheckedChange={(value) =>
-                          setSelected((current) => {
-                            const next = new Set(current);
-                            if (value) next.add(video.url);
-                            else next.delete(video.url);
-                            return next;
-                          })
-                        }
-                      />
-                      <label
-                        htmlFor={checkboxId}
-                        className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 py-2"
+                      Select all loaded
+                    </label>
+                    <output
+                      aria-live="polite"
+                      className="text-[12.5px] whitespace-nowrap text-muted-foreground tabular-nums"
+                    >
+                      {selected.size} of {selectable.length}
+                      <span className="max-sm:sr-only"> selected</span>
+                    </output>
+                  </fieldset>
+                ) : null}
+                <ul
+                  ref={list}
+                  tabIndex={-1}
+                  aria-label="Collection videos"
+                  className="max-h-72 min-h-0 overflow-y-auto overscroll-contain outline-none scroll-shadow-y"
+                >
+                  {videos.map((video, index) => {
+                    const checkboxId = `${id}-${index}`;
+                    const checked = selected.has(video.url);
+                    const duplicate = existing.has(video.url);
+                    return (
+                      <li
+                        key={video.url}
+                        className={cn(
+                          "flex items-center gap-2.5 border-t bg-background px-3 first:border-t-0 max-sm:px-2.5",
+                          !duplicate && "hover:bg-subtle",
+                          checked && "bg-tint hover:bg-highlight",
+                        )}
                       >
-                        <MediaThumbnail
-                          item={{ id: video.url, kind: "video" }}
-                          className="max-[360px]:hidden"
+                        <Checkbox
+                          id={checkboxId}
+                          checked={checked}
+                          disabled={duplicate}
+                          onCheckedChange={(value) =>
+                            setSelected((current) => {
+                              const next = new Set(current);
+                              if (value) next.add(video.url);
+                              else next.delete(video.url);
+                              return next;
+                            })
+                          }
                         />
-                        <span className="min-w-0 flex-1">
-                          <span
-                            className={cn(
-                              "block text-[13px]/[18px] font-medium wrap-anywhere",
-                              duplicate && "text-muted-foreground",
-                            )}
-                          >
-                            {video.title}
+                        <label
+                          htmlFor={checkboxId}
+                          className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 py-2"
+                        >
+                          <MediaThumbnail
+                            item={{ id: video.url, kind: "video" }}
+                            className="max-[360px]:hidden"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span
+                              className={cn(
+                                "block text-[13px]/[18px] font-medium wrap-anywhere",
+                                duplicate && "text-muted-foreground",
+                              )}
+                            >
+                              {video.title}
+                            </span>
+                            {duplicate ? (
+                              <span className="block text-xs/4 text-muted-foreground">
+                                In draft
+                              </span>
+                            ) : null}
                           </span>
-                          {duplicate ? (
-                            <span className="block text-xs/4 text-muted-foreground">In draft</span>
+                          {video.durationSeconds !== null ? (
+                            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                              {formatDuration(video.durationSeconds)}
+                            </span>
                           ) : null}
-                        </span>
-                        {video.durationSeconds !== null ? (
-                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                            {formatDuration(video.durationSeconds)}
-                          </span>
-                        ) : null}
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             ) : (
               <p className="px-3 py-2.5 text-xs/[17px] text-muted-foreground">
                 No available videos on this page.
@@ -281,8 +318,7 @@ export function DownloadCollection({
           </div>
         )}
       </div>
-      <DialogFooter className="mt-0 shrink-0 flex-row items-center justify-between gap-2 max-sm:px-4 sm:justify-between">
-        <output className="text-xs font-medium text-foreground">{selected.size} selected</output>
+      <DialogFooter className="mt-0 shrink-0 flex-row justify-end max-sm:px-4">
         <Button
           disabled={!ready || selected.size === 0}
           onClick={() =>
