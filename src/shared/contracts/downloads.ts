@@ -64,13 +64,10 @@ export const DownloadPreview = Schema.Struct({
 });
 export type DownloadPreview = typeof DownloadPreview.Type;
 export const collectionPageSize = 50;
+const CollectionCursor = Schema.String.check(Schema.isUUID());
 export const DownloadCollectionRequest = Schema.Struct({
   url: Schema.String.check(Schema.isMaxLength(maxDownloadLinkLength)),
-  page: Schema.Number.check(
-    Schema.isInt(),
-    Schema.isGreaterThanOrEqualTo(0),
-    Schema.isLessThan(Math.floor(Number.MAX_SAFE_INTEGER / collectionPageSize)),
-  ),
+  cursor: Schema.optional(CollectionCursor),
 });
 export type DownloadCollectionRequest = typeof DownloadCollectionRequest.Type;
 const CollectionVideo = Schema.Struct({
@@ -87,7 +84,7 @@ const CollectionVideo = Schema.Struct({
 export const DownloadCollectionPage = Schema.Struct({
   title: Schema.NullOr(DownloadTitle),
   videos: Schema.Array(CollectionVideo).check(Schema.isMaxLength(collectionPageSize)),
-  hasMore: Schema.Boolean,
+  nextCursor: Schema.NullOr(CollectionCursor),
 });
 export const DownloadJob = Schema.Struct({
   id: MediaId,

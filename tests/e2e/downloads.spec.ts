@@ -66,7 +66,7 @@ test("keeps video links in a mixed paste and offers only supported collections",
   const collectionReads: unknown[] = [];
   await page.route("**/api/downloads/collection", (route) => {
     collectionReads.push(route.request().postDataJSON());
-    return route.fulfill({ json: { title: "Public channel", videos: [watch], hasMore: false } });
+    return route.fulfill({ json: { title: "Public channel", videos: [watch], nextCursor: null } });
   });
   await page.route("**/api/downloads/preview", (route) => {
     const { url: videoUrl } = Schema.decodeUnknownSync(DownloadPreviewRequest)(
@@ -121,7 +121,7 @@ test("keeps video links in a mixed paste and offers only supported collections",
   await expect(
     form.getByRole("list", { name: "Links", exact: true }).getByRole("listitem"),
   ).toHaveCount(2);
-  expect(collectionReads).toEqual([{ url: channel, page: 0 }]);
+  expect(collectionReads).toEqual([{ url: channel }]);
 });
 
 test("loads collection pages on demand, preserves selection and queues videos in source order", async ({
@@ -134,7 +134,8 @@ test("loads collection pages on demand, preserves selection and queues videos in
   const firstPage = Array.from({ length: 50 }, (_, index) => collectionVideo(index));
   const earlier = collectionVideo(49);
   const later = collectionVideo(51);
-  const pages: number[] = [];
+  const cursor = "d859c338-9ea4-481d-bee0-0f4f7881e014";
+  const pages: (string | undefined)[] = [];
   const enqueued: unknown[] = [];
   await page.clock.install();
   await page.route("**/api/downloads/collection", (route) => {
@@ -143,14 +144,14 @@ test("loads collection pages on demand, preserves selection and queues videos in
       route.request().postDataJSON(),
     );
     expect(request.url).toBe(playlist);
-    pages.push(request.page);
-    if (request.page === 1 && pages.length === 2)
+    pages.push(request.cursor);
+    if (request.cursor && pages.length === 2)
       return route.fulfill({ status: 503, json: { error: "YouTube is temporarily unavailable." } });
     return route.fulfill({
       json: {
         title: "Public playlist",
-        videos: request.page === 0 ? firstPage : [earlier, collectionVideo(50), later],
-        hasMore: request.page === 0,
+        videos: request.cursor ? [earlier, collectionVideo(50), later] : firstPage,
+        nextCursor: request.cursor ? null : cursor,
       },
     });
   });
@@ -201,7 +202,7 @@ test("loads collection pages on demand, preserves selection and queues videos in
   await checkbox(49).press("Space");
   await expect(checkbox(49)).toBeChecked();
   await expect(picker.getByText("1 selected", { exact: true })).toBeVisible();
-  expect(pages).toEqual([0]);
+  expect(pages).toEqual([undefined]);
   const scroll = await videos.evaluate((element) => element.scrollTop);
   expect(scroll).toBeGreaterThan(0);
   await picker.getByRole("button", { name: "Load more", exact: true }).click();
@@ -242,7 +243,7 @@ test("loads collection pages on demand, preserves selection and queues videos in
   await form.getByRole("button", { name: "Choose videos", exact: true }).click();
   await expect(videos.getByRole("checkbox")).toHaveCount(52);
   await expect(picker.getByText("0 selected", { exact: true })).toBeVisible();
-  expect(pages).toEqual([0, 1, 1]);
+  expect(pages).toEqual([undefined, cursor, cursor]);
   await checkbox(50).press("Space");
   await picker.getByRole("button", { name: "Add 1 video" }).click();
   await expect(quality).toHaveAttribute("aria-pressed", "true");
@@ -264,6 +265,44 @@ test("loads collection pages on demand, preserves selection and queues videos in
   await form.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByRole("button", { name: "Download from link", exact: true }).click();
   await expect(form.getByRole("list", { name: "YouTube collections" })).toHaveCount(0);
+});
+
+test("keeps the selection available when a collection cursor expires and can restart", async ({
+  page,
+}) => {
+  const first = collectionVideo(0);
+  const replacement = collectionVideo(1);
+  const cursor = "d859c338-9ea4-481d-bee0-0f4f7881e014";
+  let starts = 0;
+  await page.route("**/api/downloads/collection", (route) => {
+    const request = Schema.decodeUnknownSync(DownloadCollectionRequest)(
+      route.request().postDataJSON(),
+    );
+    if (request.cursor)
+      return route.fulfill({ status: 409, json: { error: "This list has expired." } });
+    starts++;
+    return route.fulfill({
+      json: {
+        title: "Public playlist",
+        videos: starts === 1 ? [first] : [replacement],
+        nextCursor: starts === 1 ? cursor : null,
+      },
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
+  const field = page.getByRole("textbox", { name: "Add links" });
+  await field.fill(playlist);
+  await field.press("Enter");
+  const picker = page.getByRole("dialog", { name: "Choose videos" });
+  await picker.getByRole("checkbox", { name: new RegExp(first.title) }).press("Space");
+  await picker.getByRole("button", { name: "Load more", exact: true }).click();
+  await expect(picker.getByRole("alert")).toContainText("This list has expired.");
+  await expect(picker.getByRole("button", { name: "Add 1 video" })).toBeEnabled();
+  await picker.getByRole("button", { name: "Start again" }).click();
+  await expect(picker.getByRole("checkbox", { name: new RegExp(replacement.title) })).toBeVisible();
+  await expect(picker.getByRole("button", { name: "Add videos" })).toBeDisabled();
+  expect(starts).toBe(2);
 });
 
 test("keeps saved media available when temporary download cleanup fails", async ({ page }) => {

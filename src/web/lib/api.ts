@@ -273,12 +273,12 @@ export const collectionOptions = (url: string) =>
       readResponse(
         client.api.downloads.collection.$post(
           {},
-          { init: { ...jsonBody({ url, page: pageParam }).init, signal } },
+          { init: { ...jsonBody({ url, cursor: pageParam ?? undefined }).init, signal } },
         ),
         DownloadCollectionPage,
       ),
-    initialPageParam: 0,
-    getNextPageParam: (last, _pages, page) => (last.hasMore ? page + 1 : undefined),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
     staleTime: Infinity,
     retry: false,
   });

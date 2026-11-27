@@ -1,10 +1,10 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { maxDownloadLinks } from "../../shared/contracts/downloads.ts";
 import type { YouTubeCollection } from "../../shared/download-sources.ts";
-import { collectionOptions, ytdlpOptions } from "../lib/api.ts";
+import { ApiError, collectionOptions, ytdlpOptions } from "../lib/api.ts";
 import { countLabel, type LinkRow } from "../lib/download-links.ts";
 import { formatDuration } from "../lib/format.ts";
 import { Spinner } from "./spinner.tsx";
@@ -31,7 +31,9 @@ export function DownloadCollection({
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
   const ytdlp = useQuery(ytdlpOptions);
   const ready = ytdlp.data?.ytdlp.state === "ready";
-  const collection = useInfiniteQuery({ ...collectionOptions(source.url), enabled: ready });
+  const queryClient = useQueryClient();
+  const options = collectionOptions(source.url);
+  const collection = useInfiniteQuery({ ...options, enabled: ready });
   const seen = new Set<string>();
   const videos =
     collection.data?.pages.flatMap((page) =>
@@ -47,6 +49,10 @@ export function DownloadCollection({
   const full = selected.size >= capacity;
   const error = ytdlp.error ?? collection.error;
   const loadingMore = collection.isFetchingNextPage;
+  const restartNeeded =
+    collection.isFetchNextPageError &&
+    collection.error instanceof ApiError &&
+    collection.error.status === 409;
   useEffect(() => back.current?.focus(), []);
 
   const loadNextPage = async () => {
@@ -169,6 +175,9 @@ export function DownloadCollection({
                 {collection.isFetchNextPageError ? (
                   <p role="alert" className="min-w-0 text-xs/[17px] wrap-anywhere text-destructive">
                     {collection.error.message}
+                    {restartNeeded && selected.size > 0
+                      ? " Add your selected videos before starting again."
+                      : null}
                   </p>
                 ) : null}
                 <Button
@@ -179,12 +188,20 @@ export function DownloadCollection({
                   focusableWhenDisabled
                   disabled={loadingMore}
                   aria-busy={loadingMore}
-                  onClick={() => void loadNextPage()}
+                  onClick={() => {
+                    if (restartNeeded) {
+                      setSelected(new Set());
+                      back.current?.focus();
+                      void queryClient.resetQueries({ queryKey: options.queryKey, exact: true });
+                    } else void loadNextPage();
+                  }}
                 >
                   {loadingMore ? (
                     <>
                       <Spinner /> Loading more…
                     </>
+                  ) : restartNeeded ? (
+                    "Start again"
                   ) : collection.isFetchNextPageError ? (
                     "Retry load more"
                   ) : (
