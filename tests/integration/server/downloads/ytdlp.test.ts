@@ -221,13 +221,14 @@ describe("YouTube collection preview", () => {
           webpage_url: channel,
           uploader_id: "@Example",
           entries: [collectionVideo],
-          title: null,
+          title: "Channel (test) - Videos - Videos",
+          channel: "Channel (test) - Videos",
         }),
       ),
     );
     expect(
       await Effect.runPromise(downloader.previewCollection({ url: channel, page: 0 })),
-    ).toMatchObject({ title: null, hasMore: false, videos: [{ url }] });
+    ).toMatchObject({ title: "Channel (test) - Videos", hasMore: false, videos: [{ url }] });
   });
 });
 

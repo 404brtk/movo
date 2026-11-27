@@ -14,6 +14,7 @@ const CollectionMetadata = Schema.Struct({
   extractor_key: Schema.Literal("YoutubeTab"),
   id: Schema.String,
   title: OptionalText,
+  channel: OptionalText,
   webpage_url: OptionalText,
   channel_id: OptionalText,
   uploader_id: OptionalText,
@@ -117,7 +118,10 @@ export function readCollectionPage(raw: string, source: YouTubeCollection, start
     });
   }
   return Schema.decodeUnknownSync(DownloadCollectionPage)({
-    title: cleanTitle(metadata.title),
+    title:
+      source.kind === "channel"
+        ? cleanTitle(metadata.channel) ?? cleanTitle(metadata.title?.replace(/ - Videos$/u, ""))
+        : cleanTitle(metadata.title),
     videos: [...videos.values()],
     hasMore: positions.at(-1) === end,
   });
