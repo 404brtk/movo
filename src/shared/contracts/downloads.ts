@@ -35,7 +35,6 @@ export const retryableDownloadStates: ReadonlySet<(typeof downloadStates)[number
   "interrupted",
 ]);
 export const DownloadPreviewRequest = Schema.Struct({ url: Schema.String });
-export const maxDownloadLinks = 20;
 const DownloadTitle = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512));
 export const DownloadLinkRequest = Schema.Struct({
   url: Schema.String,
@@ -44,10 +43,7 @@ export const DownloadLinkRequest = Schema.Struct({
 });
 export type DownloadLinkRequest = typeof DownloadLinkRequest.Type;
 export const DownloadRequest = Schema.Struct({
-  links: Schema.Array(DownloadLinkRequest).check(
-    Schema.isMinLength(1),
-    Schema.isMaxLength(maxDownloadLinks),
-  ),
+  links: Schema.Array(DownloadLinkRequest).check(Schema.isMinLength(1)),
   transcribe: Schema.optional(Schema.Boolean),
 });
 export type DownloadRequest = typeof DownloadRequest.Type;

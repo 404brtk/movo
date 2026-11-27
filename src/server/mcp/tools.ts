@@ -6,7 +6,6 @@ import {
   DownloadPreviewRequest,
   DownloadRequest,
   downloadSiteNames,
-  maxDownloadLinks,
 } from "../../shared/contracts/downloads.ts";
 import { LibraryItem, LibraryQuery } from "../../shared/contracts/library.ts";
 import { MediaDeletion, MediaId, MediaItem, MediaTitle } from "../../shared/contracts/media.ts";
@@ -45,6 +44,7 @@ export const TranscriptionSummary = Schema.NullOr(
   }),
 );
 export const defaultListLimit = 20;
+const maxMcpDownloadLinks = 20;
 const Page = { limit: limit(100), offset: Schema.optional(Count) };
 const Recording = Schema.Struct({ mediaId: MediaId });
 const Download = Schema.Struct({ downloadId: MediaId });
@@ -137,8 +137,11 @@ export const movoTools = Toolkit.make(
     hints({ readOnly: true, destructive: false, idempotent: true, openWorld: true }),
   ),
   Tool.make("download_links", {
-    description: `Queue downloads of videos or podcast episodes from ${downloadSiteNames} into the library, in the given order. Pass up to ${maxDownloadLinks} links, each with its own url and optional preset. Returns one job per link. If any link is unsupported, nothing is queued. preset is video-480p, video-720p, video-1080p (default), video-best or audio; video presets cap the shorter side of the frame and use the best lower resolution a source offers; podcast episodes are always saved as audio. Set transcribe to transcribe each recording once it is saved. The same link and preset return the existing job; a failed, cancelled or interrupted one is queued again. A link and preset already saved in the library return a completed job for that recording instead of downloading it again. Downloads run one at a time in the background; check them with get_download every few seconds.`,
-    parameters: DownloadRequest,
+    description: `Queue downloads of videos or podcast episodes from ${downloadSiteNames} into the library, in the given order. Pass up to ${maxMcpDownloadLinks} links, each with its own url and optional preset. Returns one job per link. If any link is unsupported, nothing is queued. preset is video-480p, video-720p, video-1080p (default), video-best or audio; video presets cap the shorter side of the frame and use the best lower resolution a source offers; podcast episodes are always saved as audio. Set transcribe to transcribe each recording once it is saved. The same link and preset return the existing job; a failed, cancelled or interrupted one is queued again. A link and preset already saved in the library return a completed job for that recording instead of downloading it again. Downloads run one at a time in the background; check them with get_download every few seconds.`,
+    parameters: Schema.Struct({
+      ...DownloadRequest.fields,
+      links: DownloadRequest.fields.links.check(Schema.isMaxLength(maxMcpDownloadLinks)),
+    }),
     success: Schema.Struct({ jobs: Schema.Array(DownloadJob) }),
     failure,
   }).annotateMerge(changes({ idempotent: true, openWorld: true })),

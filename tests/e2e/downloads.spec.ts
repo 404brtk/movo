@@ -199,14 +199,12 @@ test("loads collection pages on demand, preserves selection and queues videos in
   await expect(videos.getByText("In draft", { exact: true })).toBeVisible();
   const loadMore = picker.getByRole("button", { name: "Load more", exact: true });
   await expect(loadMore).toBeInViewport();
-  await expect(picker.getByText("2 slots left", { exact: true })).toBeVisible();
   expect(await picker.evaluate(scrollingAreas)).toEqual(["Collection videos"]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
   await expect(videos.getByText("1:02").first()).toBeVisible();
   await checkbox(49).press("Space");
   await expect(checkbox(49)).toBeChecked();
   await expect(picker.getByText("1 selected", { exact: true })).toBeVisible();
-  await expect(picker.getByText("1 slot left", { exact: true })).toBeVisible();
   expect(pages).toEqual([undefined]);
   const scroll = await videos.evaluate((element) => element.scrollTop);
   expect(scroll).toBeGreaterThan(0);
@@ -222,8 +220,7 @@ test("loads collection pages on demand, preserves selection and queues videos in
   await checkbox(49).press("Space");
   await videos.getByText(later.title, { exact: true }).click();
   await checkbox(49).press("Space");
-  await expect(checkbox(50)).toBeDisabled();
-  await expect(picker.getByText("20-link limit reached.")).toBeVisible();
+  await expect(checkbox(50)).toBeEnabled();
   await picker.getByRole("button", { name: "Add 2 videos" }).click();
   await expect(field).toBeFocused();
   await expect(quality).toHaveAttribute("aria-pressed", "true");
@@ -682,11 +679,11 @@ test("checks an X post again after a source error and keeps polling while anothe
   await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
 });
 
-test("scrolls only the link list, keeps the options in view and keeps links past the limit", async ({
+test("scrolls only the link list and keeps the options in view for large pastes", async ({
   page,
 }) => {
   const urls = Array.from(
-    { length: 21 },
+    { length: 125 },
     (_, index) => `https://www.youtube.com/watch?v=${String(index).padStart(11, "a")}`,
   );
   await page.route("**/api/downloads/preview", (route) => {
@@ -716,17 +713,16 @@ test("scrolls only the link list, keeps the options in view and keeps links past
   expect(await dialog.evaluate(scrollingAreas)).toEqual([]);
   await links.fill(urls.slice(1).join("\n"));
   await links.press("Enter");
-  await expect(list.getByRole("listitem")).toHaveCount(20);
-  await expect(links).toHaveValue(urls[20] ?? "");
+  await expect(list.getByRole("listitem")).toHaveCount(urls.length);
+  await expect(links).toHaveValue("");
   expect(await dialog.evaluate(scrollingAreas)).toEqual(["Links"]);
   await expect(links).toBeInViewport();
   await expect(page.getByRole("group", { name: "Quality" })).toBeInViewport();
-  const download = page.getByRole("button", { name: "Download 20", exact: true });
+  const download = page.getByRole("button", { name: "Download 125", exact: true });
   await expect(download).toBeInViewport();
   await download.click();
-  await expect(page.getByText("20 downloads added", { exact: true })).toBeVisible();
-  await expect(list.getByRole("listitem")).toHaveCount(1);
-  await expect(links).toHaveValue("");
+  await expect(page.getByText("125 downloads added", { exact: true })).toBeVisible();
+  await expect(dialog).toBeHidden();
 });
 
 test("retries and cancels a download, retains its state after reload and fits a narrow screen", async ({

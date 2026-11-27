@@ -427,6 +427,17 @@ describe("MCP endpoint", () => {
         jobs: [],
         total: 0,
       });
+      expect(
+        await toolError(app, "download_links", {
+          links: Array.from({ length: 21 }, () => ({
+            url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          })),
+        }),
+      ).toMatch(/\b20\b/u);
+      expect((await callTool(app, "list_downloads", {})).structuredContent).toEqual({
+        jobs: [],
+        total: 0,
+      });
       const { jobs } = await toolSuccess(DownloadJobs, app, "download_links", {
         links: [
           { url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },

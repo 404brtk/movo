@@ -3,7 +3,6 @@ import {
   type DownloadPreset,
   type DownloadPreview,
   getDownloadPreset,
-  maxDownloadLinks,
   retryableDownloadStates,
 } from "../../shared/contracts/downloads.ts";
 import {
@@ -32,10 +31,10 @@ export const countLabel = (count: number, noun: string) =>
 
 export function addLinks(rows: readonly LinkRow[], text: string, kind: SaveKind) {
   const inputs = text.split(/\s+/u).filter(Boolean);
+  const rowKeys = new Set(rows.map((row) => row.key));
   const added: LinkRow[] = [];
   const collections = new Map<string, CollectionOffer>();
   const notLinks: string[] = [];
-  const later: string[] = [];
   let duplicates = 0;
   let standaloneMix = false;
   for (const input of inputs) {
@@ -54,24 +53,24 @@ export function addLinks(rows: readonly LinkRow[], text: string, kind: SaveKind)
       if (!source) continue;
     }
     const key = source?.url ?? input;
-    if ([...rows, ...added].some((row) => row.key === key)) duplicates++;
-    else if (rows.length + added.length >= maxDownloadLinks) later.push(input);
-    else added.push({ key, input, source, kind });
+    if (rowKeys.has(key)) duplicates++;
+    else {
+      rowKeys.add(key);
+      added.push({ key, input, source, kind });
+    }
   }
   const collection = [...collections.values()][0];
   const note =
     notLinks.length > 0
       ? "Paste full links that start with https://."
-      : later.length > 0
-        ? "The rest are added after you download these."
-        : duplicates > 0 && added.length === 0
-          ? "Already in the list."
-          : null;
+      : duplicates > 0 && added.length === 0
+        ? "Already in the list."
+        : null;
   return {
     rows: [...rows, ...added],
     collections: [...collections.values()],
     openCollection: inputs.length === 1 && !collection?.fromWatch ? collection?.source : undefined,
-    remaining: [...notLinks, ...later].join(" "),
+    remaining: notLinks.join(" "),
     note: standaloneMix
       ? `This is a YouTube Mix. Paste a link to a specific video.${note ? ` ${note}` : ""}`
       : note,

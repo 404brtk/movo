@@ -124,15 +124,16 @@ describe("adding pasted links", () => {
     expect(again.note).toBe("Already in the list.");
   });
 
-  it("leaves links past the limit in the field", () => {
+  it("adds large pastes in order and deduplicates across pastes", () => {
     const links = Array.from(
-      { length: 22 },
+      { length: 512 },
       (_, index) => `https://youtu.be/${String(index).padStart(11, "a")}`,
     );
-    const result = addLinks([], links.join(" "), "video");
-    expect(result.rows).toHaveLength(20);
-    expect(result.remaining).toBe(links.slice(20).join(" "));
-    expect(result.note).toBe("The rest are added after you download these.");
+    const first = addLinks([], links.slice(0, 100).join(" "), "video");
+    const result = addLinks(first.rows, [...links, ...links].join(" "), "video");
+    expect(result.rows.map((row) => row.input)).toEqual(links);
+    expect(result.remaining).toBe("");
+    expect(result.note).toBeNull();
   });
 });
 

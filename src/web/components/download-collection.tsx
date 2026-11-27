@@ -7,7 +7,6 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { maxDownloadLinks } from "../../shared/contracts/downloads.ts";
 import type { YouTubeCollection } from "../../shared/download-sources.ts";
 import { ApiError, collectionOptions, ytdlpOptions } from "../lib/api.ts";
 import { countLabel, type LinkRow } from "../lib/download-links.ts";
@@ -78,8 +77,6 @@ export function DownloadCollection({
     ) ?? [];
   const title = collection.data?.pages[0]?.title;
   const existing = new Set(rows.map((row) => row.key));
-  const capacity = maxDownloadLinks - rows.length;
-  const full = selected.size >= capacity;
   const error = ytdlp.error ?? collection.error;
   const loadingMore = collection.isFetchingNextPage;
   const pageError = collection.isFetchNextPageError ? collection.error : null;
@@ -162,25 +159,24 @@ export function DownloadCollection({
                   const checkboxId = `${id}-${index}`;
                   const checked = selected.has(video.url);
                   const duplicate = existing.has(video.url);
-                  const disabled = duplicate || (full && !checked);
                   return (
                     <li
                       key={video.url}
                       className={cn(
                         "flex items-center gap-2.5 border-t bg-background px-3 first:border-t-0 max-sm:px-2.5",
-                        !disabled && "hover:bg-subtle",
+                        !duplicate && "hover:bg-subtle",
                         checked && "bg-tint hover:bg-highlight",
                       )}
                     >
                       <Checkbox
                         id={checkboxId}
                         checked={checked}
-                        disabled={disabled}
+                        disabled={duplicate}
                         onCheckedChange={(value) =>
                           setSelected((current) => {
                             const next = new Set(current);
-                            if (!value) next.delete(video.url);
-                            else if (next.size < capacity) next.add(video.url);
+                            if (value) next.add(video.url);
+                            else next.delete(video.url);
                             return next;
                           })
                         }
@@ -197,7 +193,7 @@ export function DownloadCollection({
                           <span
                             className={cn(
                               "block text-[13px]/[18px] font-medium wrap-anywhere",
-                              disabled && "text-muted-foreground",
+                              duplicate && "text-muted-foreground",
                             )}
                           >
                             {video.title}
@@ -286,19 +282,7 @@ export function DownloadCollection({
         )}
       </div>
       <DialogFooter className="mt-0 shrink-0 flex-row items-center justify-between gap-2 max-sm:px-4 sm:justify-between">
-        <div className="flex min-w-0 flex-col gap-x-1.5 text-xs/4 text-muted-foreground sm:flex-row sm:items-baseline">
-          <output className="font-medium text-foreground">{selected.size} selected</output>
-          <span aria-hidden="true" className="hidden sm:inline">
-            ·
-          </span>
-          <span>
-            {capacity === 0
-              ? "Remove a link to make room."
-              : full
-                ? `${maxDownloadLinks}-link limit reached.`
-                : `${countLabel(capacity - selected.size, "slot")} left`}
-          </span>
-        </div>
+        <output className="text-xs font-medium text-foreground">{selected.size} selected</output>
         <Button
           disabled={!ready || selected.size === 0}
           onClick={() =>
