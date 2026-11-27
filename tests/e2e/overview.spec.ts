@@ -141,10 +141,10 @@ test("writes a summary on request and remembers whether it is expanded", async (
 }) => {
   const state = await openRecording(page, request, empty);
   const section = page.getByRole("region", { name: "Summary" });
+  await expect(section.getByText("No summary yet.", { exact: true })).toBeVisible();
   await expect(
-    section.getByText("Get the main ideas and jump to the moments that matter."),
+    section.getByRole("link", { name: "Model A, change the model in Settings" }),
   ).toBeVisible();
-  await expect(section.getByRole("link", { name: "Model settings" })).toBeVisible();
   expect(state.requests).toEqual([]);
   await section.getByRole("button", { name: "Write summary and chapters" }).click();
   await expect(section.getByRole("status")).toHaveText("Writing the summary");
@@ -175,6 +175,71 @@ test("writes a summary on request and remembers whether it is expanded", async (
       .getByRole("navigation", { name: "Chapters" })
       .getByRole("button", { name: "0:01 Hiring budget", exact: true }),
   ).toHaveAttribute("aria-current", "true");
+});
+
+test("reveals a long summary and its key points in one height transition", async ({
+  page,
+  request,
+}) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await openRecording(page, request, {
+    ...empty,
+    summary: { ...summary, text: `${summary.text} `.repeat(5).trim() },
+  });
+  const section = page.getByRole("region", { name: "Summary" });
+  const readMore = section.getByRole("button", { name: /Read more/u });
+  await expect(readMore).toHaveAttribute("aria-expanded", "false");
+  const motion = await readMore.evaluate(async (trigger) => {
+    const id = trigger.getAttribute("aria-controls");
+    const panel = id && document.getElementById(id);
+    if (!panel) throw new Error("Missing summary panel");
+    const height = () => panel.getBoundingClientRect().height;
+    const move = async () => {
+      const before = height();
+      const transition = new Promise<CSSTransition>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error("Expected summary height to transition")),
+          1500,
+        );
+        const onStart = (event: TransitionEvent) => {
+          if (event.target !== panel || event.propertyName !== "height") return;
+          const movement = panel.getAnimations().find((entry) => entry instanceof CSSTransition);
+          if (movement instanceof CSSTransition) {
+            clearTimeout(timer);
+            panel.removeEventListener("transitionrun", onStart);
+            movement.pause();
+            resolve(movement);
+          }
+        };
+        panel.addEventListener("transitionrun", onStart);
+      });
+      trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+      const movement = await transition;
+      movement.currentTime = 0;
+      const start = height();
+      movement.currentTime = 60;
+      const intermediate = height();
+      movement.finish();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return { before, start, intermediate, after: height() };
+    };
+    return { open: await move(), close: await move() };
+  });
+  expect(motion.open.start).toBeCloseTo(motion.open.before);
+  expect(motion.open.intermediate).toBeGreaterThan(motion.open.before);
+  expect(motion.open.intermediate).toBeLessThan(motion.open.after);
+  expect(motion.close.start).toBeCloseTo(motion.open.after);
+  expect(motion.close.intermediate).toBeGreaterThan(motion.open.before);
+  expect(motion.close.intermediate).toBeLessThan(motion.open.after);
+  expect(motion.close.after).toBeCloseTo(motion.open.before);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const panel = page.locator(`[id="${await readMore.getAttribute("aria-controls")}"]`);
+  await readMore.click();
+  await expect(section.getByRole("button", { name: "Show less" })).toBeVisible();
+  expect(await panel.evaluate((element) => element.getBoundingClientRect().height)).toBeCloseTo(
+    motion.open.after,
+  );
 });
 
 test("seeks from the chapter list, shows chapter names on the timeline and edits chapters in place", async ({
@@ -327,7 +392,12 @@ test("opens the default model settings from an empty summary", async ({ page, re
   await page.setViewportSize({ width: 390, height: 844 });
   const state = await openRecording(page, request, empty);
   const section = page.getByRole("region", { name: "Summary" });
-  await section.getByRole("link", { name: "Model settings" }).click();
+  const settings = section.getByRole("link", { name: "Model A, change the model in Settings" });
+  const background = await settings.evaluate((link) => getComputedStyle(link).backgroundColor);
+  await settings.hover();
+  await expect(settings).not.toHaveCSS("background-color", background);
+  await expect(settings).toHaveCSS("text-decoration-line", "none");
+  await settings.click();
   await expect(page).toHaveURL(/\/settings#ask$/u);
   const ask = page.getByRole("region", { name: "Ask", exact: true });
   await expect(ask.getByText("New chats answer with", { exact: true })).toBeInViewport();

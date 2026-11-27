@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   Add01Icon,
   AlertCircleIcon,
@@ -11,6 +11,7 @@ import {
   MoreHorizontalIcon,
   Plug01Icon,
   RefreshIcon,
+  TextAlignLeftIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Toast } from "@base-ui/react/toast";
@@ -50,9 +51,6 @@ import { Input } from "./ui/input.tsx";
 import { Skeleton } from "./ui/skeleton.tsx";
 
 const leadClassName = "text-lg/7 tracking-[-0.012em] text-muted-foreground sm:text-xl/[31px]";
-const collapsedClassName = "max-h-[84px] overflow-hidden sm:max-h-[93px]";
-const fadeClassName =
-  "mask-[linear-gradient(#000_46px,transparent_84px)] sm:mask-[linear-gradient(#000_52px,transparent_93px)]";
 const revealOnHover =
   "transition-opacity duration-150 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/summary:opacity-100 [@media(hover:hover)]:group-focus-within/summary:opacity-100 [@media(hover:hover)]:group-has-data-popup-open/summary:opacity-100";
 
@@ -92,17 +90,56 @@ function Lead({ text, language }: { text: string; language: string | null }) {
   );
 }
 
-function useOverflowing() {
-  const [overflowing, setOverflowing] = useState(false);
-  const measure = (element: HTMLElement | null) => {
-    if (!element) return undefined;
-    const update = () => setOverflowing(element.scrollHeight > element.clientHeight + 1);
+function Prompt({
+  title,
+  children,
+  alert = false,
+}: {
+  title: string;
+  children: ReactNode;
+  alert?: boolean;
+}) {
+  return (
+    <p
+      role={alert ? "alert" : undefined}
+      className={cn(leadClassName, "max-w-[36rem] text-pretty")}
+    >
+      {alert ? (
+        <HugeiconsIcon
+          icon={AlertCircleIcon}
+          aria-hidden="true"
+          className="mr-2 inline size-[18px] align-[-3px] text-destructive"
+        />
+      ) : null}
+      <strong className="font-[550] text-foreground">{title}</strong> {children}
+    </p>
+  );
+}
+
+function useSummaryHeights() {
+  const [heights, setHeights] = useState<{ preview: number; full: number; clipped: boolean }>();
+  const measure = useCallback((element: HTMLDivElement | null) => {
+    const lead = element?.firstElementChild;
+    if (!element || !(lead instanceof HTMLParagraphElement)) return undefined;
+    const update = () => {
+      const leadHeight = lead.offsetHeight;
+      const previewLimit = 3 * Number.parseFloat(getComputedStyle(lead).lineHeight);
+      const preview = Math.min(leadHeight, previewLimit);
+      const full = element.offsetHeight;
+      const clipped = leadHeight > preview;
+      setHeights((previous) =>
+        previous?.preview === preview && previous.full === full && previous.clipped === clipped
+          ? previous
+          : { preview, full, clipped },
+      );
+    };
     const observer = new ResizeObserver(update);
     observer.observe(element);
+    observer.observe(lead);
     update();
     return () => observer.disconnect();
-  };
-  return [overflowing, measure] as const;
+  }, []);
+  return [heights, measure] as const;
 }
 
 function KeyPoints({
@@ -121,14 +158,12 @@ function KeyPoints({
           const time = formatMoment(point.startMs);
           const content = (
             <>
-              <span className="text-xs/5 text-muted-foreground tabular-nums group-hover/point:font-medium group-hover/point:text-primary-strong">
-                {time}
-              </span>
+              <span className="text-xs/5 text-muted-foreground tabular-nums">{time}</span>
               <span className="text-base/6 text-pretty wrap-anywhere">{point.text}</span>
             </>
           );
           const rowClassName =
-            "group/point -mx-3.5 grid w-[calc(100%+1.75rem)] grid-cols-[52px_1fr] items-baseline rounded-[10px] px-3.5 py-[7px] text-left";
+            "-mx-3.5 grid w-[calc(100%+1.75rem)] grid-cols-[52px_1fr] items-baseline rounded-[10px] px-3.5 py-[7px] text-left";
           return (
             <li key={point.startMs}>
               {onSeek ? (
@@ -166,29 +201,44 @@ function SummaryBody({
   footer?: ReactNode;
 }) {
   const [expanded, setExpanded] = useSummaryExpanded();
-  const [overflowing, measure] = useOverflowing();
-  const pointsFold = useRef<HTMLDivElement>(null);
+  const [animate, setAnimate] = useState(false);
+  const [heights, measure] = useSummaryHeights();
+  const pointsPanel = useRef<HTMLDivElement>(null);
   const points = summary.keyPoints.length;
-  const expandable = overflowing || points > 0 || expanded;
+  const expandable = heights?.clipped || points > 0 || expanded;
   const panelId = useId();
   return (
     <>
       <div
-        ref={measure}
-        className={cn(!expanded && collapsedClassName, !expanded && overflowing && fadeClassName)}
-      >
-        <Lead text={summary.text} language={language} />
-      </div>
-      <div
         id={panelId}
-        ref={pointsFold}
-        className="ask-fold -mx-5"
-        data-folded={expanded ? undefined : ""}
-        inert={!expanded}
+        className={cn(
+          "relative -mx-5 overflow-hidden",
+          animate &&
+            (expanded
+              ? "motion-safe:[transition:height_220ms_var(--ease-snappy)]"
+              : "motion-safe:[transition:height_180ms_var(--ease-snappy)]"),
+        )}
+        style={heights && { height: expanded ? heights.full : heights.preview }}
+        onTransitionEnd={(event) => {
+          if (event.target === event.currentTarget) setAnimate(false);
+        }}
       >
-        <div className="px-5">
-          <KeyPoints summary={summary} onSeek={onSeek} />
+        <div ref={measure} className="px-5">
+          <Lead text={summary.text} language={language} />
+          <div ref={pointsPanel} inert={!expanded}>
+            <KeyPoints summary={summary} onSeek={onSeek} />
+          </div>
         </div>
+        {heights?.clipped ? (
+          <div
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute inset-x-5 bottom-0 h-10 bg-linear-to-b from-transparent to-background",
+              expanded && "opacity-0",
+              animate && "motion-safe:[transition:opacity_120ms_var(--ease-snappy)]",
+            )}
+          />
+        ) : null}
       </div>
       {expandable || footer ? (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -200,9 +250,12 @@ function SummaryBody({
               aria-controls={panelId}
               className="-ml-2.5 aria-expanded:bg-transparent aria-expanded:text-muted-foreground aria-expanded:hover:bg-muted aria-expanded:hover:text-foreground"
               onClick={(event) => {
+                setAnimate(event.detail > 0 && heights?.preview !== heights?.full);
                 setExpanded(!expanded);
                 if (!expanded && event.detail === 0)
-                  requestAnimationFrame(() => pointsFold.current?.querySelector("button")?.focus());
+                  requestAnimationFrame(() =>
+                    pointsPanel.current?.querySelector("button")?.focus(),
+                  );
               }}
             >
               {expanded ? "Show less" : "Read more"}
@@ -498,55 +551,91 @@ export function RecordingSummary({ context }: { context: SummaryContext }) {
     </p>
   ) : null;
   if (!summary) {
-    const problem = noModel ? null : failureLine;
-    const settings = (
-      <Link
-        to="/settings"
-        hash="ask"
-        className={
-          noModel
-            ? buttonVariants({ variant: "outline", className: "mt-[11px] h-[30px]" })
-            : "inline-flex h-[26px] items-center rounded-sm whitespace-nowrap underline-offset-3 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        }
-      >
-        {noModel ? (
-          <>
-            <HugeiconsIcon icon={Plug01Icon} data-icon="inline-start" aria-hidden="true" />
-            Connect a model
-          </>
-        ) : (
-          "Model settings"
-        )}
-      </Link>
+    const jump = context.onSeek ? " you can jump to" : "";
+    const kept =
+      chapters.length > 0
+        ? ` The ${countLabel(chapters.length, "chapter")} here stay as they are.`
+        : "";
+    const actionClassName = "mt-3";
+    const content = noModel ? (
+      <>
+        <Prompt title="No summary yet.">
+          Connect a model in Settings to write the main points, key moments and chapters of this
+          recording.
+        </Prompt>
+        <Link
+          to="/settings"
+          hash="ask"
+          className={buttonVariants({ variant: "outline", size: "sm", className: actionClassName })}
+        >
+          <HugeiconsIcon icon={Plug01Icon} data-icon="inline-start" aria-hidden="true" />
+          Connect a model
+        </Link>
+      </>
+    ) : failure ? (
+      <>
+        <Prompt title="Unable to write the summary." alert>
+          {failure.message}
+        </Prompt>
+        <Button
+          variant="outline"
+          size="sm"
+          className={actionClassName}
+          disabled={write.isPending}
+          aria-busy={write.isPending}
+          onClick={() => write.mutate(failure.scope === "all" ? startScope : "summary")}
+        >
+          {write.isPending ? (
+            <Spinner />
+          ) : (
+            <HugeiconsIcon icon={RefreshIcon} data-icon="inline-start" aria-hidden="true" />
+          )}
+          Try again
+        </Button>
+      </>
+    ) : (
+      <>
+        <Prompt title="No summary yet.">
+          {chapters.length > 0
+            ? `A few sentences on what this recording is about, with key points${jump}.${kept}`
+            : `A few sentences on what this recording is about, with key points and chapters${jump}.`}
+        </Prompt>
+        <Button
+          variant="outline"
+          size="sm"
+          className={actionClassName}
+          aria-busy={write.isPending}
+          disabled={write.isPending || defaultModel.isPending}
+          onClick={() => write.mutate(startScope)}
+        >
+          {write.isPending ? (
+            <Spinner />
+          ) : (
+            <HugeiconsIcon icon={TextAlignLeftIcon} data-icon="inline-start" aria-hidden="true" />
+          )}
+          {chapters.length > 0 ? "Write summary" : "Write summary and chapters"}
+        </Button>
+      </>
     );
     return section(
-      <>
-        {problem ?? (
-          <>
-            <p className="text-[15px]/[22px] tracking-[-0.014em] text-pretty sm:text-base/[23px]">
-              {context.onSeek
-                ? "Get the main ideas and jump to the moments that matter."
-                : "Get the main ideas and key points from this recording."}
-            </p>
-            {noModel ? (
-              settings
-            ) : (
-              <Button
-                variant="outline"
-                className="mt-[11px] h-[30px]"
-                aria-busy={write.isPending}
-                disabled={write.isPending || defaultModel.isPending}
-                onClick={() => write.mutate(startScope)}
-              >
-                {write.isPending ? <Spinner /> : null}
-                {chapters.length > 0 ? "Write summary" : "Write summary and chapters"}
-              </Button>
-            )}
-          </>
-        )}
+      <div className="pb-1">
+        {content}
         {inlineError}
-      </>,
-      noModel ? null : settings,
+      </div>,
+      noModel || !modelName ? null : (
+        <Link
+          to="/settings"
+          hash="ask"
+          aria-label={`${modelName}, change the model in Settings`}
+          className={buttonVariants({
+            variant: "ghost",
+            size: "sm",
+            className: "-mr-2 h-6 rounded-md px-2 text-xs font-normal",
+          })}
+        >
+          {modelName}
+        </Link>
+      ),
     );
   }
   const meta =

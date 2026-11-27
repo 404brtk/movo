@@ -365,7 +365,7 @@ export function ChapterList({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className={cn("absolute top-0.5 right-0.5", rowMenuTriggerClassName, "mr-0")}
+                  className={cn("absolute top-0.5 right-0", rowMenuTriggerClassName)}
                 />
               }
               aria-label={`Actions for ${chapter.title}`}
