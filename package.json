@@ -20,6 +20,7 @@
     "test:watch": "vitest",
     "test:tools:real": "vitest run --config vitest.real.config.ts tests/real/media-tools.test.ts",
     "test:downloads:real": "vitest run --config vitest.real.config.ts tests/real/downloads.test.ts",
+    "test:collections:real": "vitest run --config vitest.real.config.ts tests/real/collections.test.ts",
     "test:models:real": "vitest run --config vitest.real.config.ts tests/real/models.test.ts",
     "test:speakers:real": "vitest run --config vitest.real.config.ts tests/real/speakers.test.ts",
     "test:transcriptions:real": "vitest run --config vitest.real.config.ts tests/real/transcriptions.test.ts",
