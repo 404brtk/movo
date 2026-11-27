@@ -383,14 +383,14 @@ it(
 it(
   "gives the model the saved summary and chapters and links the key points it cites",
   withAsk(
-    () => stream(text("The second key point is about the numbers [600].")),
+    () => stream(text("The second key point is about the numbers [900].")),
     async ({ request, mediaId, calls, overviews }) => {
       await Effect.runPromise(
         overviews.editSummary(mediaId, {
           text: "The team reviews the budget.",
           keyPoints: [
             { startMs: 0, text: "The meeting starts" },
-            { startMs: 600, text: "Anna presents the numbers" },
+            { startMs: 900, text: "Anna presents the numbers" },
           ],
         }),
       );
@@ -398,10 +398,10 @@ it(
       const chatId = await connectAndCreateChat(request, mediaId);
       await request(`/chats/${chatId}/messages`, json({ text: "Expand the second key point" }));
       const detail = await settled(request, chatId);
-      expect(detail.messages[1]?.moments).toEqual([{ startMs: 600, mediaId }]);
+      expect(detail.messages[1]?.moments).toEqual([{ startMs: 900, mediaId }]);
       const [instructions] = systemTexts(calls[0]);
       expect(instructions?.text).toContain(
-        "<summary>\nThe team reviews the budget.\nKey points:\n[0] The meeting starts\n[600] Anna presents the numbers\n</summary>",
+        "<summary>\nThe team reviews the budget.\nKey points:\n[0] The meeting starts\n[900] Anna presents the numbers\n</summary>",
       );
       expect(instructions?.text).toContain("<chapters>\n[600] Numbers\n</chapters>");
     },
@@ -457,6 +457,32 @@ it(
       expect((await settled(request, chatId)).messages.at(-1)?.transcriptReading).toBe("parts");
       expect(calls).toHaveLength(4);
       expect(systemTexts(calls[3])).toHaveLength(1);
+    },
+  ),
+);
+
+it(
+  "keeps the saved key point moments linked after reading the transcript in parts",
+  withAsk(
+    (_options, index) => {
+      if (index === 0) throw contextOverflow();
+      if (index === 1)
+        return stream(call("scan_transcript", { instruction: "Note the main points" }));
+      return stream(text("Anna presents the numbers [900]."));
+    },
+    async ({ request, mediaId, overviews }) => {
+      await Effect.runPromise(
+        overviews.editSummary(mediaId, {
+          text: "The team reviews the budget.",
+          keyPoints: [{ startMs: 900, text: "Anna presents the numbers" }],
+        }),
+      );
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "What is the key point?" }));
+      expect((await settled(request, chatId)).messages[1]).toMatchObject({
+        transcriptReading: "parts",
+        moments: [{ startMs: 900, mediaId }],
+      });
     },
   ),
 );

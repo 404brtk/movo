@@ -696,8 +696,9 @@ export function createAsk(
       );
       const contextCharacters = (charactersPerToken: number) =>
         Math.floor(contextTokens * trimThreshold * charactersPerToken);
-      const rememberedMoments = (moments: number[]) =>
-        row.transcriptMoments ? [...new Set([...row.transcriptMoments, ...moments])] : moments;
+      const rememberedMoments = (moments: readonly number[]) => [
+        ...new Set([...(row.transcriptMoments ?? []), ...(overview?.moments ?? []), ...moments]),
+      ];
       const scan = (
         { title, lines, moments }: TranscriptContext,
         promptCharacters: number,
@@ -801,9 +802,7 @@ export function createAsk(
         updateAnswer(chatId, seq, {
           transcriptReading: reading,
           transcriptMoments:
-            whole || overview
-              ? rememberedMoments([...(whole?.moments ?? []), ...(overview?.moments ?? [])])
-              : row.transcriptMoments,
+            whole || overview ? rememberedMoments(whole?.moments ?? []) : row.transcriptMoments,
         });
         emit(chatId, { type: "step" });
         const handlers = toolHandlers(services, "chat", chat.scope?.tagIds);
