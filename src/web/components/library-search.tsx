@@ -17,7 +17,6 @@ import { InputGroupButton } from "./ui/input-group.tsx";
 import { Kbd } from "./ui/kbd.tsx";
 
 const typedTag = /(?:^|\s)#(\S*)$/u;
-const withoutTypedTag = (draft: string) => draft.replace(typedTag, "").trim() || undefined;
 const sameTag = (first: Tag, second: Tag) => first.id === second.id;
 const tagName = (tag: Tag) => tag.name;
 
@@ -90,13 +89,13 @@ export function LibrarySearch({ search }: { search: LibraryQuery }) {
     if (tags.isSuccess && search.tags !== validTags)
       void navigate({ search: (previous) => ({ ...previous, tags: validTags }), replace: true });
   }, [navigate, search.tags, tags.isSuccess, validTags]);
-  const [dismissed, setDismissed] = useState<string | null>(null);
+  const [suggestionDraft, setSuggestionDraft] = useState<string | null>(null);
   const applyQuery = useCallback(
     (q: string | undefined) =>
       void navigate({ search: (previous) => ({ ...previous, q }), replace: true }),
     [navigate],
   );
-  const [draft, setDraft] = useSearchDraft(search.q, applyQuery, withoutTypedTag);
+  const [draft, setDraft] = useSearchDraft(search.q, applyQuery);
   const setTags = (ids: readonly string[]) =>
     void navigate({ search: (previous) => ({ ...previous, tags: tagIdList(ids) }) });
   const hashQuery = typedTag.exec(draft)?.[1] ?? null;
@@ -104,7 +103,7 @@ export function LibrarySearch({ search }: { search: LibraryQuery }) {
     (tag) => !chosenIds.includes(tag.id) && tagNameMatches(tag.name, hashQuery ?? ""),
   );
   const suggesting =
-    chosenIds.length < maxTagsPerRecording && hashQuery !== null && draft !== dismissed;
+    chosenIds.length < maxTagsPerRecording && hashQuery !== null && draft === suggestionDraft;
 
   return (
     <Combobox.Root
@@ -116,21 +115,36 @@ export function LibrarySearch({ search }: { search: LibraryQuery }) {
       isItemEqualToValue={sameTag}
       itemToStringLabel={tagName}
       onValueChange={(next) => {
-        setTags(next.map((tag) => tag.id));
-        if (next.length > chosen.length)
-          setDraft(draft.replace(typedTag, (match) => (match.startsWith("#") ? "" : " ")));
+        const ids = next.map((tag) => tag.id);
+        if (next.length <= chosen.length) {
+          setTags(ids);
+          return;
+        }
+        const remaining = draft.replace(typedTag, (match) => (match.startsWith("#") ? "" : " "));
+        setDraft(remaining);
+        setSuggestionDraft(null);
+        void navigate({
+          search: (previous) => ({
+            ...previous,
+            q: remaining.trim() || undefined,
+            tags: tagIdList(ids),
+          }),
+        });
       }}
       inputValue={draft}
       onInputValueChange={(value, details) => {
-        if (details.isItemPress) {
+        if (details.reason === "input-clear") {
           details.cancel();
           return;
         }
         setDraft(value);
+        setSuggestionDraft(value);
       }}
       open={suggesting}
-      onOpenChange={(open) => {
-        if (!open) setDismissed(draft);
+      onOpenChange={(open, details) => {
+        if (open) return;
+        if (details.reason === "escape-key") details.event.preventDefault();
+        setSuggestionDraft(null);
       }}
       autoHighlight
     >
@@ -168,7 +182,6 @@ export function LibrarySearch({ search }: { search: LibraryQuery }) {
             aria-label="Search"
             maxLength={maxSearchLength}
             autoComplete="off"
-            onFocus={() => setDismissed(null)}
             placeholder={
               chosen.length > 0 ? "Search" : "Search titles and transcripts, or type # for tags"
             }
@@ -185,6 +198,7 @@ export function LibrarySearch({ search }: { search: LibraryQuery }) {
               aria-label="Clear search"
               onClick={() => {
                 setDraft("");
+                setSuggestionDraft(null);
                 applyQuery(undefined);
                 input.current?.focus();
               }}

@@ -109,6 +109,78 @@ test("applies draft tags on import and edits a partially tagged selection", asyn
   await expect(option).toBeHidden();
 });
 
+test("searches hashtag words as text until a tag suggestion is chosen", async ({
+  page,
+  request,
+}) => {
+  const suffix = randomUUID().slice(0, 8);
+  const prefix = `Issue ${suffix}`;
+  const unmatched = `ticket${suffix}`;
+  const tagName = `topic${suffix}`;
+  const matching = `${prefix} #${unmatched} #${tagName}`;
+  const unrelated = `${prefix} other`;
+  const newTag = await request.post("/api/tags", { data: { name: tagName } });
+  expect(newTag.status()).toBe(201);
+  const { id } = await newTag.json();
+  const wave = readFileSync(new URL("../fixtures/tone.wav", import.meta.url));
+  for (const title of [matching, unrelated]) {
+    const imported = await request.post(
+      title === matching ? `/api/media?tags=${id}` : "/api/media",
+      {
+        data: wave,
+        headers: { "x-file-name": `${title}.wav` },
+      },
+    );
+    expect(imported.status()).toBe(201);
+  }
+
+  await page.goto("/");
+  const search = page.getByRole("combobox", { name: "Search", exact: true });
+  const match = page.getByRole("link", { name: `Open ${matching}`, exact: true });
+  const other = page.getByRole("link", { name: `Open ${unrelated}`, exact: true });
+  await expect(other).toBeVisible();
+
+  const literal = `${prefix} #${unmatched}`;
+  await search.fill(literal);
+  const emptySuggestions = page.getByText(`No tag named “${unmatched}”`);
+  await expect(emptySuggestions).toBeVisible();
+  await expect(page).toHaveURL((url) => url.searchParams.get("q") === literal);
+  await search.press("Escape");
+  await expect(emptySuggestions).toBeHidden();
+  await expect(match).toBeVisible();
+  await expect(other).toBeHidden();
+
+  const tagQuery = `${prefix} #${tagName}`;
+  const suggestion = page.getByRole("option", { name: tagName, exact: true });
+  await search.fill(tagQuery);
+  await expect(suggestion).toBeVisible();
+  await search.press("Escape");
+  await expect(suggestion).toBeHidden();
+  await expect(page).toHaveURL((url) => url.searchParams.get("q") === tagQuery);
+  await expect(match).toBeVisible();
+  await expect(other).toBeHidden();
+
+  const partial = `${prefix} #${tagName.slice(0, -1)}`;
+  await search.fill(partial);
+  await expect(suggestion).toBeVisible();
+  await expect(page).toHaveURL((url) => url.searchParams.get("q") === partial);
+  await search.press("Enter");
+  await expect(page).toHaveURL(
+    (url) => url.searchParams.get("q") === prefix && url.searchParams.get("tags") === id,
+  );
+  await expect(page.getByRole("button", { name: `Remove ${tagName}` })).toBeVisible();
+  await expect(match).toBeVisible();
+  await expect(other).toBeHidden();
+
+  await page.goBack();
+  await expect(search).toHaveValue(partial);
+  await expect(search).toHaveAttribute("aria-expanded", "false");
+  await page.reload();
+  await search.focus();
+  await expect(search).toHaveValue(partial);
+  await expect(search).toHaveAttribute("aria-expanded", "false");
+});
+
 test("opens the tag count and filters on a narrow library page", async ({ page, request }) => {
   const suffix = randomUUID().slice(0, 8);
   const names = [`Client ${suffix}`, `Meeting ${suffix}`, `Archive ${suffix}`] as const;
