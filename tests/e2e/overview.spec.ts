@@ -344,6 +344,62 @@ test("keeps a chapter edit open until its save finishes before editing another",
   await expect(title).toHaveValue("Opening");
 });
 
+test("finishes a new chapter and an undone deletion that save at the same time", async ({
+  page,
+  request,
+}) => {
+  await openRecording(page, request, { ...empty, chapters, chaptersSource: "model" });
+  const list = page.getByRole("navigation", { name: "Chapters" });
+  await list.getByRole("button", { name: "0:01 Hiring budget", exact: true }).focus();
+  await page.keyboard.press("Delete");
+  await expect(list.getByRole("button", { name: "0:01 Hiring budget", exact: true })).toHaveCount(
+    0,
+  );
+  const heldCreates: Route[] = [];
+  await page.route("**/chapters", async (route) => {
+    if (route.request().method() === "POST") heldCreates.push(route);
+    else await route.fallback();
+  });
+  await list.getByRole("button", { name: "Chapter actions" }).click();
+  await page.getByRole("menuitem", { name: "Add chapter at 0:00" }).click();
+  const title = list.getByRole("textbox", { name: "Chapter title" });
+  await title.fill("Wrap-up");
+  await title.press("Enter");
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => heldCreates.length).toBe(2);
+
+  for (const route of heldCreates) await route.fallback();
+  await expect(list.getByRole("button", { name: "0:00 Wrap-up", exact: true })).toBeVisible();
+  await expect(list.getByRole("button", { name: "0:01 Hiring budget", exact: true })).toBeVisible();
+  await expect(title).toHaveCount(0);
+  await list.getByRole("button", { name: "0:00 Opening", exact: true }).focus();
+  await page.keyboard.press("F2");
+  await expect(title).toHaveValue("Opening");
+});
+
+test("offers Undo for every chapter deleted in quick succession", async ({ page, request }) => {
+  await openRecording(page, request, { ...empty, chapters, chaptersSource: "model" });
+  const heldDeletes: Route[] = [];
+  await page.route("**/chapters/*", async (route) => {
+    if (route.request().method() === "DELETE") heldDeletes.push(route);
+    else await route.fallback();
+  });
+  const list = page.getByRole("navigation", { name: "Chapters" });
+  await list.getByRole("button", { name: "0:00 Opening", exact: true }).focus();
+  await page.keyboard.press("Delete");
+  await expect(list.getByRole("button", { name: "0:01 Hiring budget", exact: true })).toBeFocused();
+  await page.keyboard.press("Delete");
+  await expect.poll(() => heldDeletes.length).toBe(2);
+
+  for (const route of heldDeletes) await route.fallback();
+  const notifications = page.getByRole("region", { name: "Notifications" });
+  await expect(notifications.getByText("Deleted “Opening”", { exact: true })).toBeAttached();
+  await expect(notifications.getByText("Deleted “Hiring budget”", { exact: true })).toBeVisible();
+  await expect(
+    notifications.getByRole("button", { name: "Undo", includeHidden: true }),
+  ).toHaveCount(2);
+});
+
 test("places chapter headings beside their passages inside a folded speaker", async ({
   page,
   request,

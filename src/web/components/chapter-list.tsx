@@ -230,6 +230,14 @@ export function ChapterList({
     setDraft(null);
     setDraftError(null);
   };
+  const settleDraft = (save: () => Promise<unknown>) => {
+    savingDraft.current = true;
+    void save()
+      .then(closeDraft, (failure: Error) => setDraftError(failure.message))
+      .finally(() => {
+        savingDraft.current = false;
+      });
+  };
   const saveDraft = () => {
     if (!draft || savingDraft.current) return;
     const startMs = parseMoment(draft.time, draft.startMs);
@@ -239,50 +247,43 @@ export function ChapterList({
     if (startMs === null || startMs >= durationMs)
       return setDraftError("Enter a time like 1:05, inside the recording.");
     if (!title) return setDraftError("Give the chapter a title.");
-    const done = {
-      onSuccess: closeDraft,
-      onError: (failure: Error) => setDraftError(failure.message),
-      onSettled: () => {
-        savingDraft.current = false;
-      },
-    };
-    if (!existing) {
-      savingDraft.current = true;
-      return create.mutate({ startMs, title }, done);
-    }
+    if (!existing) return settleDraft(() => create.mutateAsync({ startMs, title }));
     const change = {
       ...(startMs === existing.startMs ? {} : { startMs }),
       ...(title === existing.title ? {} : { title }),
     };
     if (Object.keys(change).length === 0) return closeDraft();
-    savingDraft.current = true;
-    update.mutate({ id: existing.id, change }, done);
+    settleDraft(() => update.mutateAsync({ id: existing.id, change }));
   };
-  const removeChapter = (chapter: Chapter) =>
-    remove.mutate(chapter.id, {
-      onSuccess: () => {
-        let restoring = false;
-        const toastId = addToast({
-          title: `Deleted “${chapter.title}”`,
-          actionProps: {
-            children: "Undo",
-            onClick: () => {
-              if (restoring) return;
-              restoring = true;
-              closeToast(toastId);
-              create.mutate(chapter, {
-                onError: (failure) =>
-                  addToast({
-                    title: "Could not restore the chapter",
-                    description: failure.message,
-                    priority: "high",
-                  }),
-              });
-            },
-          },
-        });
+  const restoreChapter = (chapter: Chapter) =>
+    create.mutateAsync(chapter).catch((failure: Error) =>
+      addToast({
+        title: "Could not restore the chapter",
+        description: failure.message,
+        priority: "high",
+      }),
+    );
+  const offerUndo = (chapter: Chapter) => {
+    let restoring = false;
+    const toastId = addToast({
+      title: `Deleted “${chapter.title}”`,
+      actionProps: {
+        children: "Undo",
+        onClick: () => {
+          if (restoring) return;
+          restoring = true;
+          closeToast(toastId);
+          void restoreChapter(chapter);
+        },
       },
     });
+  };
+  const removeChapter = (chapter: Chapter) => {
+    void remove.mutateAsync(chapter.id).then(
+      () => offerUndo(chapter),
+      () => undefined,
+    );
+  };
   const copyChapters = () =>
     navigator.clipboard.writeText(videoDescriptionChapters(chapters)).then(
       () => addToast({ title: "Chapters copied" }),
