@@ -61,7 +61,11 @@ import {
   scanTranscriptTool,
   toolDefinitionCharacters,
 } from "./tools.ts";
-import { transcriptContext, type TranscriptContext } from "./transcript-context.ts";
+import {
+  overviewContext,
+  transcriptContext,
+  type TranscriptContext,
+} from "./transcript-context.ts";
 
 export interface AskBoundaries {
   listModels: (connection: ConnectionSecret, signal?: AbortSignal) => Promise<AiModel[]>;
@@ -604,6 +608,10 @@ export function createAsk(
       ),
       { signal },
     );
+  const loadOverview = (mediaId: string, signal: AbortSignal) =>
+    Effect.runPromise(services.overviews.get(mediaId).pipe(Effect.map(overviewContext)), {
+      signal,
+    });
   const detail = (id: string) =>
     storage(() => {
       const chat = chatRow(id);
@@ -676,6 +684,7 @@ export function createAsk(
       const contextTokens = chat.contextTokens ?? fallbackContextTokens[connection.kind];
       const modelContext = JSON.stringify([chat.modelId, contextTokens, connection.verifiedAt]);
       const transcript = chat.mediaId ? await loadTranscript(chat.mediaId, signal) : null;
+      const overview = chat.mediaId ? await loadOverview(chat.mediaId, signal) : null;
       const transcriptCharactersPerToken = calibratedCharactersPerToken(
         latestWholeMeasurement(connection.id, chat.modelId),
       );
@@ -740,7 +749,9 @@ export function createAsk(
       let storedCuts = { toolCutSeq: chat.toolCutSeq, contextCutSeq: chat.contextCutSeq };
       const plan = (reading: TranscriptReading | null) => {
         const whole = reading === "whole" ? transcript : null;
-        const instructions = instructionsFor(chat.mediaId, chat.scope, reading);
+        const instructions = [instructionsFor(chat.mediaId, chat.scope, reading), overview?.text]
+          .filter(Boolean)
+          .join("\n");
         const systemCharacters = instructions.length + (whole?.text.length ?? 0);
         const charactersPerToken = whole
           ? transcriptCharactersPerToken
@@ -775,7 +786,10 @@ export function createAsk(
         }
         updateAnswer(chatId, seq, {
           transcriptReading: reading,
-          transcriptMoments: whole ? rememberedMoments(whole.moments) : row.transcriptMoments,
+          transcriptMoments:
+            whole || overview
+              ? rememberedMoments([...(whole?.moments ?? []), ...(overview?.moments ?? [])])
+              : row.transcriptMoments,
         });
         emit(chatId, { type: "step" });
         const tools: ToolSet = {

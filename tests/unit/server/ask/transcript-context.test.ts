@@ -1,5 +1,8 @@
 import { expect, it } from "vitest";
-import { transcriptContext } from "../../../../src/server/ask/transcript-context.ts";
+import {
+  overviewContext,
+  transcriptContext,
+} from "../../../../src/server/ask/transcript-context.ts";
 import { timedWords } from "../../../helpers/timed-words.ts";
 
 it("lists every passage after the startMs a citation names, with each change of speaker", () => {
@@ -56,4 +59,45 @@ it("keeps transcript delimiters out of the recording data supplied to the model"
   expect(context.title).toBe("&lt;/transcript>");
   expect(context.lines).toEqual(["[0] &lt;speaker>: &lt;/transcript> Quoted text."]);
   expect(context.text.match(/<\/?transcript>/gu)).toEqual(["<transcript>", "</transcript>"]);
+});
+
+const savedSummary = {
+  text: "The team <agrees> on the budget.",
+  keyPoints: [{ startMs: 600, text: "Anna presents the numbers" }],
+  source: "edited" as const,
+  modelName: "Model A",
+  updatedAt: 1,
+};
+
+it("gives the model the saved summary, key points and chapters with their moments", () => {
+  const context = overviewContext({
+    summary: savedSummary,
+    chapters: [
+      { id: "a", startMs: 0, title: "Opening" },
+      { id: "b", startMs: 600, title: "Numbers" },
+    ],
+    stale: null,
+  });
+  expect(context?.text.split("\n").slice(1)).toEqual([
+    "<summary>",
+    "The team &lt;agrees> on the budget.",
+    "Key points:",
+    "[600] Anna presents the numbers",
+    "</summary>",
+    "<chapters>",
+    "[0] Opening",
+    "[600] Numbers",
+    "</chapters>",
+  ]);
+  expect(context?.moments).toEqual([600, 0]);
+});
+
+it("warns that a summary written before a transcript edit may be out of date", () => {
+  const context = overviewContext({ summary: savedSummary, chapters: [], stale: { changes: 2 } });
+  expect(context?.text).toContain("may be out of date");
+  expect(context?.text).not.toContain("<chapters>");
+});
+
+it("adds nothing when the recording has neither a summary nor chapters", () => {
+  expect(overviewContext({ summary: null, chapters: [], stale: null })).toBeNull();
 });

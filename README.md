@@ -133,7 +133,7 @@ New downloads keep chapters supplied by the source. When chapters already exist,
 
 Use **More actions → Chapters…** to add the first chapter by hand. In **Chapter actions** you can add a chapter at the current time, copy the list for a video description or replace it using the model. On a focused chapter, **F2** edits its title and time, and **Delete** offers **Undo**. The summary’s menu lets you edit the text and timed key points. After a transcript edit, **Update** lets you write a fresh summary.
 
-Library search matches the summary and key points, and Ask and MCP can read them with `get_recording`. Transcript exports contain only the transcript; choose **Copy summary** in the summary’s menu to take it elsewhere.
+Library search matches the summary and key points. Ask chats about the recording receive the summary and chapters, and MCP clients read them with `get_recording`. Transcript exports contain only the transcript; choose **Copy summary** in the summary’s menu to take it elsewhere.
 
 ## Use Movo from an AI agent
 

@@ -24,7 +24,7 @@ import { openDatabase, type AppDatabase } from "../../../../src/server/db/databa
 import { createDownloads } from "../../../../src/server/downloads/jobs.ts";
 import { createApp } from "../../../../src/server/http/app.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
-import { createOverviews } from "../../../../src/server/overview/overviews.ts";
+import { createOverviews, type Overviews } from "../../../../src/server/overview/overviews.ts";
 import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { createTranscriptions } from "../../../../src/server/transcriptions/jobs.ts";
@@ -83,6 +83,7 @@ function withAsk(
     calls: LanguageModelV4CallOptions[];
     generated: LanguageModelV4CallOptions[];
     database: AppDatabase;
+    overviews: Overviews;
   }) => Promise<void>,
   modelOverride?: AskBoundaries["languageModel"],
   fixtureWords = words,
@@ -184,6 +185,7 @@ function withAsk(
                 calls,
                 generated,
                 database,
+                overviews,
               });
             });
             yield* Fiber.interrupt(worker);
@@ -362,6 +364,34 @@ it(
       expect(transcript?.text).toContain("Anna presents the numbers.");
       expect(transcript?.options).toEqual({ anthropic: { cacheControl: { type: "ephemeral" } } });
       expect(calls[0]?.tools).toHaveLength(9);
+    },
+  ),
+);
+
+it(
+  "gives the model the saved summary and chapters and links the key points it cites",
+  withAsk(
+    () => stream(text("The second key point is about the numbers [600].")),
+    async ({ request, mediaId, calls, overviews }) => {
+      await Effect.runPromise(
+        overviews.editSummary(mediaId, {
+          text: "The team reviews the budget.",
+          keyPoints: [
+            { startMs: 0, text: "The meeting starts" },
+            { startMs: 600, text: "Anna presents the numbers" },
+          ],
+        }),
+      );
+      await Effect.runPromise(overviews.createChapter(mediaId, { startMs: 600, title: "Numbers" }));
+      const chatId = await connectAndCreateChat(request, mediaId);
+      await request(`/chats/${chatId}/messages`, json({ text: "Expand the second key point" }));
+      const detail = await settled(request, chatId);
+      expect(detail.messages[1]?.moments).toEqual([{ startMs: 600, mediaId }]);
+      const [instructions] = systemTexts(calls[0]);
+      expect(instructions?.text).toContain(
+        "<summary>\nThe team reviews the budget.\nKey points:\n[0] The meeting starts\n[600] Anna presents the numbers\n</summary>",
+      );
+      expect(instructions?.text).toContain("<chapters>\n[600] Numbers\n</chapters>");
     },
   ),
 );
