@@ -3,7 +3,10 @@ import { ArrowDown01Icon, LibraryIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { maxScopeRecordings, type ChatScope } from "../../shared/contracts/ask.ts";
-import { mediaListOptions } from "../lib/api.ts";
+import { maxTagsPerRecording, type Tag } from "../../shared/contracts/tags.ts";
+import { mediaListOptions, tagsOptions } from "../lib/api.ts";
+import { tagCountLabel } from "../lib/tags.ts";
+import { TagOrb, TagOrbStack } from "./tag-chip.tsx";
 import { Button } from "./ui/button.tsx";
 import {
   Dialog,
@@ -16,20 +19,49 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { Input } from "./ui/input.tsx";
 
-export function scopeLabel(scope: ChatScope | null) {
+const kindLabels = { audio: "Audio", video: "Video" } as const;
+const tagNameList = new Intl.ListFormat("en", { type: "conjunction" });
+
+const scopeTags = (scope: ChatScope | null, tags: readonly Tag[]) =>
+  tags.filter((tag) => scope?.tagIds?.includes(tag.id));
+
+export function scopeLabel(scope: ChatScope | null, tags: readonly Tag[] = []) {
   if (scope?.mediaIds)
     return `${scope.mediaIds.length} ${scope.mediaIds.length === 1 ? "recording" : "recordings"}`;
-  if (scope?.kind === "audio") return "Audio";
-  if (scope?.kind === "video") return "Video";
-  return "All recordings";
+  const kind = scope?.kind ? kindLabels[scope.kind] : null;
+  if (scope?.tagIds) {
+    const [only] = scopeTags(scope, tags);
+    const tagged =
+      scope.tagIds.length === 1 && only ? only.name : tagCountLabel(scope.tagIds.length);
+    return kind ? `${kind}, ${tagged}` : tagged;
+  }
+  return kind ?? "All recordings";
+}
+
+const withTags = (kind: ChatScope["kind"], tagIds: readonly string[]): ChatScope | null =>
+  kind || tagIds.length > 0
+    ? { ...(kind ? { kind } : {}), ...(tagIds.length > 0 ? { tagIds } : {}) }
+    : null;
+
+export function scopePlaceholder(scope: ChatScope | null, tags: readonly Tag[]) {
+  if (!scope?.tagIds) return "Ask across your library…";
+  const named = scopeTags(scope, tags);
+  return scope.tagIds.length <= 2 && named.length === scope.tagIds.length
+    ? `Ask about recordings tagged ${tagNameList.format(named.map((tag) => tag.name))}…`
+    : `Ask about recordings with ${tagCountLabel(scope.tagIds.length)}…`;
 }
 
 function ChooseRecordings({
@@ -136,25 +168,33 @@ export function ScopePicker({
   disabled?: boolean;
 }) {
   const [choosing, setChoosing] = useState(false);
+  const tags = useQuery(tagsOptions);
+  const allTags = tags.data ?? [];
   const value = scope?.mediaIds ? "chosen" : (scope?.kind ?? "all");
+  const chosenTags = scope?.tagIds ?? [];
+  const label = scopeLabel(scope, allTags);
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
           disabled={disabled}
-          aria-label={`Scope: ${scopeLabel(scope)}`}
+          aria-label={`Scope: ${label}`}
           className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-45 aria-expanded:bg-muted aria-expanded:text-foreground"
         >
-          <HugeiconsIcon icon={LibraryIcon} size={14} aria-hidden="true" />
-          {scopeLabel(scope)}
+          {scope?.tagIds ? (
+            <TagOrbStack tags={scopeTags(scope, allTags)} ring="var(--background)" />
+          ) : (
+            <HugeiconsIcon icon={LibraryIcon} size={14} aria-hidden="true" />
+          )}
+          {label}
           <HugeiconsIcon icon={ArrowDown01Icon} size={14} aria-hidden="true" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" side="top" className="w-[240px]">
           <DropdownMenuRadioGroup
             value={value}
             onValueChange={(next) => {
-              if (next === "all") onChange(null);
-              if (next === "audio" || next === "video") onChange({ kind: next });
+              if (next === "all") onChange(withTags(undefined, chosenTags));
+              if (next === "audio" || next === "video") onChange(withTags(next, chosenTags));
             }}
           >
             <DropdownMenuRadioItem value="all">All recordings</DropdownMenuRadioItem>
@@ -162,6 +202,45 @@ export function ScopePicker({
             <DropdownMenuRadioItem value="video">Video</DropdownMenuRadioItem>
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>With tags</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="max-h-[320px] w-[236px]">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Recordings with all of</DropdownMenuLabel>
+                {tags.isError ? (
+                  <DropdownMenuItem disabled>{tags.error.message}</DropdownMenuItem>
+                ) : allTags.length === 0 && tags.isSuccess ? (
+                  <DropdownMenuItem disabled>No tags yet</DropdownMenuItem>
+                ) : null}
+                {allTags.map((tag) => {
+                  const checked = chosenTags.includes(tag.id);
+                  return (
+                    <DropdownMenuItem
+                      key={tag.id}
+                      role="menuitemcheckbox"
+                      aria-checked={checked}
+                      disabled={!checked && chosenTags.length >= maxTagsPerRecording}
+                      closeOnClick={false}
+                      className="pl-1.5"
+                      onClick={() =>
+                        onChange(
+                          withTags(
+                            scope?.kind,
+                            checked
+                              ? chosenTags.filter((id) => id !== tag.id)
+                              : [...chosenTags, tag.id],
+                          ),
+                        )
+                      }
+                    >
+                      <TagOrb tag={tag} state={checked ? "all" : "none"} />
+                      <span className="truncate">{tag.name}</span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
           <DropdownMenuItem onClick={() => setChoosing(true)}>Choose recordings…</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

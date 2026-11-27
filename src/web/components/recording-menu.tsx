@@ -31,10 +31,12 @@ export function RecordingMenu({
   item,
   transcribe,
   chapterContext,
+  onTags,
 }: {
   item: MediaItem;
   transcribe: TranscriptionActionMutation;
   chapterContext: ChapterContext;
+  onTags: () => void;
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -57,6 +59,7 @@ export function RecordingMenu({
     loadTranscription: true,
     returnFocus: trigger,
     onRename: () => setRenaming(true),
+    onTags,
     onDeleted: (deletion) => {
       if (!deletion.cleanupError) void leaveRecording();
     },

@@ -11,6 +11,7 @@ import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { createDownloads, type Downloads } from "../../../../src/server/downloads/jobs.ts";
 import { downloadJobs } from "../../../../src/server/downloads/downloads.schema.ts";
 import type { MediaDownloader } from "../../../../src/server/downloads/ytdlp.ts";
+import { createTags } from "../../../../src/server/tags/tags.ts";
 import { blockCleanup } from "../../../helpers/block-cleanup.ts";
 
 const firstUrl = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
@@ -780,6 +781,103 @@ describe("persistent download jobs", () => {
         });
         expect(yield* Effect.promise(() => stat(staging).catch(() => null))).toBeNull();
         expect((yield* library.list()).length).toBe(1);
+        yield* Fiber.interrupt(worker);
+      }),
+    );
+  });
+
+  it("keeps tags with download jobs and gives them to the saved recordings", async ({ signal }) => {
+    await withJobs(signal, (database, directory) =>
+      Effect.gen(function* () {
+        const tools = createMediaTools({ dataDirectory: directory });
+        const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+        const tags = createTags(database, library);
+        const client = yield* tags.create({ name: "Klient" });
+        const meeting = yield* tags.create({ name: "Spotkania" });
+        const removed = yield* tags.create({ name: "Usunięty" });
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download: fixtureDownload,
+        });
+        const missing = yield* Effect.result(
+          jobs.enqueue(firstUrl, "audio", false, ["00000000-0000-4000-8000-000000000000"]),
+        );
+        expect(Result.isFailure(missing) && missing.failure.message).toBe(
+          "This tag no longer exists.",
+        );
+        const [first] = yield* jobs.enqueueAll([{ url: firstUrl, preset: "audio" }], false, [
+          client.id,
+          removed.id,
+        ]);
+        if (!first) throw new Error("The download was not queued.");
+        const again = yield* jobs.enqueue(firstUrl, "audio", false, [meeting.id]);
+        expect(again.tagIds.toSorted()).toEqual([client.id, meeting.id, removed.id].toSorted());
+        yield* tags.remove(removed.id);
+        expect((yield* jobs.get(first.id)).tagIds.toSorted()).toEqual(
+          [client.id, meeting.id].toSorted(),
+        );
+        const worker = yield* jobs.start();
+        yield* waitFor(jobs, first.id, "completed");
+        expect((yield* library.get(first.id)).tags.map((tag) => tag.name)).toEqual([
+          "Klient",
+          "Spotkania",
+        ]);
+        const archive = yield* tags.create({ name: "Archiwum" });
+        const saved = yield* jobs.enqueue(firstUrl, "audio", false, [archive.id]);
+        expect(saved.status).toBe("completed");
+        expect((yield* library.get(first.id)).tags.map((tag) => tag.name)).toEqual([
+          "Archiwum",
+          "Klient",
+          "Spotkania",
+        ]);
+        const more = yield* Effect.forEach(
+          Array.from({ length: 20 }, (_, i) => i),
+          (i) => tags.create({ name: `More ${i}` }),
+        );
+        const combined = yield* jobs.enqueue(
+          firstUrl,
+          "audio",
+          false,
+          more.map((tag) => tag.id),
+        );
+        expect(combined.tagIds).toHaveLength(23);
+        expect((yield* library.get(first.id)).tags).toHaveLength(20);
+        yield* Fiber.interrupt(worker);
+      }),
+    );
+  });
+
+  it("gives a recording published before a crash the tags of its job", async ({ signal }) => {
+    await withJobs(signal, (database, directory) =>
+      Effect.gen(function* () {
+        const tools = createMediaTools({ dataDirectory: directory });
+        const library = createMediaLibrary(database, directory, () => tools.resolve("ffprobe"));
+        const tag = yield* createTags(database, library).create({ name: "Podcasty" });
+        const jobs = createDownloads(database, { dataDirectory: directory }, tools, {
+          preview,
+          download: () =>
+            Effect.fail(new MediaError("unavailable", "This download must not run again.")),
+        });
+        const job = yield* jobs.enqueue(firstUrl, "audio", false, [tag.id]);
+        const staging = join(directory, "downloads", job.id);
+        const path = join(staging, "media.wav");
+        yield* Effect.promise(async () => {
+          await mkdir(staging, { recursive: true });
+          await copyFile(wavePath, path);
+        });
+        yield* library.adoptDownload(
+          path,
+          "Already saved",
+          { url: firstUrl, preset: job.preset },
+          job.id,
+        );
+        database
+          .update(downloadJobs)
+          .set({ status: "running", phase: "saving", ownerPid: null })
+          .where(eq(downloadJobs.id, job.id))
+          .run();
+        const worker = yield* jobs.start();
+        expect((yield* library.get(job.id)).tags.map((item) => item.name)).toEqual(["Podcasty"]);
         yield* Fiber.interrupt(worker);
       }),
     );

@@ -45,7 +45,7 @@ export function MediaRow({
             >
               {title}
             </Link>
-            <div className="truncate text-xs/[normal] text-muted-foreground tabular-nums">
+            <div className="-my-0.5 truncate py-0.5 text-xs/[normal] text-muted-foreground tabular-nums">
               {details}
             </div>
           </>

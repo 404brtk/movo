@@ -1,18 +1,23 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
+import { DownloadCollectionPage } from "../../../../src/shared/contracts/downloads.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { maxImportBytes } from "../../../../src/shared/contracts/media.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
-import { runCommand } from "../../../../src/server/process/command.ts";
+import { runCommand, streamCommand } from "../../../../src/server/process/command.ts";
 import { createMediaDownloader } from "../../../../src/server/downloads/ytdlp.ts";
+import { openDatabase } from "../../../../src/server/db/database.ts";
+import { createApp } from "../../../../src/server/http/app.ts";
 
 vi.mock("../../../../src/server/process/command.ts", () => ({
   runCommand: vi.fn<typeof runCommand>(),
+  streamCommand: vi.fn<typeof streamCommand>(),
 }));
 const command = vi.mocked(runCommand);
+const stream = vi.mocked(streamCommand);
 const ytdlp = () => Effect.succeed("yt-dlp");
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
 const metadata = {
@@ -29,7 +34,300 @@ const xMetadata = {
   display_id: "123",
   extractor_key: "Twitter",
 };
+const playlist = "https://www.youtube.com/playlist?list=PLabcdefghijk";
+const collectionMetadata = {
+  _type: "playlist",
+  extractor_key: "YoutubeTab",
+  id: "PLabcdefghijk",
+  webpage_url: playlist,
+  title: "A public playlist",
+  availability: null,
+};
+const collectionVideo = {
+  _type: "url",
+  ie_key: "Youtube",
+  id: metadata.id,
+  url,
+  title: metadata.title,
+  duration: 2,
+};
 afterEach(() => vi.resetAllMocks());
+const listedVideo = (entry: object, details = collectionMetadata) =>
+  `MOVO_VIDEO:${JSON.stringify({
+    ...entry,
+    playlist_id: details.id,
+    playlist_title: details.title,
+    playlist_webpage_url: details.webpage_url,
+    playlist_channel: "Channel - Videos",
+    playlist_channel_id: details.id,
+    playlist_uploader_id: "@Example",
+  })}`;
+const collectionEnd = (details: object = collectionMetadata) =>
+  `MOVO_COLLECTION:${JSON.stringify(details)}`;
+
+async function* stdout(...lines: string[]) {
+  for (const line of lines) yield line;
+}
+
+describe("YouTube collection preview", () => {
+  it("advances one traversal through large collections and replays the last cursor", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "movo-collection-http-"));
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: directory }));
+    try {
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const database = yield* openDatabase(join(directory, "app.sqlite"));
+            const config = { dataDirectory: directory };
+            const app = createApp(database, config, undefined, { downloader });
+            yield* Effect.promise(async () => {
+              const base = "http://127.0.0.1:4310/api/downloads";
+              const preview = (body: unknown) =>
+                app.request(`${base}/collection`, {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify(body),
+                });
+              for (const body of [
+                { url: playlist, cursor: -1 },
+                { url: playlist, cursor: "1:500" },
+                { url: `${url}&list=PLabcdefghijk` },
+                { url: "https://www.youtube.com/playlist?list=RDMM" },
+                { url: "https://www.youtube.com.evil.example/@example/videos" },
+                { url: "x".repeat(2049) },
+              ])
+                expect((await preview(body)).status).toBe(400);
+              expect((await preview({ url: "x".repeat(1_100_000) })).status).toBe(413);
+              expect(
+                (await preview({ url: playlist, cursor: "dbdb1846-5aa8-4416-a64b-71403e19ed53" }))
+                  .status,
+              ).toBe(409);
+              expect(stream).not.toHaveBeenCalled();
+
+              let read = 0;
+              const videos = Array.from({ length: 5101 }, (_, index) => {
+                const id = String(index).padStart(11, "0");
+                return { ...collectionVideo, id, url: `https://www.youtube.com/watch?v=${id}` };
+              });
+              const traversal = async function* () {
+                for (const entry of videos) {
+                  read++;
+                  yield listedVideo(entry);
+                }
+                yield collectionEnd();
+              };
+              stream.mockReturnValueOnce(Effect.succeed(traversal()));
+              const readPage = async (cursor?: string) => {
+                const response = await preview({ url: playlist, cursor });
+                expect(response.status).toBe(200);
+                return Schema.decodeUnknownSync(DownloadCollectionPage)(await response.json());
+              };
+              let page = await readPage();
+              expect(page.title).toBe(collectionMetadata.title);
+              expect(page.videos).toHaveLength(50);
+              expect(read).toBe(51);
+              let cursor = page.nextCursor;
+              if (!cursor) throw new Error("Missing next cursor");
+              const wrong = await preview({
+                url: "https://www.youtube.com/@example/videos",
+                cursor,
+              });
+              expect(wrong.status).toBe(409);
+              const [second, retry] = await Promise.all([readPage(cursor), readPage(cursor)]);
+              expect(retry).toEqual(second);
+              expect(second.videos[0]?.url).toBe(videos[50]?.url);
+              expect(read).toBe(101);
+              page = second;
+              for (let index = 2; index <= 102; index++) {
+                cursor = page.nextCursor;
+                if (!cursor) throw new Error("Missing next cursor");
+                page = await readPage(cursor);
+                expect(page.videos[0]?.url).toBe(videos[index * 50]?.url);
+                expect(read).toBe(Math.min(5101, index * 50 + 51));
+              }
+              expect(await readPage(cursor)).toEqual(page);
+              expect(page.nextCursor).toBeNull();
+              expect(page.videos).toHaveLength(1);
+              expect(stream).toHaveBeenCalledOnce();
+              const args = stream.mock.calls[0]?.[1] ?? [];
+              expect(args.slice(-2)).toEqual(["--", playlist]);
+              expect(args).toEqual(
+                expect.arrayContaining([
+                  "--ignore-config",
+                  "--no-cache-dir",
+                  "--no-plugin-dirs",
+                  "--no-remote-components",
+                  "youtube:raise_incomplete_data",
+                  "--flat-playlist",
+                  "--lazy-playlist",
+                  "--simulate",
+                  "--print",
+                ]),
+              );
+              expect(args[args.indexOf("--use-extractors") + 1]).toBe("youtube:tab");
+              expect(args).not.toContain("--playlist-items");
+              expect(command).not.toHaveBeenCalled();
+              expect(await (await app.request(base)).json()).toEqual([]);
+            });
+          }),
+        ),
+      );
+    } finally {
+      await Effect.runPromise(downloader.closeCollections());
+      await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    }
+  });
+
+  it("validates the collection identity and filters unavailable and non-video entries", async () => {
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));
+    const channel = "https://www.youtube.com/@example/videos";
+    const details = {
+      ...collectionMetadata,
+      id: "UCabcdefghijklmnopqrstuv",
+      webpage_url: channel,
+      uploader_id: "@Example",
+      title: "Channel - Videos - Videos",
+      channel: "Channel - Videos",
+    };
+    const secondId = "bbbbbbbbbbb";
+    const secondUrl = `https://www.youtube.com/watch?v=${secondId}`;
+    const second = { ...collectionVideo, id: secondId, url: secondUrl };
+    const entries = [
+      collectionVideo,
+      collectionVideo,
+      { ...second, availability: "private" },
+      { ...second, live_status: "is_upcoming" },
+      { ...second, live_status: "post_live" },
+      { ...second, is_live: true },
+      { ...second, _type: "playlist" },
+      { ...second, url: "https://other.example/video" },
+      { ...second, url },
+      { ...second, title: "[Deleted video]" },
+      { ...second, url: `https://youtu.be/${secondId}`, title: null, duration: null },
+    ];
+    stream.mockReturnValueOnce(
+      Effect.succeed(
+        stdout(...entries.map((entry) => listedVideo(entry, details)), collectionEnd(details)),
+      ),
+    );
+    expect(await Effect.runPromise(downloader.previewCollection({ url: channel }))).toEqual({
+      title: details.channel,
+      videos: [
+        { url, title: metadata.title, durationSeconds: 2 },
+        { url: secondUrl, title: `Video ${secondId}`, durationSeconds: null },
+      ],
+      nextCursor: null,
+    });
+    stream.mockReturnValueOnce(Effect.succeed(stdout(collectionEnd(details))));
+    expect(await Effect.runPromise(downloader.previewCollection({ url: channel }))).toEqual({
+      title: details.channel,
+      videos: [],
+      nextCursor: null,
+    });
+    for (const badLines of [
+      [listedVideo(collectionVideo, details)],
+      [listedVideo(collectionVideo)],
+      [collectionEnd({ ...collectionMetadata, _type: "video" })],
+      [collectionEnd({ ...collectionMetadata, extractor_key: "Generic" })],
+      [collectionEnd({ ...collectionMetadata, id: "PLdifferentcollection" })],
+      [collectionEnd(), collectionEnd()],
+    ]) {
+      stream.mockReturnValueOnce(Effect.succeed(stdout(...badLines)));
+      await expect(
+        Effect.runPromise(downloader.previewCollection({ url: playlist })),
+      ).rejects.toMatchObject({
+        reason: "unsupported",
+      });
+    }
+  });
+
+  it.each([
+    ["This channel does not have a videos tab", "This YouTube channel has no Videos tab."],
+    [
+      "HTTP Error 404: Not Found",
+      "YouTube could not find this playlist or channel. Check the link.",
+    ],
+    ["The required executable is unavailable.", "The required executable is unavailable."],
+  ])("reports an actionable collection error for %s", async (detail, message) => {
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));
+    stream.mockReturnValueOnce(Effect.fail(new MediaError("unavailable", detail)));
+    await expect(
+      Effect.runPromise(downloader.previewCollection({ url: playlist })),
+    ).rejects.toMatchObject({
+      message,
+    });
+  });
+
+  it("closes the active traversal on expiry and invalidates its cursor", async () => {
+    vi.useFakeTimers();
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));
+    const release = vi.fn<() => void>();
+    stream.mockReturnValueOnce(
+      Effect.acquireRelease(
+        Effect.succeed(stdout(...Array.from({ length: 51 }, () => listedVideo(collectionVideo)))),
+        () => Effect.sync(release),
+      ),
+    );
+    try {
+      const { nextCursor } = await Effect.runPromise(
+        downloader.previewCollection({ url: playlist }),
+      );
+      if (!nextCursor) throw new Error("Missing next cursor");
+      expect(release).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      expect(release).toHaveBeenCalledOnce();
+      await expect(
+        Effect.runPromise(downloader.previewCollection({ url: playlist, cursor: nextCursor })),
+      ).rejects.toMatchObject({
+        reason: "conflict",
+      });
+      expect(stream).toHaveBeenCalledOnce();
+    } finally {
+      await Effect.runPromise(downloader.closeCollections());
+      vi.useRealTimers();
+    }
+  });
+
+  it("times out a stalled page, closes the process and keeps the error actionable", async () => {
+    vi.useFakeTimers();
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));
+    let resume: (() => void) | undefined;
+    const stall = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    const release = vi.fn<() => void>(() => resume?.());
+    const traversal = async function* () {
+      for (let index = 0; index < 51; index++) yield listedVideo(collectionVideo);
+      await stall;
+      yield collectionEnd();
+    };
+    stream.mockReturnValueOnce(
+      Effect.acquireRelease(Effect.succeed(traversal()), () => Effect.sync(release)),
+    );
+    try {
+      const { nextCursor } = await Effect.runPromise(
+        downloader.previewCollection({ url: playlist }),
+      );
+      if (!nextCursor) throw new Error("Missing next cursor");
+      const next = downloader.previewCollection({ url: playlist, cursor: nextCursor });
+      await Promise.all([
+        expect(Effect.runPromise(next)).rejects.toMatchObject({
+          reason: "conflict",
+          message: "YouTube took too long to send these videos.",
+        }),
+        vi.advanceTimersByTimeAsync(45000),
+      ]);
+      expect(release).toHaveBeenCalledOnce();
+      await expect(Effect.runPromise(next)).rejects.toMatchObject({
+        reason: "conflict",
+        message: "This list has expired.",
+      });
+    } finally {
+      await Effect.runPromise(downloader.closeCollections());
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe("Media downloader protocol", () => {
   it("previews an X post using its post identity rather than its media ID", async () => {

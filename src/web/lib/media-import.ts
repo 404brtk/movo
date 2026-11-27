@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ApiError, importMedia, mediaItemOptions, mediaListKey, mediaToolsOptions } from "./api.ts";
+import {
+  ApiError,
+  importMedia,
+  mediaItemOptions,
+  mediaListKey,
+  mediaToolsOptions,
+  tagsOptions,
+} from "./api.ts";
 
 export type ImportEntry = { id: number; file: File; error: string | null };
 export type ImportOutcome = "toolsMissing" | "cancelled" | "rejected" | "imported";
@@ -22,9 +29,11 @@ export function useMediaImport() {
     mutationFn: async ({
       queue,
       transcribe,
+      tagIds,
     }: {
       queue: readonly ImportEntry[];
       transcribe: boolean;
+      tagIds: readonly string[];
     }): Promise<ImportOutcome> => {
       const abort = new AbortController();
       controller.current = abort;
@@ -39,10 +48,16 @@ export function useMediaImport() {
       for (const entry of queue) {
         setCurrentId(entry.id);
         try {
-          const item = await importMedia(entry.file, { transcribe, signal: abort.signal });
+          const item = await importMedia(entry.file, {
+            transcribe,
+            tagIds,
+            signal: abort.signal,
+          });
           setEntries((current) => current.filter(({ id }) => id !== entry.id));
           queryClient.setQueryData(mediaItemOptions(item.id).queryKey, item);
           void queryClient.invalidateQueries({ queryKey: mediaListKey });
+          if (tagIds.length > 0)
+            void queryClient.invalidateQueries({ queryKey: tagsOptions.queryKey });
         } catch (error) {
           if (abort.signal.aborted) return "cancelled";
           if (!(error instanceof ApiError && fileRejectionStatuses.has(error.status))) throw error;
@@ -82,9 +97,12 @@ export function useMediaImport() {
       setEntries((current) => [...current, ...added]);
     },
     remove: (id: number) => setEntries((current) => current.filter((entry) => entry.id !== id)),
-    start: (transcribe: boolean, onOutcome: (outcome: ImportOutcome) => void) => {
+    start: (
+      { transcribe, tagIds }: { transcribe: boolean; tagIds: readonly string[] },
+      onOutcome: (outcome: ImportOutcome) => void,
+    ) => {
       setEntries((current) => current.map((entry) => ({ ...entry, error: null })));
-      importing.mutate({ queue: entries, transcribe }, { onSuccess: onOutcome });
+      importing.mutate({ queue: entries, transcribe, tagIds }, { onSuccess: onOutcome });
     },
     cancel: () => controller.current?.abort(),
   };

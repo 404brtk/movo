@@ -2,11 +2,24 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { Schema } from "effect";
-import { type DownloadJob, DownloadPreviewRequest } from "../../src/shared/contracts/downloads.ts";
+import {
+  DownloadCollectionRequest,
+  type DownloadJob,
+  DownloadPreviewRequest,
+  DownloadRequest,
+  maxDownloadRequestBytes,
+} from "../../src/shared/contracts/downloads.ts";
 import type { YtdlpStatus } from "../../src/shared/contracts/media-tools.ts";
 import { MediaItem } from "../../src/shared/contracts/media.ts";
 
 const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
+const playlist = "https://www.youtube.com/playlist?list=PLabcdefghijk";
+const channel = "https://www.youtube.com/@example/videos";
+const collectionVideo = (index: number) => ({
+  title: `Collection video ${index}`,
+  url: `https://www.youtube.com/watch?v=${String(index).padStart(11, "0")}`,
+  durationSeconds: index === 51 ? null : 62,
+});
 const wave = readFileSync(new URL("../fixtures/tone.wav", import.meta.url));
 const readyYtdlp: YtdlpStatus = {
   ytdlp: { state: "ready", source: "system", version: "2026.10.26" },
@@ -29,6 +42,7 @@ const jobFixture = (): DownloadJob => ({
   id: randomUUID(),
   url,
   preset: "video-1080p",
+  tagIds: [],
   transcribe: false,
   title: "A queued video",
   durationSeconds: null,
@@ -45,6 +59,285 @@ const jobFixture = (): DownloadJob => ({
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/ytdlp", (route) => route.fulfill({ json: readyYtdlp }));
+});
+
+test("keeps video links in a mixed paste and offers only supported collections", async ({
+  page,
+}) => {
+  const watch = collectionVideo(8);
+  const mixWatch = collectionVideo(9);
+  const collectionReads: unknown[] = [];
+  await page.route("**/api/downloads/collection", (route) => {
+    collectionReads.push(route.request().postDataJSON());
+    return route.fulfill({ json: { title: "Public channel", videos: [watch], nextCursor: null } });
+  });
+  await page.route("**/api/downloads/preview", (route) => {
+    const { url: videoUrl } = Schema.decodeUnknownSync(DownloadPreviewRequest)(
+      route.request().postDataJSON(),
+    );
+    const video = videoUrl === watch.url ? watch : mixWatch;
+    return route.fulfill({ json: { ...video, saved: [] } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
+  const field = page.getByRole("textbox", { name: "Add links" });
+  await field.evaluate(
+    (element, value) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", value);
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    },
+    [
+      `${watch.url}&list=PLabcdefghijk`,
+      "https://m.youtube.com/@Example",
+      "https://www.youtube.com/playlist?list=RDMM",
+      `${mixWatch.url}&list=RDMM`,
+    ].join("\n"),
+  );
+  const form = page.getByRole("dialog", { name: "Download from links" });
+  await expect(form.getByRole("status")).toContainText(
+    "This is a YouTube Mix. Paste a link to a specific video.",
+  );
+  await expect(
+    form.getByRole("list", { name: "Links", exact: true }).getByRole("listitem"),
+  ).toHaveCount(2);
+  await expect(form.getByRole("list", { name: "Links", exact: true })).toContainText(watch.title);
+  await expect(form.getByRole("list", { name: "Links", exact: true })).toContainText(
+    mixWatch.title,
+  );
+  await expect(form.getByRole("button", { name: "Choose from playlist", exact: true })).toHaveCount(
+    1,
+  );
+  await expect(form.getByRole("button", { name: "Choose videos", exact: true })).toHaveCount(1);
+  expect(collectionReads).toEqual([]);
+
+  await form.getByRole("button", { name: "Choose videos", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Choose videos" });
+  await expect(picker.getByText("Public channel", { exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await expect(picker.getByRole("checkbox", { name: new RegExp(watch.title) })).toBeDisabled();
+  await expect(picker.getByRole("checkbox", { name: "Select all loaded" })).toHaveCount(0);
+  await expect(picker.getByRole("button", { name: "Load more" })).toHaveCount(0);
+  await picker.getByRole("button", { name: "Back to links" }).press("Enter");
+  await expect(field).toBeFocused();
+  await expect(
+    form.getByRole("list", { name: "Links", exact: true }).getByRole("listitem"),
+  ).toHaveCount(2);
+  expect(collectionReads).toEqual([{ url: channel }]);
+});
+
+test("selects all loaded videos and queues a large collection in source order", async ({
+  page,
+}) => {
+  const tag = {
+    id: randomUUID(),
+    name: "Lectures",
+    color: "teal",
+    recordingCount: 0,
+    createdAt: Date.now(),
+  };
+  await page.route("**/api/tags", (route) => route.fulfill({ json: [tag] }));
+  const draft = [
+    collectionVideo(0),
+    ...Array.from({ length: 17 }, (_, index) => collectionVideo(index + 100)),
+  ];
+  const firstPage = Array.from({ length: 50 }, (_, index) => collectionVideo(index));
+  const earlier = collectionVideo(49);
+  const later = collectionVideo(51);
+  const cursor = "d859c338-9ea4-481d-bee0-0f4f7881e014";
+  const pages: (string | undefined)[] = [];
+  const enqueued: unknown[] = [];
+  await page.clock.install();
+  await page.route("**/api/downloads/collection", (route) => {
+    expect(route.request().method()).toBe("POST");
+    const request = Schema.decodeUnknownSync(DownloadCollectionRequest)(
+      route.request().postDataJSON(),
+    );
+    expect(request.url).toBe(playlist);
+    pages.push(request.cursor);
+    if (request.cursor && pages.length === 2)
+      return route.fulfill({ status: 503, json: { error: "YouTube is temporarily unavailable." } });
+    return route.fulfill({
+      json: {
+        title: "Public playlist",
+        videos: request.cursor ? [earlier, collectionVideo(50), later] : firstPage,
+        nextCursor: request.cursor ? null : cursor,
+      },
+    });
+  });
+  await page.route("**/api/downloads/preview", (route) => {
+    const { url: videoUrl } = Schema.decodeUnknownSync(DownloadPreviewRequest)(
+      route.request().postDataJSON(),
+    );
+    const index = Number(new URL(videoUrl).searchParams.get("v"));
+    return route.fulfill({ json: { ...collectionVideo(index), saved: [] } });
+  });
+  await page.route("**/api/downloads", (route) => {
+    if (route.request().method() === "POST") {
+      enqueued.push(route.request().postDataJSON());
+      return route.fulfill({ status: 202, json: [] });
+    }
+    return route.fulfill({ json: [] });
+  });
+
+  await page.setViewportSize({ width: 320, height: 620 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
+  const form = page.getByRole("dialog", { name: "Download from links" });
+  const field = form.getByRole("textbox", { name: "Add links" });
+  await field.fill([...draft.map((video) => video.url), "https://youtu.be/00000000000"].join(" "));
+  await field.press("Enter");
+  await expect(
+    form.getByRole("list", { name: "Links", exact: true }).getByRole("listitem"),
+  ).toHaveCount(18);
+  const quality = form
+    .getByRole("group", { name: "Quality" })
+    .getByRole("button", { name: "720p" });
+  const transcribe = form.getByRole("switch", { name: "Transcribe after download" });
+  await quality.click();
+  await transcribe.click();
+  await form.getByRole("button", { name: "Add tags" }).click();
+  await page.getByRole("option", { name: /Lectures/u }).click();
+  await page.getByRole("combobox", { name: "Find or create a tag" }).press("Escape");
+  await field.fill(`${playlist}&si=share`);
+  await field.press("Enter");
+  const picker = page.getByRole("dialog", { name: "Choose videos" });
+  await expect(picker.getByText("Public playlist", { exact: true })).toBeVisible();
+  await expect(picker.getByRole("button", { name: "Back to links" })).toBeFocused();
+  const videos = picker.getByRole("list", { name: "Collection videos" });
+  const checkbox = (index: number) =>
+    videos.getByRole("checkbox", { name: new RegExp(`^Collection video ${index}(?: |$)`) });
+  await expect(videos.getByRole("checkbox")).toHaveCount(50);
+  await expect(checkbox(0)).toBeDisabled();
+  await expect(videos.getByText("In draft", { exact: true })).toBeVisible();
+  const loadMore = picker.getByRole("button", { name: "Load more", exact: true });
+  const selectAll = picker.getByRole("checkbox", { name: "Select all loaded" });
+  const selectedCount = picker.getByRole("group", { name: "Loaded videos" }).getByRole("status");
+  await expect(selectAll).toBeInViewport();
+  await expect(loadMore).toBeInViewport();
+  await expect(selectedCount).toHaveText("0 of 49 selected");
+  expect(await picker.evaluate(scrollingAreas)).toEqual(["Collection videos"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  await expect(videos.getByText("1:02").first()).toBeVisible();
+  await checkbox(49).press("Space");
+  await expect(checkbox(49)).toBeChecked();
+  await expect(selectAll).toHaveAttribute("aria-checked", "mixed");
+  await expect(selectedCount).toHaveText("1 of 49 selected");
+  await selectAll.press("Space");
+  await expect(selectAll).toBeChecked();
+  await expect(selectedCount).toHaveText("49 of 49 selected");
+  await expect(checkbox(0)).not.toBeChecked();
+  await selectAll.press("Space");
+  await expect(picker.getByRole("button", { name: "Add videos", exact: true })).toBeDisabled();
+  await selectAll.press("Space");
+  await expect(selectAll).toBeChecked();
+  expect(pages).toEqual([undefined]);
+  const scroll = await videos.evaluate((element) => element.scrollTop);
+  expect(scroll).toBeGreaterThan(0);
+  await loadMore.click();
+  await expect(picker.getByRole("alert")).toHaveText("YouTube is temporarily unavailable.");
+  await expect(checkbox(49)).toBeChecked();
+  await picker.getByRole("button", { name: "Retry load more" }).click();
+  await expect(videos.getByRole("checkbox")).toHaveCount(52);
+  expect(await videos.evaluate((element) => element.scrollTop)).toBe(scroll);
+  await expect(checkbox(49)).toBeChecked();
+  await expect(picker.getByRole("button", { name: "Load more", exact: true })).toHaveCount(0);
+
+  await expect(selectAll).toHaveAttribute("aria-checked", "mixed");
+  await expect(selectedCount).toHaveText("49 of 51 selected");
+  await expect(checkbox(50)).not.toBeChecked();
+  await expect(checkbox(51)).not.toBeChecked();
+  await videos.getByText(later.title, { exact: true }).click();
+  await picker.getByRole("button", { name: "Add 50 videos" }).click();
+  await expect(field).toBeFocused();
+  await expect(quality).toHaveAttribute("aria-pressed", "true");
+  await expect(transcribe).toBeChecked();
+  await expect(form.getByRole("group", { name: "Tags" })).toContainText(tag.name);
+  await expect(
+    form.getByRole("list", { name: "Links", exact: true }).getByRole("listitem"),
+  ).toHaveCount(68);
+  await expect(form.getByText(later.title, { exact: true })).toBeVisible();
+  await expect(form.getByText(/^(?:Waiting to check|Checking…)$/u)).toHaveCount(0);
+  await form.getByRole("button", { name: "Download 68", exact: true }).click();
+  await expect(form.getByText("Public playlist", { exact: true })).toBeVisible();
+  await expect(form.getByRole("list", { name: "Links", exact: true })).toHaveCount(0);
+  expect(enqueued).toEqual([
+    {
+      links: [...draft, ...firstPage.slice(1), later].map(({ url: videoUrl, title }) => ({
+        url: videoUrl,
+        title,
+        preset: "video-720p",
+      })),
+      transcribe: true,
+      tagIds: [tag.id],
+    },
+  ]);
+  await form.getByRole("button", { name: "Choose videos", exact: true }).click();
+  await expect(videos.getByRole("checkbox")).toHaveCount(52);
+  await expect(selectedCount).toHaveText("0 of 52 selected");
+  expect(pages).toEqual([undefined, cursor, cursor]);
+  await checkbox(50).press("Space");
+  await picker.getByRole("button", { name: "Add 1 video" }).click();
+  await expect(quality).toHaveAttribute("aria-pressed", "true");
+  await expect(transcribe).toBeChecked();
+  await form
+    .getByRole("group", { name: `Save ${collectionVideo(50).title} as` })
+    .getByRole("button", { name: "Audio" })
+    .click();
+  await page.clock.fastForward(5 * 60 * 1000 + 1);
+  await expect(form.getByText("Public playlist", { exact: true })).toBeVisible();
+  await form.getByRole("button", { name: "Download", exact: true }).click();
+  await expect
+    .poll(() => enqueued.at(-1))
+    .toEqual({
+      links: [{ url: collectionVideo(50).url, title: collectionVideo(50).title, preset: "audio" }],
+      transcribe: true,
+      tagIds: [tag.id],
+    });
+  await expect(form.getByText("Public playlist", { exact: true })).toBeVisible();
+  await form.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
+  await expect(form.getByRole("list", { name: "YouTube collections" })).toHaveCount(0);
+});
+
+test("keeps the selection available when a collection cursor expires and can restart", async ({
+  page,
+}) => {
+  const first = collectionVideo(0);
+  const replacement = collectionVideo(1);
+  const cursor = "d859c338-9ea4-481d-bee0-0f4f7881e014";
+  let starts = 0;
+  await page.route("**/api/downloads/collection", (route) => {
+    const request = Schema.decodeUnknownSync(DownloadCollectionRequest)(
+      route.request().postDataJSON(),
+    );
+    if (request.cursor)
+      return route.fulfill({ status: 409, json: { error: "This list has expired." } });
+    starts++;
+    return route.fulfill({
+      json: {
+        title: "Public playlist",
+        videos: starts === 1 ? [first] : [replacement],
+        nextCursor: starts === 1 ? cursor : null,
+      },
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
+  const field = page.getByRole("textbox", { name: "Add links" });
+  await field.fill(playlist);
+  await field.press("Enter");
+  const picker = page.getByRole("dialog", { name: "Choose videos" });
+  await picker.getByRole("checkbox", { name: new RegExp(first.title) }).press("Space");
+  await picker.getByRole("button", { name: "Load more", exact: true }).click();
+  await expect(picker.getByRole("alert")).toContainText("This list has expired.");
+  await expect(picker.getByRole("button", { name: "Add 1 video" })).toBeEnabled();
+  await picker.getByRole("button", { name: "Start again" }).click();
+  await expect(picker.getByRole("checkbox", { name: new RegExp(replacement.title) })).toBeVisible();
+  await expect(picker.getByRole("button", { name: "Add videos" })).toBeDisabled();
+  expect(starts).toBe(2);
 });
 
 test("keeps saved media available when temporary download cleanup fails", async ({ page }) => {
@@ -248,6 +541,14 @@ for (const choice of [
 test("checks several links, explains skipped ones and queues each with its own choice", async ({
   page,
 }) => {
+  const tag = {
+    id: randomUUID(),
+    name: "Interviews",
+    color: "teal",
+    recordingCount: 0,
+    createdAt: Date.now(),
+  };
+  await page.route("**/api/tags", (route) => route.fulfill({ json: [tag] }));
   const xUrl = "https://x.com/i/web/status/123";
   const episode = "https://podcasts.apple.com/podcast/id1?i=2";
   const titles: Record<string, string> = {
@@ -292,6 +593,7 @@ test("checks several links, explains skipped ones and queues each with its own c
           { url: xUrl, preset: "audio", title: titles[xUrl] },
           { url: episode, preset: "audio", title: titles[episode] },
         ],
+        tagIds: [tag.id],
         transcribe: false,
       });
       queued = true;
@@ -322,6 +624,9 @@ test("checks several links, explains skipped ones and queues each with its own c
     .click();
   await expect(page.getByRole("group", { name: "Quality" })).toHaveCount(0);
   await expect(list).not.toContainText("Already saved");
+  await page.getByRole("button", { name: "Add tags" }).click();
+  await page.getByRole("option", { name: /Interviews/u }).click();
+  await page.getByRole("combobox", { name: "Find or create a tag" }).press("Escape");
   await page.getByRole("button", { name: "Download 3", exact: true }).click();
   await expect(links).toBeDisabled();
   await expect(page.getByRole("button", { name: "Remove A short post" })).toBeDisabled();
@@ -419,11 +724,11 @@ test("checks an X post again after a source error and keeps polling while anothe
   await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
 });
 
-test("scrolls only the link list, keeps the options in view and keeps links past the limit", async ({
+test("scrolls only the link list and keeps the options in view for large pastes", async ({
   page,
 }) => {
   const urls = Array.from(
-    { length: 21 },
+    { length: 125 },
     (_, index) => `https://www.youtube.com/watch?v=${String(index).padStart(11, "a")}`,
   );
   await page.route("**/api/downloads/preview", (route) => {
@@ -453,17 +758,93 @@ test("scrolls only the link list, keeps the options in view and keeps links past
   expect(await dialog.evaluate(scrollingAreas)).toEqual([]);
   await links.fill(urls.slice(1).join("\n"));
   await links.press("Enter");
-  await expect(list.getByRole("listitem")).toHaveCount(20);
-  await expect(links).toHaveValue(urls[20] ?? "");
+  await expect(list.getByRole("listitem")).toHaveCount(urls.length);
+  await expect(links).toHaveValue("");
   expect(await dialog.evaluate(scrollingAreas)).toEqual(["Links"]);
   await expect(links).toBeInViewport();
   await expect(page.getByRole("group", { name: "Quality" })).toBeInViewport();
-  const download = page.getByRole("button", { name: "Download 20", exact: true });
+  const download = page.getByRole("button", { name: "Download 125", exact: true });
   await expect(download).toBeInViewport();
   await download.click();
-  await expect(page.getByText("20 downloads added", { exact: true })).toBeVisible();
-  await expect(list.getByRole("listitem")).toHaveCount(1);
-  await expect(links).toHaveValue("");
+  await expect(page.getByText("125 downloads added", { exact: true })).toBeVisible();
+  await expect(dialog).toBeHidden();
+});
+
+test("keeps only unqueued links when the second download batch fails", async ({ page }) => {
+  test.setTimeout(90000);
+  const tag = {
+    id: randomUUID(),
+    name: "Interviews",
+    color: "teal",
+    recordingCount: 0,
+    createdAt: Date.now(),
+  };
+  const videos = Array.from({ length: 350 }, (_, index) => collectionVideo(index));
+  const longTitle = `Video ${"\u0001".repeat(506)}`;
+  const batches: DownloadRequest[] = [];
+  await page.route("**/api/tags", (route) => route.fulfill({ json: [tag] }));
+  await page.route("**/api/downloads/preview", (route) => {
+    const { url: previewUrl } = Schema.decodeUnknownSync(DownloadPreviewRequest)(
+      route.request().postDataJSON(),
+    );
+    return route.fulfill({
+      json: { url: previewUrl, title: longTitle, durationSeconds: null, saved: [] },
+    });
+  });
+  await page.route("**/api/downloads", (route) => {
+    if (route.request().method() !== "POST") return route.fulfill({ json: [] });
+    const request = route.request();
+    const batch = Schema.decodeUnknownSync(DownloadRequest)(request.postDataJSON());
+    expect(request.postDataBuffer()?.byteLength).toBeLessThanOrEqual(maxDownloadRequestBytes);
+    batches.push(batch);
+    if (batches.length === 2)
+      return route.fulfill({
+        status: 503,
+        json: { error: "The queue is unavailable. Try again." },
+      });
+    return route.fulfill({
+      status: 202,
+      json: batch.links.map((link) => ({
+        ...jobFixture(),
+        ...link,
+        tagIds: batch.tagIds ?? [],
+        transcribe: batch.transcribe ?? false,
+      })),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Download from links" });
+  const links = dialog.getByRole("textbox", { name: "Add links" });
+  await links.fill(videos.map((video) => video.url).join("\n"));
+  await links.press("Enter");
+  await dialog.getByRole("switch", { name: "Transcribe after download" }).click();
+  await dialog.getByRole("button", { name: "Add tags" }).click();
+  await page.getByRole("option", { name: /Interviews/u }).click();
+  await page.getByRole("combobox", { name: "Find or create a tag" }).press("Escape");
+  await expect(dialog.getByText("YouTube", { exact: true })).toHaveCount(videos.length, {
+    timeout: 70000,
+  });
+  await dialog.getByRole("button", { name: `Download ${videos.length}`, exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("The queue is unavailable. Try again.");
+  const [accepted, failed] = batches;
+  if (!accepted || !failed) throw new Error("Expected one accepted and one failed batch");
+  await expect(dialog.getByRole("alert")).toContainText(
+    `${accepted.links.length} downloads added.`,
+  );
+  await expect(dialog.getByRole("list", { name: "Links" }).getByRole("listitem")).toHaveCount(
+    failed.links.length,
+  );
+  await dialog
+    .getByRole("button", { name: `Download ${failed.links.length}`, exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  expect(batches).toHaveLength(3);
+  expect(batches[2]).toEqual(failed);
+  expect([...accepted.links, ...failed.links].map((link) => link.url)).toEqual(
+    videos.map((video) => video.url),
+  );
+  for (const batch of batches) expect(batch).toMatchObject({ tagIds: [tag.id], transcribe: true });
 });
 
 test("retries and cancels a download, retains its state after reload and fits a narrow screen", async ({

@@ -92,7 +92,7 @@ test("searches transcripts, opens a matching passage and restores the search on 
   const results = page.getByRole("region", { name: "Media library" });
   const titles = results.getByRole("link", { name: /^Open / });
   await expect(titles).toHaveCount(2);
-  const search = page.getByRole("searchbox", { name: "Search" });
+  const search = page.getByRole("combobox", { name: "Search" });
   await search.fill("SPOTKAN");
   await expect(page).toHaveURL(/\?q=SPOTKAN$/u);
   await expect(page.getByRole("status").filter({ hasText: "recording" })).toHaveText(
@@ -141,7 +141,7 @@ test("finds passages by a speaker's name and shows who is speaking", async ({
     name: /^0:01 ?Łucja Nowak: Plan spotkania na jutro\.$/u,
   });
   await expect(passage.locator("mark")).toHaveText("Łucja");
-  await page.getByRole("searchbox", { name: "Search" }).fill("speaker");
+  await page.getByRole("combobox", { name: "Search" }).fill("speaker");
   await expect(page.getByRole("heading", { name: "No recordings match “speaker”" })).toBeVisible();
 });
 
@@ -223,7 +223,7 @@ test("keeps filters and order in the URL and recovers from an empty result", asy
   await page.goto(`${library.origin}/?kind=image&q=123&sort=size`);
   await expect(titles).toHaveCount(2);
   await page.setViewportSize({ width: 320, height: 700 });
-  await page.getByRole("searchbox", { name: "Search" }).fill("plan");
+  await page.getByRole("combobox", { name: "Search" }).fill("plan");
   await expect(titles).toHaveText([/Łódź meeting/u]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,

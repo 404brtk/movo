@@ -1,5 +1,7 @@
 import { Schema } from "effect";
+import { maxDownloadLinkLength, recognizeDownloadSource } from "../download-sources.ts";
 import { MediaId } from "./media.ts";
+import { maxTags, TagId, TagIds } from "./tags.ts";
 
 export const downloadPresets = [
   { id: "video-480p", kind: "video", maxHeight: 480, label: "Up to 480p" },
@@ -34,7 +36,6 @@ export const retryableDownloadStates: ReadonlySet<(typeof downloadStates)[number
   "interrupted",
 ]);
 export const DownloadPreviewRequest = Schema.Struct({ url: Schema.String });
-export const maxDownloadLinks = 20;
 const DownloadTitle = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512));
 export const DownloadLinkRequest = Schema.Struct({
   url: Schema.String,
@@ -43,13 +44,12 @@ export const DownloadLinkRequest = Schema.Struct({
 });
 export type DownloadLinkRequest = typeof DownloadLinkRequest.Type;
 export const DownloadRequest = Schema.Struct({
-  links: Schema.Array(DownloadLinkRequest).check(
-    Schema.isMinLength(1),
-    Schema.isMaxLength(maxDownloadLinks),
-  ),
+  links: Schema.Array(DownloadLinkRequest).check(Schema.isMinLength(1)),
   transcribe: Schema.optional(Schema.Boolean),
+  tagIds: Schema.optional(TagIds),
 });
 export type DownloadRequest = typeof DownloadRequest.Type;
+export const maxDownloadRequestBytes = 1024 * 1024;
 export const DownloadSourceDetails = Schema.Struct({
   url: Schema.String,
   title: DownloadTitle,
@@ -62,11 +62,35 @@ export const DownloadPreview = Schema.Struct({
   saved: Schema.Array(SavedDownload),
 });
 export type DownloadPreview = typeof DownloadPreview.Type;
+export const collectionPageSize = 50;
+const CollectionCursor = Schema.String.check(Schema.isUUID());
+export const DownloadCollectionRequest = Schema.Struct({
+  url: Schema.String.check(Schema.isMaxLength(maxDownloadLinkLength)),
+  cursor: Schema.optional(CollectionCursor),
+});
+export type DownloadCollectionRequest = typeof DownloadCollectionRequest.Type;
+const CollectionVideo = Schema.Struct({
+  ...DownloadSourceDetails.fields,
+  url: Schema.String.check(
+    Schema.makeFilter((url) => {
+      const source = recognizeDownloadSource(url);
+      return (
+        (source?.site === "youtube" && source.url === url) || "Use a canonical YouTube video URL."
+      );
+    }),
+  ),
+});
+export const DownloadCollectionPage = Schema.Struct({
+  title: Schema.NullOr(DownloadTitle),
+  videos: Schema.Array(CollectionVideo).check(Schema.isMaxLength(collectionPageSize)),
+  nextCursor: Schema.NullOr(CollectionCursor),
+});
 export const DownloadJob = Schema.Struct({
   id: MediaId,
   url: Schema.String,
   preset: DownloadPreset,
   transcribe: Schema.Boolean,
+  tagIds: Schema.Array(TagId).check(Schema.isMaxLength(maxTags)),
   title: Schema.NullOr(Schema.String),
   durationSeconds: Schema.NullOr(Schema.Number),
   status: Schema.Literals(downloadStates),

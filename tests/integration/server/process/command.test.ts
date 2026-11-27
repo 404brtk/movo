@@ -4,11 +4,58 @@ import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { Effect, Fiber } from "effect";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { runCommand } from "../../../../src/server/process/command.ts";
+import { runCommand, streamCommand } from "../../../../src/server/process/command.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
 import { spawn } from "node:child_process";
 
 describe("owned background processes", () => {
+  it("reads stdout before completion and stops a partially read process on scope exit", async () => {
+    const pid = await Effect.runPromise(
+      Effect.scoped(
+        Effect.flatMap(
+          streamCommand(
+            process.execPath,
+            [
+              "-e",
+              "console.error('diagnostic'); console.log(process.pid); process.stdout.write('buffered line\\n'.repeat(100000)); setInterval(() => {}, 1000)",
+            ],
+            1024,
+          ),
+          (output) => Effect.promise(async () => Number((await output.next()).value)),
+        ).pipe(Effect.timeout(3000)),
+      ),
+    );
+    expect(pid).toBeGreaterThan(0);
+    expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
+  });
+
+  it("rejects a failed streaming command even after receiving stdout", async () => {
+    await expect(
+      Effect.runPromise(
+        Effect.scoped(
+          Effect.flatMap(
+            streamCommand(
+              process.execPath,
+              [
+                "-e",
+                "console.log('item'); console.error('ERROR: listing failed'); process.exitCode = 1",
+              ],
+              1024,
+            ),
+            (output) =>
+              Effect.tryPromise(async () => {
+                const first = await output.next();
+                expect(first).toMatchObject({ value: "item", done: false });
+                return output.next();
+              }),
+          ),
+        ),
+      ),
+    ).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: "The media command failed: listing failed" }),
+    });
+  });
+
   it("stops an IPC worker after abrupt termination of its owner", async () => {
     const directory = await mkdtemp(join(tmpdir(), "movo-process-owner-"));
     const started = join(directory, "started");

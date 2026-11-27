@@ -143,6 +143,7 @@ test("shares transcript actions and their order with the library and exports fro
 }, testInfo) => {
   const actions = [
     /Rename recording/u,
+    /Tags…/u,
     "Copy transcript",
     "Export transcript",
     "Save a copy",
@@ -180,9 +181,9 @@ test("shares transcript actions and their order with the library and exports fro
     .getByRole("button", { name: `More actions for ${recording.title}`, exact: true })
     .click();
   await expect(page.getByRole("menu").getByRole("menuitem")).toHaveText([
-    ...actions.slice(0, 5),
+    ...actions.slice(0, 6),
     "Select",
-    ...actions.slice(5),
+    ...actions.slice(6),
   ]);
 });
 

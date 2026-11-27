@@ -84,7 +84,7 @@ const kindNouns = { audio: "audio recordings", video: "videos" } as const;
 const otherKinds = { audio: "videos", video: "audio recordings" } as const;
 const transcriptAdjectives = { available: "transcribed", missing: "untranscribed" } as const;
 
-export function describeNoMatches({ q, kind, transcript }: LibraryQuery) {
+export function describeNoMatches({ q, kind, transcript, tags }: LibraryQuery) {
   const noun = [
     transcript ? transcriptAdjectives[transcript] : null,
     kind ? kindNouns[kind] : "recordings",
@@ -101,7 +101,9 @@ export function describeNoMatches({ q, kind, transcript }: LibraryQuery) {
     ? `include ${otherKinds[kind]} too`
     : transcript
       ? "include recordings with any transcript"
-      : null;
+      : tags
+        ? "remove a tag"
+        : null;
   return {
     title: `No ${noun} match “${query}”`,
     description: widen

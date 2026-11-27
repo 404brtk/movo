@@ -35,6 +35,7 @@ import {
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError } from "../media/error.ts";
 import { toolHandlers, type McpServices } from "../mcp/server.ts";
+import { readTagNames, requireTags } from "../tags/tags.ts";
 import { movoTools } from "../mcp/tools.ts";
 import { citedMoments } from "../../shared/citations.ts";
 import { serverReach } from "../../shared/server-address.ts";
@@ -335,13 +336,18 @@ export function pendingApprovals(messages: readonly ModelMessage[]) {
   return requested.filter((id) => !answered.has(id));
 }
 
-function scopeSentence(scope: ChatScope | null) {
+const tagList = new Intl.ListFormat("en", { type: "conjunction" });
+
+function scopeSentence(scope: ChatScope | null, tagNames: readonly string[]) {
   if (!scope)
     return "You can read every transcribed recording in the library, but you can't change anything.";
   const recordings = scope.kind ? `${scope.kind} recordings` : "recordings";
-  return scope.mediaIds
-    ? `The user limited this chat to ${scope.mediaIds.length} chosen ${recordings}; tools only return those. You can't change anything.`
-    : `The user limited this chat to ${recordings}; tools only return those. You can't change anything.`;
+  if (scope.mediaIds)
+    return `The user limited this chat to ${scope.mediaIds.length} chosen ${recordings}; tools only return those. You can't change anything.`;
+  const tagged = scope.tagIds
+    ? ` tagged ${tagList.format(tagNames.map((name) => `“${name}”`))}, including recordings tagged later`
+    : "";
+  return `The user limited this chat to ${recordings}${tagged}; tools only return those. You can't change anything.`;
 }
 
 const citeMoments =
@@ -360,6 +366,7 @@ const fromWholeTranscript = [
 function instructionsFor(
   mediaId: string | null,
   scope: ChatScope | null,
+  tagNames: readonly string[],
   reading: TranscriptReading | null,
 ) {
   const shared = [
@@ -371,7 +378,7 @@ function instructionsFor(
   if (mediaId === null)
     return [
       ...shared,
-      scopeSentence(scope),
+      scopeSentence(scope, tagNames),
       citeMoments,
       "Group what you find by recording and name each recording before its moments.",
     ].join("\n");
@@ -548,7 +555,6 @@ export function createAsk(
   services: Omit<McpServices, "port">,
   boundaries: AskBoundaries = { listModels, detectLocalServers, languageModel },
 ) {
-  const handlers = toolHandlers(services, "chat");
   const live = new Map<string, LiveAnswer>();
   const rejectedWholePrompts = new Map<string, Map<string, number>>();
 
@@ -749,7 +755,15 @@ export function createAsk(
       let storedCuts = { toolCutSeq: chat.toolCutSeq, contextCutSeq: chat.contextCutSeq };
       const plan = (reading: TranscriptReading | null) => {
         const whole = reading === "whole" ? transcript : null;
-        const instructions = [instructionsFor(chat.mediaId, chat.scope, reading), overview?.text]
+        const instructions = [
+          instructionsFor(
+            chat.mediaId,
+            chat.scope,
+            readTagNames(database, chat.scope?.tagIds ?? []),
+            reading,
+          ),
+          overview?.text,
+        ]
           .filter(Boolean)
           .join("\n");
         const systemCharacters = instructions.length + (whole?.text.length ?? 0);
@@ -792,6 +806,7 @@ export function createAsk(
               : row.transcriptMoments,
         });
         emit(chatId, { type: "step" });
+        const handlers = toolHandlers(services, "chat", chat.scope?.tagIds);
         const tools: ToolSet = {
           ...chatTools(handlers, services.library.get, {
             mediaId: chat.mediaId,
@@ -1038,6 +1053,7 @@ export function createAsk(
     createChat: (mediaId: string | null, scope: ChatScope | null = null) =>
       Effect.gen(function* () {
         if (mediaId) yield* services.library.get(mediaId);
+        yield* storage(() => requireTags(database, scope?.tagIds ?? []));
         const choice = yield* storage(() => database.select().from(askSettings).get());
         if (!choice)
           return yield* Effect.fail(
@@ -1070,6 +1086,7 @@ export function createAsk(
           return yield* Effect.fail(
             new MediaError("invalid", "A recording's chat always uses that recording."),
           );
+        yield* storage(() => requireTags(database, scope?.tagIds ?? []));
         yield* storage(() =>
           database
             .update(chats)

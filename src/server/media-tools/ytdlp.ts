@@ -14,27 +14,29 @@ export interface YtdlpConfig {
   ytdlpPath?: string | undefined;
 }
 
+export const pinnedYtdlpVersion = "2026.10.26";
+
 export function ytdlpPackage(): ToolPackage | null {
   if (process.arch !== "x64") return null;
   if (process.platform === "win32") {
     return {
-      id: "ytdlp-2026.10.26-win32-x64",
+      id: `ytdlp-${pinnedYtdlpVersion}-win32-x64`,
       provider: "yt-dlp",
-      sourceUrl: "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.26",
-      version: "2026.10.26",
+      sourceUrl: `https://github.com/yt-dlp/yt-dlp/releases/tag/${pinnedYtdlpVersion}`,
+      version: pinnedYtdlpVersion,
       bytes: 23575744,
-      url: "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp.exe",
+      url: `https://github.com/yt-dlp/yt-dlp/releases/download/${pinnedYtdlpVersion}/yt-dlp.exe`,
       sha256: "f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d",
     };
   }
   if (hasGlibc(2, 17)) {
     return {
-      id: "ytdlp-2026.10.26-linux-x64",
+      id: `ytdlp-${pinnedYtdlpVersion}-linux-x64`,
       provider: "yt-dlp",
-      sourceUrl: "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.26",
-      version: "2026.10.26",
+      sourceUrl: `https://github.com/yt-dlp/yt-dlp/releases/tag/${pinnedYtdlpVersion}`,
+      version: pinnedYtdlpVersion,
       bytes: 41166968,
-      url: "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp_linux",
+      url: `https://github.com/yt-dlp/yt-dlp/releases/download/${pinnedYtdlpVersion}/yt-dlp_linux`,
       sha256: "767ba9dce7052aa196f8b12652f433d76de128ba168966fa84b6394d5e6c6795",
     };
   }

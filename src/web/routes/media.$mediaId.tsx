@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Add01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useLocation } from "@tanstack/react-router";
@@ -13,6 +13,8 @@ import { MediaPlayer } from "../components/media-player.tsx";
 import { NotFound } from "../components/not-found.tsx";
 import { RecordingMenu } from "../components/recording-menu.tsx";
 import { SourceLink } from "../components/source-site.tsx";
+import { TagChip } from "../components/tag-chip.tsx";
+import { RecordingTagsPanel, TagPopover } from "../components/tag-popovers.tsx";
 import { useSpeakerFilter } from "../components/speaker-filter.tsx";
 import { TranscriptionPanel } from "../components/transcription-panel.tsx";
 import { Button } from "../components/ui/button.tsx";
@@ -114,14 +116,75 @@ function BackRow({ split, actions }: { split: boolean; actions?: ReactNode }) {
   );
 }
 
+function RecordingTags({
+  item,
+  open,
+  onOpenChange,
+}: {
+  item: MediaItem;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const empty = item.tags.length === 0;
+  return (
+    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+      {item.tags.map((tag) => (
+        <TagChip key={tag.id} tag={tag} />
+      ))}
+      <TagPopover
+        open={open}
+        onOpenChange={onOpenChange}
+        label={`Tags for ${item.title}`}
+        trigger={
+          empty ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-ml-1.5 h-6 gap-1 rounded-[7px] px-1.5 aria-expanded:bg-muted"
+            >
+              <HugeiconsIcon
+                icon={Add01Icon}
+                strokeWidth={2}
+                className="size-3"
+                aria-hidden="true"
+              />
+              Add tags
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Edit tags"
+              className="size-6 rounded-[7px] aria-expanded:bg-muted"
+            >
+              <HugeiconsIcon
+                icon={Add01Icon}
+                strokeWidth={2}
+                className="size-3.5"
+                aria-hidden="true"
+              />
+            </Button>
+          )
+        }
+      >
+        <RecordingTagsPanel item={item} />
+      </TagPopover>
+    </div>
+  );
+}
+
 function RecordingHeading({
   item,
   split,
   job,
+  tagging,
+  onTaggingChange,
 }: {
   item: MediaItem;
   split: boolean;
   job: TranscriptionJob | null | undefined;
+  tagging: boolean;
+  onTaggingChange: (open: boolean) => void;
 }) {
   const describeResult = useResultDescription();
   return (
@@ -141,6 +204,7 @@ function RecordingHeading({
           {hasEdits(job) ? " · edited" : ""}
         </p>
       ) : null}
+      <RecordingTags item={item} open={tagging} onOpenChange={onTaggingChange} />
     </div>
   );
 }
@@ -203,6 +267,7 @@ function RecordingWorkspace({
   moment: number | undefined;
 }) {
   const sync = usePlaybackSync(startMs, moment);
+  const [tagging, setTagging] = useState(false);
   const transcription = useQuery(transcriptionOptions(item.id));
   const job = transcription.data;
   const filter = useSpeakerFilter(job?.transcript);
@@ -256,10 +321,21 @@ function RecordingWorkspace({
         <BackRow
           split={split}
           actions={
-            <RecordingMenu item={item} transcribe={transcribe} chapterContext={chapterContext} />
+            <RecordingMenu
+              item={item}
+              transcribe={transcribe}
+              chapterContext={chapterContext}
+              onTags={() => setTagging(true)}
+            />
           }
         />
-        <RecordingHeading item={item} split={split} job={job} />
+        <RecordingHeading
+          item={item}
+          split={split}
+          job={job}
+          tagging={tagging}
+          onTaggingChange={setTagging}
+        />
         {fileAvailable ? (
           <MediaPlayer
             item={item}

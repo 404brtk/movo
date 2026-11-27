@@ -27,7 +27,7 @@ function Library() {
   const search = Route.useSearch();
   const library = useQuery(mediaListOptions(search));
   const items = library.data?.items;
-  const filtered = Boolean(search.q?.trim() || search.kind || search.transcript);
+  const filtered = Boolean(search.q?.trim() || search.kind || search.transcript || search.tags);
   const searching = searchTerms(search.q ?? "").length > 0;
   const sort = librarySort(search);
   const firstRun = items?.length === 0 && !filtered;

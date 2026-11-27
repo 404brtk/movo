@@ -18,6 +18,7 @@ import { createMediaLibrary } from "./media/library.ts";
 import { createMcpHandler } from "./mcp/server.ts";
 import { createAsk } from "./ask/ask.ts";
 import { createOverviews } from "./overview/overviews.ts";
+import { createTags } from "./tags/tags.ts";
 
 const program = Effect.gen(function* () {
   const config = yield* Effect.try(() => readServerConfig(process.env));
@@ -42,12 +43,11 @@ const program = Effect.gen(function* () {
     Effect.sync(() => createYtdlp(config)),
     (managedYtdlp) => managedYtdlp.close(),
   );
-  const downloads = createDownloads(
-    database,
-    config,
-    tools,
-    createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools),
+  const downloader = yield* Effect.acquireRelease(
+    Effect.sync(() => createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools)),
+    (service) => service.closeCollections(),
   );
+  const downloads = createDownloads(database, config, tools, downloader);
   const models = yield* Effect.acquireRelease(
     Effect.sync(() => createModels({ database })),
     (manager) => manager.close(),
@@ -58,6 +58,7 @@ const program = Effect.gen(function* () {
     tools,
     createTranscriptionEngine(tools, models),
   );
+  const tags = createTags(database, library);
   const downloadWorker = yield* downloads.start();
   const transcriptionWorker = yield* transcriptions.start();
   const overviews = yield* Effect.acquireRelease(
@@ -67,18 +68,19 @@ const program = Effect.gen(function* () {
   yield* overviews.recover();
   const mcp = yield* Effect.acquireRelease(
     Effect.sync(() =>
-      createMcpHandler({ library, downloads, transcriptions, overviews, port: config.port }),
+      createMcpHandler({ library, downloads, transcriptions, overviews, tags, port: config.port }),
     ),
     (handler) => Effect.promise(() => handler.dispose()),
   );
   const ask = yield* Effect.acquireRelease(
-    Effect.sync(() => createAsk(database, { library, downloads, transcriptions, overviews })),
+    Effect.sync(() => createAsk(database, { library, downloads, transcriptions, overviews, tags })),
     (service) => service.close(),
   );
   yield* ask.recover();
   const app = createApp(database, config, staticDirectory, {
     tools,
     ytdlp,
+    downloader,
     downloads,
     models,
     transcriptions,
