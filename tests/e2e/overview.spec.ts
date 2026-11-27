@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page, type Route } from "@playwright/test";
 import type { ModelChoice } from "../../src/shared/contracts/ask.ts";
 import type {
   Chapter,
@@ -300,6 +300,36 @@ test("seeks from the chapter list, shows chapter names on the timeline and edits
     path: "/chapters",
     body: { id: chapters[1]?.id, startMs: 1100, title: "Budget and hiring" },
   });
+});
+
+test("keeps a chapter edit open until its save finishes before editing another", async ({
+  page,
+  request,
+}) => {
+  await openRecording(page, request, { ...empty, chapters, chaptersSource: "model" });
+  const heldSaves: Route[] = [];
+  await page.route(`**/chapters/${chapters[1]?.id}`, (route) => {
+    heldSaves.push(route);
+  });
+  const list = page.getByRole("navigation", { name: "Chapters" });
+  await list.getByRole("button", { name: "0:01 Hiring budget", exact: true }).focus();
+  await page.keyboard.press("F2");
+  const title = list.getByRole("textbox", { name: "Chapter title" });
+  await title.fill("Budget and hiring");
+  await title.press("Enter");
+  await list.getByRole("button", { name: "0:00 Opening", exact: true }).focus();
+  await page.keyboard.press("F2");
+  await expect(title).toHaveValue("Budget and hiring");
+
+  expect(heldSaves).toHaveLength(1);
+  await Promise.all(heldSaves.map((route) => route.fallback()));
+  await expect(
+    list.getByRole("button", { name: "0:01 Budget and hiring", exact: true }),
+  ).toBeVisible();
+  await expect(title).toHaveCount(0);
+  await list.getByRole("button", { name: "0:00 Opening", exact: true }).focus();
+  await page.keyboard.press("F2");
+  await expect(title).toHaveValue("Opening");
 });
 
 test("edits the summary and its key points by hand", async ({ page, request }) => {
