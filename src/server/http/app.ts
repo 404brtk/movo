@@ -28,7 +28,21 @@ import {
 } from "../../shared/contracts/downloads.ts";
 import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
 import { SpeakerLabels } from "../../shared/contracts/models.ts";
-import { ImportMediaQuery, RenameMediaRequest } from "../../shared/contracts/media.ts";
+import {
+  ChangeRecordingTags,
+  ImportMediaQuery,
+  RenameMediaRequest,
+  SetRecordingTags,
+} from "../../shared/contracts/media.ts";
+import {
+  CreateTag,
+  maxTaggedRecordings,
+  maxTagNameCharacters,
+  maxTagsPerRecording,
+  TagId,
+  tagIdsIn,
+  UpdateTag,
+} from "../../shared/contracts/tags.ts";
 import {
   defaultHistoryPage,
   maxHistoryPage,
@@ -65,6 +79,7 @@ import { createTranscriptionEngine } from "../transcriptions/engine.ts";
 import { createDictionary } from "../transcriptions/dictionary.ts";
 import type { McpHandler } from "../mcp/server.ts";
 import { createAsk, type Ask, type LiveAnswerEvent } from "../ask/ask.ts";
+import { createTags } from "../tags/tags.ts";
 import { attachmentDisposition } from "./attachment.ts";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -113,6 +128,19 @@ function readDictionaryId(id: string) {
     throw new MediaError("notFound", "This dictionary entry no longer exists.");
   return id;
 }
+
+function readTagId(id: string) {
+  if (!Schema.is(TagId)(id)) throw new MediaError("notFound", "This tag no longer exists.");
+  return id;
+}
+
+const tagLimit = bodyLimit({
+  maxSize: 64 * 1024,
+  onError: (context) => context.json({ error: "Tag requests must be 64 KiB or smaller." }, 413),
+});
+
+const tagNameMessage = `Use a tag name of 1–${maxTagNameCharacters} characters on one line, and one of the listed colours.`;
+const tagListMessage = `Choose up to ${maxTagsPerRecording} different tags.`;
 
 const askLimit = bodyLimit({
   maxSize: 64 * 1024,
@@ -176,7 +204,8 @@ export function createApp(
   const library = createMediaLibrary(database, config.dataDirectory, () =>
     tools.resolve("ffprobe"),
   );
-  const ask = askService ?? createAsk(database, { library, downloads, transcriptions });
+  const tags = createTags(database, library);
+  const ask = askService ?? createAsk(database, { library, downloads, transcriptions, tags });
   const dictionary = createDictionary(database, transcriptions);
   const app = new Hono();
   app.use("*", async (context, next) => {
@@ -300,11 +329,40 @@ export function createApp(
         if (!result.success)
           throw new MediaError(
             "invalid",
-            `Use a search of up to ${maxSearchLength} characters and supported library filters.`,
+            `Use a search of up to ${maxSearchLength} characters and supported library filters, with up to ${maxTagsPerRecording} tags.`,
           );
       }),
       async (context) => context.json(await runMedia(library.browse(context.req.valid("query")))),
     )
+    .get("/tags", async (context) => {
+      context.header("Cache-Control", "no-store");
+      return context.json(await runMedia(tags.list()));
+    })
+    .post("/tags", tagLimit, async (context) => {
+      const request = await readJson(context.req.json(), CreateTag, tagNameMessage);
+      return context.json(await runMedia(tags.create(request)), 201);
+    })
+    .patch("/tags/:id", tagLimit, async (context) => {
+      const request = await readJson(context.req.json(), UpdateTag, tagNameMessage);
+      return context.json(await runMedia(tags.update(readTagId(context.req.param("id")), request)));
+    })
+    .delete("/tags/:id", async (context) =>
+      context.json(await runMedia(tags.remove(readTagId(context.req.param("id"))))),
+    )
+    .post("/media/tags", tagLimit, async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        ChangeRecordingTags,
+        `Choose between 1 and ${maxTaggedRecordings.toLocaleString("en-US")} different recordings and the tags to add to or remove from them.`,
+      );
+      return context.json(await runMedia(tags.change(request)));
+    })
+    .put("/media/:id/tags", tagLimit, async (context) => {
+      const request = await readJson(context.req.json(), SetRecordingTags, tagListMessage);
+      return context.json(
+        await runMedia(tags.setForRecording(context.req.param("id"), request.tagIds)),
+      );
+    })
     .get("/media/:id", async (context) =>
       context.json(await runMedia(library.get(context.req.param("id")))),
     )
@@ -628,7 +686,10 @@ export function createApp(
       "/media",
       sValidator("query", Schema.toStandardSchemaV1(ImportMediaQuery), (result) => {
         if (!result.success)
-          throw new MediaError("invalid", "Choose whether to transcribe after importing.");
+          throw new MediaError(
+            "invalid",
+            `Choose whether to transcribe after importing, and up to ${maxTagsPerRecording} tags.`,
+          );
       }),
       async (context) => {
         let originalName: string;
@@ -638,7 +699,8 @@ export function createApp(
           throw new MediaError("invalid", "The filename is invalid.", cause);
         }
         const length = context.req.header("content-length");
-        const transcribe = context.req.valid("query").transcribe === "true";
+        const query = context.req.valid("query");
+        const transcribe = query.transcribe === "true";
         const item = await runMedia(
           Effect.gen(function* () {
             if (transcribe) yield* transcriptions.check();
@@ -647,6 +709,7 @@ export function createApp(
               originalName,
               length === undefined ? undefined : Number(length),
               transcribe,
+              tagIdsIn(query.tags),
             );
           }),
           context.req.raw.signal,

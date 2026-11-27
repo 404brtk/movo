@@ -21,9 +21,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "./ui/dro
 export function RecordingMenu({
   item,
   transcribe,
+  onTags,
 }: {
   item: MediaItem;
   transcribe: TranscriptionActionMutation;
+  onTags: () => void;
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -45,6 +47,7 @@ export function RecordingMenu({
     loadTranscription: true,
     returnFocus: trigger,
     onRename: () => setRenaming(true),
+    onTags,
     onDeleted: (deletion) => {
       if (!deletion.cleanupError) void leaveRecording();
     },

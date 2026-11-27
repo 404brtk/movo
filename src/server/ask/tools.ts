@@ -53,21 +53,23 @@ const withinScope = (scope: ToolScope, mediaId: string, find: FindRecording) => 
       : Effect.fail(
           new MediaError("invalid", "This chat can only use the recording it belongs to."),
         );
-  const { kind, mediaIds } = scope.library ?? {};
+  const { kind, mediaIds, tagIds } = scope.library ?? {};
   if (mediaIds && !mediaIds.includes(mediaId)) return outsideScope();
-  if (!kind) return Effect.void;
+  if (!kind && !tagIds) return Effect.void;
   return find(mediaId).pipe(
-    Effect.flatMap((item) => (item.kind === kind ? Effect.void : outsideScope())),
+    Effect.flatMap((item) => (inScope(scope, item) ? Effect.void : outsideScope())),
   );
 };
 
-const inScope = (scope: ToolScope, item: { id: string; kind: string }) => {
+const inScope = (scope: ToolScope, item: Pick<MediaItem, "id" | "kind" | "tags">) => {
   if (scope.mediaId !== null) return item.id === scope.mediaId;
-  const { kind, mediaIds } = scope.library ?? {};
-  return (!kind || item.kind === kind) && (!mediaIds || mediaIds.includes(item.id));
+  const { kind, mediaIds, tagIds } = scope.library ?? {};
+  return (
+    (!kind || item.kind === kind) &&
+    (!mediaIds || mediaIds.includes(item.id)) &&
+    (!tagIds || tagIds.every((tagId) => item.tags.some((tag) => tag.id === tagId)))
+  );
 };
-
-const narrowed = (scope: ToolScope) => scope.mediaId !== null || Boolean(scope.library);
 
 const runners = (
   handlers: Handlers,
@@ -80,7 +82,8 @@ const runners = (
     decodeInput(movoTools.tools.search_library.parametersSchema, input).pipe(
       Effect.flatMap((query) => {
         const kind = scope.library?.kind ? { kind: scope.library.kind } : {};
-        if (!narrowed(scope)) return handlers.search_library({ ...query, ...kind });
+        if (scope.mediaId === null && !scope.library?.mediaIds)
+          return handlers.search_library({ ...query, ...kind });
         const { limit = defaultListLimit, offset = 0, ...filters } = query;
         return handlers
           .search_library({ ...filters, ...kind, limit: Number.MAX_SAFE_INTEGER })

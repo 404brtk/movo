@@ -40,6 +40,7 @@ const jobFixture = (): DownloadJob => ({
   id: randomUUID(),
   url,
   preset: "video-1080p",
+  tagIds: [],
   transcribe: false,
   title: "A queued video",
   durationSeconds: null,
@@ -128,6 +129,14 @@ test("keeps video links in a mixed paste and offers only supported collections",
 test("selects all loaded videos and queues a large collection in source order", async ({
   page,
 }) => {
+  const tag = {
+    id: randomUUID(),
+    name: "Lectures",
+    color: "teal",
+    recordingCount: 0,
+    createdAt: Date.now(),
+  };
+  await page.route("**/api/tags", (route) => route.fulfill({ json: [tag] }));
   const draft = [
     collectionVideo(0),
     ...Array.from({ length: 17 }, (_, index) => collectionVideo(index + 100)),
@@ -187,6 +196,9 @@ test("selects all loaded videos and queues a large collection in source order", 
   const transcribe = form.getByRole("switch", { name: "Transcribe after download" });
   await quality.click();
   await transcribe.click();
+  await form.getByRole("button", { name: "Add tags" }).click();
+  await page.getByRole("option", { name: /Lectures/u }).click();
+  await page.getByRole("combobox", { name: "Find or create a tag" }).press("Escape");
   await field.fill(`${playlist}&si=share`);
   await field.press("Enter");
   const picker = page.getByRole("dialog", { name: "Choose videos" });
@@ -240,6 +252,7 @@ test("selects all loaded videos and queues a large collection in source order", 
   await expect(field).toBeFocused();
   await expect(quality).toHaveAttribute("aria-pressed", "true");
   await expect(transcribe).toBeChecked();
+  await expect(form.getByRole("group", { name: "Tags" })).toContainText(tag.name);
   await expect(
     form.getByRole("list", { name: "Links", exact: true }).getByRole("listitem"),
   ).toHaveCount(68);
@@ -256,6 +269,7 @@ test("selects all loaded videos and queues a large collection in source order", 
         preset: "video-720p",
       })),
       transcribe: true,
+      tagIds: [tag.id],
     },
   ]);
   await form.getByRole("button", { name: "Choose videos", exact: true }).click();
@@ -278,6 +292,7 @@ test("selects all loaded videos and queues a large collection in source order", 
     .toEqual({
       links: [{ url: collectionVideo(50).url, title: collectionVideo(50).title, preset: "audio" }],
       transcribe: true,
+      tagIds: [tag.id],
     });
   await expect(form.getByText("Public playlist", { exact: true })).toBeVisible();
   await form.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -524,6 +539,14 @@ for (const choice of [
 test("checks several links, explains skipped ones and queues each with its own choice", async ({
   page,
 }) => {
+  const tag = {
+    id: randomUUID(),
+    name: "Interviews",
+    color: "teal",
+    recordingCount: 0,
+    createdAt: Date.now(),
+  };
+  await page.route("**/api/tags", (route) => route.fulfill({ json: [tag] }));
   const xUrl = "https://x.com/i/web/status/123";
   const episode = "https://podcasts.apple.com/podcast/id1?i=2";
   const titles: Record<string, string> = {
@@ -568,6 +591,7 @@ test("checks several links, explains skipped ones and queues each with its own c
           { url: xUrl, preset: "audio", title: titles[xUrl] },
           { url: episode, preset: "audio", title: titles[episode] },
         ],
+        tagIds: [tag.id],
         transcribe: false,
       });
       queued = true;
@@ -598,6 +622,9 @@ test("checks several links, explains skipped ones and queues each with its own c
     .click();
   await expect(page.getByRole("group", { name: "Quality" })).toHaveCount(0);
   await expect(list).not.toContainText("Already saved");
+  await page.getByRole("button", { name: "Add tags" }).click();
+  await page.getByRole("option", { name: /Interviews/u }).click();
+  await page.getByRole("combobox", { name: "Find or create a tag" }).press("Escape");
   await page.getByRole("button", { name: "Download 3", exact: true }).click();
   await expect(links).toBeDisabled();
   await expect(page.getByRole("button", { name: "Remove A short post" })).toBeDisabled();

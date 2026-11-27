@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { searchTerms } from "../search-text.ts";
 import { MediaItem, mediaKinds } from "./media.ts";
+import { TagIdList } from "./tags.ts";
 
 export const librarySorts = ["relevance", "newest", "oldest", "title"] as const;
 export type LibrarySort = (typeof librarySorts)[number];
@@ -14,6 +15,7 @@ export const LibraryQuery = Schema.Struct({
   kind: Schema.optional(Schema.Literals(mediaKinds)),
   transcript: Schema.optional(Schema.Literals(transcriptFilters)),
   sort: Schema.optional(Schema.Literals(librarySorts)),
+  tags: Schema.optional(TagIdList),
 });
 export type LibraryQuery = typeof LibraryQuery.Type;
 

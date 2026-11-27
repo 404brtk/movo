@@ -118,7 +118,8 @@ describe("media HTTP interface", () => {
         const rejected = await app.request(`${base}?${query}`);
         expect(rejected.status).toBe(400);
         expect(await rejected.json()).toEqual({
-          error: "Use a search of up to 200 characters and supported library filters.",
+          error:
+            "Use a search of up to 200 characters and supported library filters, with up to 20 tags.",
         });
       }
     });
@@ -281,8 +282,16 @@ describe("media HTTP interface", () => {
     let saving = false;
     await withApp(
       async (app, directory) => {
+        const tagsUrl = new URL("tags", base).href;
+        const created = await app.request(tagsUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "Cancelled import" }),
+        });
+        expect(created.status).toBe(201);
+        const tag = await created.json();
         const controller = new AbortController();
-        const upload = app.request(base, {
+        const upload = app.request(`${base}?tags=${tag.id}`, {
           method: "POST",
           headers: { "x-file-name": "cancelled.wav" },
           body: new Uint8Array(wave),
@@ -291,6 +300,7 @@ describe("media HTTP interface", () => {
         await expect.poll(() => saving).toBe(true);
         controller.abort();
         await upload;
+        expect(await (await app.request(tagsUrl)).json()).toEqual([{ ...tag, recordingCount: 0 }]);
         expect(await (await app.request(base)).json()).toEqual({ items: [], transcribing: false });
         expect(readdirSync(join(directory, "media"))).toEqual([]);
       },

@@ -8,7 +8,22 @@ import {
   downloadSiteNames,
 } from "../../shared/contracts/downloads.ts";
 import { LibraryItem, LibraryQuery } from "../../shared/contracts/library.ts";
-import { MediaDeletion, MediaId, MediaItem, MediaTitle } from "../../shared/contracts/media.ts";
+import {
+  MediaDeletion,
+  MediaId,
+  MediaItem,
+  MediaList,
+  MediaTitle,
+} from "../../shared/contracts/media.ts";
+import {
+  maxTaggedRecordings,
+  maxTagsPerRecording,
+  Tag,
+  TagColor,
+  tagColors,
+  TagList,
+  TagName,
+} from "../../shared/contracts/tags.ts";
 import {
   PassageEdit,
   SpeakerAssignment,
@@ -49,6 +64,11 @@ const Page = { limit: limit(100), offset: Schema.optional(Count) };
 const Recording = Schema.Struct({ mediaId: MediaId });
 const Download = Schema.Struct({ downloadId: MediaId });
 const failure = Schema.instanceOf(MediaError);
+const TagNames = Schema.Array(Schema.String.check(Schema.isMinLength(1))).check(
+  Schema.isMaxLength(maxTagsPerRecording),
+);
+const tagNamesNote =
+  "Tags are named case-insensitively; an unknown name is an error that lists the tags.";
 
 const hints = (hint: {
   readOnly: boolean;
@@ -72,9 +92,12 @@ const changes = (hint: { destructive?: boolean; idempotent: boolean; openWorld?:
 
 export const movoTools = Toolkit.make(
   Tool.make("search_library", {
-    description:
-      "Search saved recordings by title, transcript text and the names given to speakers, or list them when q is empty. Every word of q must match; words also match longer words that start with them. Optional filters: kind (audio, video), transcript (available, missing), sort (relevance, newest, oldest, title). Each recording has transcription: active while its transcription is queued or running, done when it has a transcript, stopped when the last attempt ended without one, none when it was never transcribed. Transcript matches include up to three passages, those matching every word first, each with startMs, which read_transcript accepts as fromMs, and the speaker name when that speaker was named; passageCount counts the passages with any of the words and everyWordPassageCount those with every word. Returns at most limit recordings (default 20, up to 100) after skipping offset (default 0), and the total number of matches.",
-    parameters: Schema.Struct({ ...LibraryQuery.fields, ...Page }),
+    description: `Search saved recordings by title, transcript text and the names given to speakers, or list them when q is empty. Every word of q must match; words also match longer words that start with them. Optional filters: kind (audio, video), transcript (available, missing), sort (relevance, newest, oldest, title). Each recording has transcription: active while its transcription is queued or running, done when it has a transcript, stopped when the last attempt ended without one, none when it was never transcribed. Transcript matches include up to three passages, those matching every word first, each with startMs, which read_transcript accepts as fromMs, and the speaker name when that speaker was named; passageCount counts the passages with any of the words and everyWordPassageCount those with every word. tags lists tag names; only recordings that have every one of them match. Tag names are not searched by q. ${tagNamesNote} Each recording lists its tags. Returns at most limit recordings (default 20, up to 100) after skipping offset (default 0), and the total number of matches.`,
+    parameters: Schema.Struct({
+      ...Struct.omit(LibraryQuery.fields, ["tags"]),
+      tags: Schema.optional(TagNames),
+      ...Page,
+    }),
     success: Schema.Struct({
       items: Schema.Array(LibraryItem),
       total: Count,
@@ -137,10 +160,11 @@ export const movoTools = Toolkit.make(
     hints({ readOnly: true, destructive: false, idempotent: true, openWorld: true }),
   ),
   Tool.make("download_links", {
-    description: `Queue downloads of videos or podcast episodes from ${downloadSiteNames} into the library, in the given order. Pass up to ${maxMcpDownloadLinks} links, each with its own url and optional preset. Returns one job per link. If any link is unsupported, nothing is queued. preset is video-480p, video-720p, video-1080p (default), video-best or audio; video presets cap the shorter side of the frame and use the best lower resolution a source offers; podcast episodes are always saved as audio. Set transcribe to transcribe each recording once it is saved. The same link and preset return the existing job; a failed, cancelled or interrupted one is queued again. A link and preset already saved in the library return a completed job for that recording instead of downloading it again. Downloads run one at a time in the background; check them with get_download every few seconds.`,
+    description: `Queue downloads of videos or podcast episodes from ${downloadSiteNames} into the library, in the given order. Pass up to ${maxMcpDownloadLinks} links, each with its own url and optional preset. Returns one job per link. If any link is unsupported, nothing is queued. preset is video-480p, video-720p, video-1080p (default), video-best or audio; video presets cap the shorter side of the frame and use the best lower resolution a source offers; podcast episodes are always saved as audio. Set transcribe to transcribe each recording once it is saved. tags names existing tags to give each saved recording (${tagNamesNote} A recording keeps at most ${maxTagsPerRecording} tags; extra ones are skipped). The same link and preset return the existing job; a failed, cancelled or interrupted one is queued again. A link and preset already saved in the library return a completed job for that recording instead of downloading it again. Downloads run one at a time in the background; check them with get_download every few seconds.`,
     parameters: Schema.Struct({
-      ...DownloadRequest.fields,
+      ...Struct.omit(DownloadRequest.fields, ["tagIds"]),
       links: DownloadRequest.fields.links.check(Schema.isMaxLength(maxMcpDownloadLinks)),
+      tags: Schema.optional(TagNames),
     }),
     success: Schema.Struct({ jobs: Schema.Array(DownloadJob) }),
     failure,
@@ -158,9 +182,11 @@ export const movoTools = Toolkit.make(
     failure,
   }).annotateMerge(changes({ idempotent: false, openWorld: true })),
   Tool.make("import_file", {
-    description:
-      "Copy a local audio or video file into the library. path must be absolute. The original file is not changed. Large files can take a while to copy.",
-    parameters: Schema.Struct({ path: Schema.String.check(Schema.isMinLength(1)) }),
+    description: `Copy a local audio or video file into the library. path must be absolute. The original file is not changed. Large files can take a while to copy. tags names existing tags to give the recording. ${tagNamesNote}`,
+    parameters: Schema.Struct({
+      path: Schema.String.check(Schema.isMinLength(1)),
+      tags: Schema.optional(TagNames),
+    }),
     success: MediaItem,
     failure,
   }).annotateMerge(changes({ idempotent: false })),
@@ -247,6 +273,48 @@ export const movoTools = Toolkit.make(
     success: MediaDeletion,
     failure,
   }).annotateMerge(changes({ destructive: true, idempotent: true })),
+  Tool.make("list_tags", {
+    description:
+      "List the library's tags in name order, each with its colour and the number of recordings that have it.",
+    parameters: Tool.EmptyParams,
+    success: Schema.Struct({ tags: TagList }),
+    failure,
+  }).annotateMerge(reads),
+  Tool.make("create_tag", {
+    description: `Create a tag for organising recordings. Create one only when the user asks for it. Names are unique ignoring letter case and have at most 64 characters. color is one of ${tagColors.join(", ")}; leave it out to use the colour fewest tags have.`,
+    parameters: Schema.Struct({ name: TagName, color: Schema.optional(TagColor) }),
+    success: Tag,
+    failure,
+  }).annotateMerge(changes({ idempotent: false })),
+  Tool.make("update_tag", {
+    description: `Rename or recolour a tag everywhere it is used. tag is its current name. ${tagNamesNote}`,
+    parameters: Schema.Struct({
+      tag: Schema.String.check(Schema.isMinLength(1)),
+      name: Schema.optional(TagName),
+      color: Schema.optional(TagColor),
+    }),
+    success: Tag,
+    failure,
+  }).annotateMerge(changes({ idempotent: true })),
+  Tool.make("delete_tag", {
+    description: `Delete a tag and remove it from every recording that has it. The recordings stay in the library. tag is its name. ${tagNamesNote}`,
+    parameters: Schema.Struct({ tag: Schema.String.check(Schema.isMinLength(1)) }),
+    success: Tag,
+    failure,
+  }).annotateMerge(changes({ destructive: true, idempotent: true })),
+  Tool.make("tag_recordings", {
+    description: `Add tags to or remove tags from up to ${maxTaggedRecordings} recordings at once. add and remove list tag names. ${tagNamesNote} A recording can have at most ${maxTagsPerRecording} tags; if adding would exceed that for any recording, nothing changes. Returns the changed recordings.`,
+    parameters: Schema.Struct({
+      mediaIds: Schema.Array(MediaId).check(
+        Schema.isMinLength(1),
+        Schema.isMaxLength(maxTaggedRecordings),
+      ),
+      add: Schema.optional(TagNames),
+      remove: Schema.optional(TagNames),
+    }),
+    success: Schema.Struct({ recordings: MediaList }),
+    failure,
+  }).annotateMerge(changes({ idempotent: true })),
   Tool.make("delete_recording", {
     description:
       "Permanently delete a recording with its saved file, transcript and download history. Imported original files are not touched. Cancel a queued or running transcription first.",

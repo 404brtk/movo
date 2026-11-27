@@ -60,11 +60,13 @@ test("transcribes explicitly, keeps working across navigation and seeks from sav
     0,
   );
   await page.getByRole("button", { name: "More actions", exact: true }).click();
+  await expect(page.getByRole("menu")).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Copy transcript", exact: true })).toHaveCount(0);
   await expect(page.getByRole("menuitem", { name: "Export transcript", exact: true })).toHaveCount(
     0,
   );
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toBeHidden();
   expect(attempts).toBe(0);
   await panel.getByRole("button", { name: "Transcribe", exact: true }).click();
   await expect(panel.getByRole("alert")).toContainText("Download Parakeet Ultra");

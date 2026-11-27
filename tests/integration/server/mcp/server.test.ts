@@ -15,6 +15,8 @@ import { TranscriptionSummary } from "../../../../src/server/mcp/tools.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
 import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { createTags } from "../../../../src/server/tags/tags.ts";
+import { Tag, TagList } from "../../../../src/shared/contracts/tags.ts";
 import {
   createTranscriptions,
   type TranscriptionEngine,
@@ -118,7 +120,13 @@ function withMovo(
             });
             const mcp = yield* Effect.acquireRelease(
               Effect.sync(() =>
-                createMcpHandler({ library, downloads, transcriptions, port: 4310 }),
+                createMcpHandler({
+                  library,
+                  downloads,
+                  transcriptions,
+                  tags: createTags(database, library),
+                  port: 4310,
+                }),
               ),
               (handler) => Effect.promise(() => handler.dispose()),
             );
@@ -198,6 +206,11 @@ describe("MCP endpoint", () => {
         "restore_transcript",
         "rename_recording",
         "remove_saved_copy",
+        "list_tags",
+        "create_tag",
+        "update_tag",
+        "delete_tag",
+        "tag_recordings",
         "delete_recording",
       ]);
       const names = (
@@ -211,10 +224,12 @@ describe("MCP endpoint", () => {
         "get_download",
         "preview_link",
         "list_transcript_changes",
+        "list_tags",
       ]);
       expect(names((hints) => hints.destructiveHint)).toEqual([
         "retry_transcription",
         "remove_saved_copy",
+        "delete_tag",
         "delete_recording",
       ]);
       expect(names((hints) => hints.openWorldHint)).toEqual([
@@ -645,6 +660,68 @@ describe("MCP endpoint", () => {
         revision: 3,
         transcript: { speakers: [{ id: 2, name: "Ann" }] },
       });
+    }),
+  );
+
+  it(
+    "creates, applies, searches by and deletes tags by name",
+    withMovo(readyEngine, async (app) => {
+      const Recordings = Schema.Struct({ recordings: Schema.Array(MediaItem) });
+      const Tags = Schema.Struct({ tags: TagList });
+      expect(await toolError(app, "import_file", { path: fixture, tags: ["Klient"] })).toBe(
+        "No tag named “Klient”. The library has no tags yet; create one with create_tag.",
+      );
+      const client = await toolSuccess(Tag, app, "create_tag", { name: "Klient Nowak" });
+      expect(client).toMatchObject({ name: "Klient Nowak", color: "gray", recordingCount: 0 });
+      await toolSuccess(Tag, app, "create_tag", { name: "Spotkania", color: "amber" });
+      expect(await toolError(app, "create_tag", { name: "klient nowak" })).toBe(
+        "“klient nowak” already exists. Choose another name.",
+      );
+      const first = await toolSuccess(MediaItem, app, "import_file", {
+        path: fixture,
+        tags: ["KLIENT NOWAK"],
+      });
+      expect(first.tags.map((tag) => tag.name)).toEqual(["Klient Nowak"]);
+      const second = await toolSuccess(MediaItem, app, "import_file", { path: fixture });
+      const tagged = await toolSuccess(Recordings, app, "tag_recordings", {
+        mediaIds: [first.id, second.id],
+        add: ["spotkania"],
+      });
+      expect(tagged.recordings.map((item) => item.tags.length)).toEqual([2, 1]);
+      expect(
+        await toolError(app, "tag_recordings", {
+          mediaIds: [first.id],
+          add: ["Spotkania"],
+          remove: ["spotkania"],
+        }),
+      ).toContain("never the same tag in both");
+      expect(await toolError(app, "search_library", { tags: ["Archiwum"] })).toBe(
+        "No tag named “Archiwum”. Tags: Klient Nowak, Spotkania.",
+      );
+      const found = await toolSuccess(
+        Schema.Struct({ items: Schema.Array(MediaItem), total: Schema.Number }),
+        app,
+        "search_library",
+        { tags: ["Klient Nowak", "Spotkania"] },
+      );
+      expect(found.items.map((item) => item.id)).toEqual([first.id]);
+      expect(
+        await toolSuccess(Tag, app, "update_tag", { tag: "spotkania", name: "Meetings" }),
+      ).toMatchObject({ name: "Meetings", recordingCount: 2 });
+      expect((await toolSuccess(Tags, app, "list_tags", {})).tags.map((tag) => tag.name)).toEqual([
+        "Klient Nowak",
+        "Meetings",
+      ]);
+      expect(await toolSuccess(Tag, app, "delete_tag", { tag: "Meetings" })).toMatchObject({
+        name: "Meetings",
+      });
+      const recording = await toolSuccess(
+        Schema.Struct({ recording: MediaItem }),
+        app,
+        "get_recording",
+        { mediaId: first.id },
+      );
+      expect(recording.recording.tags.map((tag) => tag.name)).toEqual(["Klient Nowak"]);
     }),
   );
 

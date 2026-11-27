@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { maxDownloadLinkLength, recognizeDownloadSource } from "../download-sources.ts";
 import { MediaId } from "./media.ts";
+import { maxTags, TagId, TagIds } from "./tags.ts";
 
 export const downloadPresets = [
   { id: "video-480p", kind: "video", maxHeight: 480, label: "Up to 480p" },
@@ -45,6 +46,7 @@ export type DownloadLinkRequest = typeof DownloadLinkRequest.Type;
 export const DownloadRequest = Schema.Struct({
   links: Schema.Array(DownloadLinkRequest).check(Schema.isMinLength(1)),
   transcribe: Schema.optional(Schema.Boolean),
+  tagIds: Schema.optional(TagIds),
 });
 export type DownloadRequest = typeof DownloadRequest.Type;
 export const DownloadSourceDetails = Schema.Struct({
@@ -87,6 +89,7 @@ export const DownloadJob = Schema.Struct({
   url: Schema.String,
   preset: DownloadPreset,
   transcribe: Schema.Boolean,
+  tagIds: Schema.Array(TagId).check(Schema.isMaxLength(maxTags)),
   title: Schema.NullOr(Schema.String),
   durationSeconds: Schema.NullOr(Schema.Number),
   status: Schema.Literals(downloadStates),

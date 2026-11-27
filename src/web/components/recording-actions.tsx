@@ -9,6 +9,7 @@ import {
   FileRemoveIcon,
   RefreshIcon,
   SpeechToTextIcon,
+  Tag01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -61,6 +62,7 @@ export function useRecordingActions({
   loadTranscription,
   returnFocus,
   onRename,
+  onTags,
   onDeleted,
   deletionNotice,
   library,
@@ -70,6 +72,7 @@ export function useRecordingActions({
   loadTranscription: boolean;
   returnFocus: RefObject<HTMLElement | null> | false;
   onRename: () => void;
+  onTags: () => void;
   onDeleted: (deletion: MediaDeletion) => void;
   deletionNotice?: { acknowledge: string; onAcknowledge: () => void };
   library?: LibraryActions;
@@ -116,6 +119,11 @@ export function useRecordingActions({
         <MenuIcon icon={Edit02Icon} />
         Rename recording
         <KeyHint>F2</KeyHint>
+      </DropdownMenuItem>
+      <DropdownMenuItem aria-keyshortcuts={library ? "T" : undefined} onClick={onTags}>
+        <MenuIcon icon={Tag01Icon} />
+        Tags…
+        {library ? <KeyHint>T</KeyHint> : null}
       </DropdownMenuItem>
       {transcription.isPending && loadTranscription ? (
         <DropdownMenuItem disabled>

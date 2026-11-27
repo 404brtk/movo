@@ -4,7 +4,7 @@ import { lstat, mkdir, open, realpath, rename, rm, stat } from "node:fs/promises
 import { basename, isAbsolute, join, parse, relative } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { and, eq, getTableColumns, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, eq, exists, getTableColumns, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { Effect, Result, Schema } from "effect";
 import type { DownloadPreset } from "../../shared/contracts/downloads.ts";
 import {
@@ -30,6 +30,9 @@ import { downloadJobs } from "../downloads/downloads.schema.ts";
 import { transcriptionJobs } from "../transcriptions/transcriptions.schema.ts";
 import { clearHistory } from "../transcriptions/history.ts";
 import { queueTranscription } from "../transcriptions/queue.ts";
+import { addTagsToRecording, readTagRefs, requireTags } from "../tags/tags.ts";
+import { mediaTags } from "../tags/tags.schema.ts";
+import { tagIdsIn, type TagRef } from "../../shared/contracts/tags.ts";
 import { MediaError } from "./error.ts";
 import { mediaItems } from "./media.schema.ts";
 import { probeMedia } from "./probe.ts";
@@ -44,6 +47,7 @@ import {
 } from "./search.ts";
 
 type MediaSource = { url: string; preset: DownloadPreset };
+type MediaRow = typeof mediaItems.$inferSelect;
 
 const extensions: Record<MediaItem["contentType"], string> = {
   "video/mp4": "mp4",
@@ -85,6 +89,9 @@ function describeTranscription(
   if (transcribed) return "done";
   return status === null ? "none" : "stopped";
 }
+
+const decodeRow = (row: MediaRow, tags: ReadonlyMap<string, readonly TagRef[]>) =>
+  Schema.decodeUnknownSync(MediaItem)({ ...row, tags: tags.get(row.id) ?? [] });
 
 const storageError = (cause: unknown) =>
   cause instanceof MediaError
@@ -147,9 +154,9 @@ export function createMediaLibrary(
   const read = (id: string) => {
     if (Result.isFailure(Schema.decodeUnknownResult(MediaId)(id)))
       throw new MediaError("notFound", "Media not found.");
-    const item = database.select().from(mediaItems).where(eq(mediaItems.id, id)).get();
-    if (!item) throw new MediaError("notFound", "Media not found.");
-    return Schema.decodeUnknownSync(MediaItem)(item);
+    const row = database.select().from(mediaItems).where(eq(mediaItems.id, id)).get();
+    if (!row) throw new MediaError("notFound", "Media not found.");
+    return decodeRow(row, readTagRefs(database, [row.id]));
   };
   const get = (id: string) =>
     Effect.try({
@@ -234,6 +241,7 @@ export function createMediaLibrary(
     byteSize: number,
     id: string,
     transcribe = false,
+    tagIds: readonly string[] = [],
   ) =>
     Effect.gen(function* () {
       const ffprobePath = yield* resolveProbe();
@@ -246,6 +254,7 @@ export function createMediaLibrary(
             title,
             sourceUrl: source?.url ?? null,
             fileRemovedAt: null,
+            tags: [],
             byteSize,
             importedAt: Date.now(),
             ...details,
@@ -270,6 +279,8 @@ export function createMediaLibrary(
                 .insert(mediaItems)
                 .values({ ...item, sourcePreset: source?.preset ?? null })
                 .run();
+              requireTags(transaction, tagIds);
+              addTagsToRecording(transaction, item.id, tagIds);
               addSearchEntry(transaction, item);
               if (transcribe) queueTranscription(transaction, item.id);
             });
@@ -277,7 +288,7 @@ export function createMediaLibrary(
           },
           catch: storageError,
         });
-        return item;
+        return yield* Effect.try({ try: () => read(item.id), catch: storageError });
       }).pipe(
         Effect.uninterruptible,
         Effect.ensuring(
@@ -309,11 +320,23 @@ export function createMediaLibrary(
               ? isNull(transcriptionJobs.transcript)
               : undefined,
           ranks ? inArray(mediaItems.id, [...ranks.keys()]) : undefined,
+          ...tagIdsIn(query.tags).map((tagId) =>
+            exists(
+              database
+                .select({ found: sql`1` })
+                .from(mediaTags)
+                .where(and(eq(mediaTags.mediaId, mediaItems.id), eq(mediaTags.tagId, tagId))),
+            ),
+          ),
         ),
       )
       .all();
+    const tags = readTagRefs(
+      database,
+      rows.map(({ item }) => item.id),
+    );
     const items = rows.map(({ item, status, transcribed }) => ({
-      ...Schema.decodeUnknownSync(MediaItem)(item),
+      ...decodeRow(item, tags),
       transcription: describeTranscription(status, transcribed === 1),
     }));
     const ordered = items.toSorted(compareItems(librarySort(query), ranks));
@@ -334,6 +357,7 @@ export function createMediaLibrary(
     originalName: string,
     declaredSize?: number,
     transcribe = false,
+    tagIds: readonly string[] = [],
   ) =>
     Effect.gen(function* () {
       if (
@@ -354,6 +378,7 @@ export function createMediaLibrary(
       if (declaredSize !== undefined && declaredSize > maxImportBytes) {
         return yield* Effect.fail(new MediaError("tooLarge", "Files must be 10 GiB or smaller."));
       }
+      yield* Effect.try({ try: () => requireTags(database, tagIds), catch: storageError });
       yield* resolveProbe();
       const id = randomUUID();
       const temporaryPath = join(mediaDirectory, `${id}.part`);
@@ -396,6 +421,7 @@ export function createMediaLibrary(
           byteSize,
           id,
           transcribe,
+          tagIds,
         );
       }).pipe(
         Effect.ensuring(
@@ -425,7 +451,7 @@ export function createMediaLibrary(
               );
             const row = database.select().from(mediaItems).where(eq(mediaItems.id, id)).get();
             if (row && row.fileRemovedAt === null) {
-              const item = Schema.decodeUnknownSync(MediaItem)(row);
+              const item = Schema.decodeUnknownSync(MediaItem)({ ...row, tags: [] });
               if (basename(filePath(item)) !== originalName)
                 throw new MediaError(
                   "storage",
@@ -600,7 +626,7 @@ export function createMediaLibrary(
         return { item, path };
       }),
     import: importMedia,
-    importPath: (path: string) =>
+    importPath: (path: string, tagIds: readonly string[] = []) =>
       Effect.gen(function* () {
         if (!isAbsolute(path))
           return yield* Effect.fail(
@@ -622,7 +648,13 @@ export function createMediaLibrary(
               new MediaError("notFound", "The file does not exist or cannot be read.", cause),
           }),
           (handle) =>
-            importMedia(handle.createReadStream({ autoClose: false }), basename(path), file.size),
+            importMedia(
+              handle.createReadStream({ autoClose: false }),
+              basename(path),
+              file.size,
+              false,
+              tagIds,
+            ),
           (handle) => Effect.promise(() => handle.close()),
         );
       }),

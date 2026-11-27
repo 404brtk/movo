@@ -29,7 +29,16 @@ import {
   maxImportBytes,
   MediaItem,
   MediaDeletion,
+  MediaList,
+  type ChangeRecordingTags,
 } from "../../shared/contracts/media.ts";
+import {
+  Tag,
+  tagIdList,
+  TagList,
+  type CreateTag,
+  type UpdateTag,
+} from "../../shared/contracts/tags.ts";
 import {
   activeInstallationPhases,
   MediaToolsStatus,
@@ -123,7 +132,8 @@ async function readResponse<S extends Schema.ConstraintDecoder<unknown>>(
   return result.success;
 }
 
-export const mediaListKey = ["media", "list"] as const;
+export const mediaRecordingsKey = ["media"] as const;
+export const mediaListKey = [...mediaRecordingsKey, "list"] as const;
 
 export const mediaListOptions = (query: LibraryQuery) =>
   queryOptions({
@@ -137,7 +147,7 @@ export const mediaListOptions = (query: LibraryQuery) =>
 
 export const mediaItemOptions = (id: string) =>
   queryOptions({
-    queryKey: ["media", id],
+    queryKey: [...mediaRecordingsKey, id],
     queryFn: ({ signal }) =>
       readResponse(
         client.api.media[":id"].$get({ param: { id } }, { init: { signal } }),
@@ -177,14 +187,24 @@ export function installYtdlp() {
 
 export async function importMedia(
   file: File,
-  { transcribe, signal }: { transcribe: boolean; signal: AbortSignal },
+  {
+    transcribe,
+    tagIds,
+    signal,
+  }: { transcribe: boolean; tagIds: readonly string[]; signal: AbortSignal },
 ) {
+  const tags = tagIdList(tagIds);
   if (file.size === 0)
     throw new ApiError(400, "This file is empty. Choose an audio or video file.");
   if (file.size > maxImportBytes) throw new ApiError(413, "Files must be 10 GiB or smaller.");
   return readResponse(
     client.api.media.$post(
-      { query: transcribe ? { transcribe: "true" } : {} },
+      {
+        query: {
+          ...(transcribe ? { transcribe: "true" as const } : {}),
+          ...(tags ? { tags } : {}),
+        },
+      },
       {
         init: {
           body: file,
@@ -213,6 +233,20 @@ export const transcriptionExportUrl = (
     speakers,
     timestamps: String(timestamps),
   })}`;
+
+export const tagsOptions = queryOptions({
+  queryKey: ["tags"],
+  queryFn: ({ signal }) => readResponse(client.api.tags.$get({}, { init: { signal } }), TagList),
+  retry: false,
+});
+export const createTag = (request: CreateTag) =>
+  readResponse(client.api.tags.$post({}, jsonBody(request)), Tag);
+export const updateTag = (id: string, change: UpdateTag) =>
+  readResponse(client.api.tags[":id"].$patch({ param: { id } }, jsonBody(change)), Tag);
+export const deleteTag = (id: string) =>
+  readResponse(client.api.tags[":id"].$delete({ param: { id } }), Tag);
+export const changeRecordingTags = (request: ChangeRecordingTags) =>
+  readResponse(client.api.media.tags.$post({}, jsonBody(request)), MediaList);
 
 export const modelsOptions = queryOptions({
   queryKey: ["models"],
