@@ -172,6 +172,7 @@ export function ChapterList({
   const defaultModel = useQuery(defaultModelOptions);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const savingDraft = useRef(false);
   const [dialog, setDialog] = useState<"write" | "delete" | null>(null);
   const create = useOverviewChange(mediaId, (chapter: Parameters<typeof createChapter>[1]) =>
     createChapter(mediaId, chapter),
@@ -214,14 +215,13 @@ export function ChapterList({
     const rows = [...(list.current?.querySelectorAll<HTMLElement>(rowSelector) ?? [])];
     rows[rows.indexOf(from) + step]?.focus();
   };
-  const savingDraft = create.isPending || update.isPending;
   const startEdit = (chapter: Chapter) => {
-    if (savingDraft) return;
+    if (savingDraft.current) return;
     setDraftError(null);
     setDraft({ ...chapter, time: formatMoment(chapter.startMs) });
   };
   const startNew = () => {
-    if (savingDraft) return;
+    if (savingDraft.current) return;
     setDraftError(null);
     const startMs = Math.round(positionMs ?? 0);
     setDraft({ id: null, startMs, time: formatMoment(startMs), title: "" });
@@ -231,7 +231,7 @@ export function ChapterList({
     setDraftError(null);
   };
   const saveDraft = () => {
-    if (!draft || savingDraft) return;
+    if (!draft || savingDraft.current) return;
     const startMs = parseMoment(draft.time, draft.startMs);
     const title = draft.title.trim();
     const existing = chapters.find((chapter) => chapter.id === draft.id);
@@ -242,13 +242,20 @@ export function ChapterList({
     const done = {
       onSuccess: closeDraft,
       onError: (failure: Error) => setDraftError(failure.message),
+      onSettled: () => {
+        savingDraft.current = false;
+      },
     };
-    if (!existing) return create.mutate({ startMs, title }, done);
+    if (!existing) {
+      savingDraft.current = true;
+      return create.mutate({ startMs, title }, done);
+    }
     const change = {
       ...(startMs === existing.startMs ? {} : { startMs }),
       ...(title === existing.title ? {} : { title }),
     };
     if (Object.keys(change).length === 0) return closeDraft();
+    savingDraft.current = true;
     update.mutate({ id: existing.id, change }, done);
   };
   const removeChapter = (chapter: Chapter) =>
