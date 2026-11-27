@@ -196,16 +196,21 @@ test("loads collection pages on demand, preserves selection and queues videos in
     videos.getByRole("checkbox", { name: new RegExp(`^Collection video ${index}(?: |$)`) });
   await expect(videos.getByRole("checkbox")).toHaveCount(50);
   await expect(checkbox(0)).toBeDisabled();
+  await expect(videos.getByText("In draft", { exact: true })).toBeVisible();
+  const loadMore = picker.getByRole("button", { name: "Load more", exact: true });
+  await expect(loadMore).toBeInViewport();
+  await expect(picker.getByText("2 slots left", { exact: true })).toBeVisible();
   expect(await picker.evaluate(scrollingAreas)).toEqual(["Collection videos"]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
   await expect(videos.getByText("1:02").first()).toBeVisible();
   await checkbox(49).press("Space");
   await expect(checkbox(49)).toBeChecked();
   await expect(picker.getByText("1 selected", { exact: true })).toBeVisible();
+  await expect(picker.getByText("1 slot left", { exact: true })).toBeVisible();
   expect(pages).toEqual([undefined]);
   const scroll = await videos.evaluate((element) => element.scrollTop);
   expect(scroll).toBeGreaterThan(0);
-  await picker.getByRole("button", { name: "Load more", exact: true }).click();
+  await loadMore.click();
   await expect(picker.getByRole("alert")).toHaveText("YouTube is temporarily unavailable.");
   await expect(checkbox(49)).toBeChecked();
   await picker.getByRole("button", { name: "Retry load more" }).click();
@@ -215,7 +220,7 @@ test("loads collection pages on demand, preserves selection and queues videos in
   await expect(picker.getByRole("button", { name: "Load more", exact: true })).toHaveCount(0);
 
   await checkbox(49).press("Space");
-  await checkbox(51).press("Space");
+  await videos.getByText(later.title, { exact: true }).click();
   await checkbox(49).press("Space");
   await expect(checkbox(50)).toBeDisabled();
   await expect(picker.getByText("20-link limit reached.")).toBeVisible();

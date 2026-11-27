@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Cancel01Icon, Download04Icon, Link01Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowRight01Icon,
+  Cancel01Icon,
+  Download04Icon,
+  Link01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Toast } from "@base-ui/react/toast";
 import {
@@ -34,7 +39,7 @@ import {
 } from "../lib/download-links.ts";
 import { formatDuration } from "../lib/format.ts";
 import { cn } from "../lib/utils.ts";
-import { DownloadCollection } from "./download-collection.tsx";
+import { CollectionSource, DownloadCollection } from "./download-collection.tsx";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
 import { SegmentedChoice } from "./segmented-choice.tsx";
 import { SourceSite } from "./source-site.tsx";
@@ -387,43 +392,47 @@ export function DownloadLink() {
           {collections.length > 0 ? (
             <ul
               aria-label="YouTube collections"
-              className="mt-3 shrink-0 rounded-xl shadow-[inset_0_0_0_1px_var(--color-border)]"
+              className="mt-3 shrink-0 rounded-xl border bg-subtle"
             >
               {collections.map(({ source, fromWatch, title: previewTitle }) => {
                 const title = previewTitle ?? source.url.replace(/^https:\/\/www\./u, "");
                 return (
                   <li
                     key={source.url}
-                    className="flex flex-wrap items-center gap-2 border-t px-2.5 py-2 first:border-t-0"
+                    className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t px-2.5 py-2 first:border-t-0"
                   >
-                    <span
-                      className="min-w-0 flex-1 basis-32 truncate text-[13px]/[18px] font-medium"
-                      title={title}
-                    >
-                      {title}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={download.isPending}
-                      onClick={() => setActiveCollection(source)}
-                    >
-                      {fromWatch ? "Choose from playlist" : "Choose videos"}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Remove ${title}`}
-                      disabled={download.isPending}
-                      onClick={() => {
-                        setCollections((current) =>
-                          current.filter((offer) => offer.source.url !== source.url),
-                        );
-                        linksInput.current?.focus();
-                      }}
-                    >
-                      <HugeiconsIcon icon={Cancel01Icon} size={14} aria-hidden="true" />
-                    </Button>
+                    <div className="min-w-0 flex-1 basis-32">
+                      <CollectionSource kind={source.kind} title={title} />
+                    </div>
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={download.isPending}
+                        onClick={() => setActiveCollection(source)}
+                      >
+                        {fromWatch ? "Choose from playlist" : "Choose videos"}
+                        <HugeiconsIcon
+                          icon={ArrowRight01Icon}
+                          className="size-3.5"
+                          aria-hidden="true"
+                        />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Remove ${title}`}
+                        disabled={download.isPending}
+                        onClick={() => {
+                          setCollections((current) =>
+                            current.filter((offer) => offer.source.url !== source.url),
+                          );
+                          linksInput.current?.focus();
+                        }}
+                      >
+                        <HugeiconsIcon icon={Cancel01Icon} size={14} aria-hidden="true" />
+                      </Button>
+                    </div>
                   </li>
                 );
               })}

@@ -1,5 +1,10 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
+import {
+  AlertCircleIcon,
+  ArrowDown01Icon,
+  ArrowLeft01Icon,
+  Playlist03Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { maxDownloadLinks } from "../../shared/contracts/downloads.ts";
@@ -7,11 +12,39 @@ import type { YouTubeCollection } from "../../shared/download-sources.ts";
 import { ApiError, collectionOptions, ytdlpOptions } from "../lib/api.ts";
 import { countLabel, type LinkRow } from "../lib/download-links.ts";
 import { formatDuration } from "../lib/format.ts";
+import { cn } from "../lib/utils.ts";
+import { MediaThumbnail } from "./media-thumbnail.tsx";
 import { Spinner } from "./spinner.tsx";
 import { Button } from "./ui/button.tsx";
 import { Checkbox } from "./ui/checkbox.tsx";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog.tsx";
 import { YtdlpSetup } from "./ytdlp-setup.tsx";
+
+export function CollectionSource({
+  kind,
+  title,
+}: {
+  kind: YouTubeCollection["kind"];
+  title: string | null | undefined;
+}) {
+  const type = kind === "playlist" ? "YouTube playlist" : "YouTube channel";
+  return (
+    <span className="flex min-w-0 items-center gap-2.5">
+      <span className="grid size-8 shrink-0 place-items-center text-muted-foreground">
+        <HugeiconsIcon icon={Playlist03Icon} size={18} aria-hidden="true" />
+      </span>
+      <span className="min-w-0">
+        <span
+          className="line-clamp-3 text-[13px]/[18px] font-medium wrap-anywhere text-foreground"
+          title={title ?? undefined}
+        >
+          {title || type}
+        </span>
+        {title ? <span className="block text-xs/4 text-muted-foreground">{type}</span> : null}
+      </span>
+    </span>
+  );
+}
 
 export function DownloadCollection({
   source,
@@ -49,10 +82,8 @@ export function DownloadCollection({
   const full = selected.size >= capacity;
   const error = ytdlp.error ?? collection.error;
   const loadingMore = collection.isFetchingNextPage;
-  const restartNeeded =
-    collection.isFetchNextPageError &&
-    collection.error instanceof ApiError &&
-    collection.error.status === 409;
+  const pageError = collection.isFetchNextPageError ? collection.error : null;
+  const restartNeeded = pageError instanceof ApiError && pageError.status === 409;
   useEffect(() => back.current?.focus(), []);
 
   const loadNextPage = async () => {
@@ -68,7 +99,7 @@ export function DownloadCollection({
 
   return (
     <>
-      <DialogHeader className="shrink-0 flex-row items-start justify-start gap-2 pl-2">
+      <DialogHeader className="shrink-0 flex-row items-center justify-start gap-1.5 pl-3">
         <Button
           ref={back}
           variant="ghost"
@@ -78,14 +109,12 @@ export function DownloadCollection({
         >
           <HugeiconsIcon icon={ArrowLeft01Icon} aria-hidden="true" />
         </Button>
-        <div className="min-w-0 pt-0.5">
-          <DialogTitle>Choose videos</DialogTitle>
-          <DialogDescription className="line-clamp-2 wrap-anywhere" title={title ?? undefined}>
-            {title ?? (source.kind === "playlist" ? "YouTube playlist" : "YouTube channel")}
-          </DialogDescription>
-        </div>
+        <DialogTitle>Choose videos</DialogTitle>
       </DialogHeader>
-      <div className="flex min-h-0 flex-col gap-2 px-5 pt-3.5 pb-2">
+      <div className="flex min-h-0 flex-col gap-3 px-5 pt-2.5 pb-4 max-sm:px-4">
+        <DialogDescription className="shrink-0">
+          <CollectionSource kind={source.kind} title={title} />
+        </DialogDescription>
         {ytdlp.data && !ready ? (
           <div className="overflow-y-auto overscroll-contain scroll-shadow-y">
             <YtdlpSetup
@@ -113,27 +142,40 @@ export function DownloadCollection({
             </output>
           )
         ) : (
-          <>
+          <div
+            className={cn(
+              "flex min-h-0 flex-col",
+              pageError ? "gap-2" : "overflow-hidden rounded-xl border bg-background",
+            )}
+          >
             {videos.length > 0 ? (
               <ul
                 ref={list}
                 tabIndex={-1}
                 aria-label="Collection videos"
-                className="max-h-72 min-h-0 overflow-y-auto overscroll-contain rounded-xl shadow-[inset_0_0_0_1px_var(--color-border)] outline-none scroll-shadow-y"
+                className={cn(
+                  "max-h-72 min-h-0 overflow-y-auto overscroll-contain outline-none scroll-shadow-y",
+                  pageError && "rounded-xl border",
+                )}
               >
                 {videos.map((video, index) => {
                   const checkboxId = `${id}-${index}`;
                   const checked = selected.has(video.url);
                   const duplicate = existing.has(video.url);
+                  const disabled = duplicate || (full && !checked);
                   return (
                     <li
                       key={video.url}
-                      className="flex items-center gap-2.5 border-t px-3 first:border-t-0 hover:bg-subtle"
+                      className={cn(
+                        "flex items-center gap-2.5 border-t bg-background px-3 first:border-t-0 max-sm:px-2.5",
+                        !disabled && "hover:bg-subtle",
+                        checked && "bg-tint hover:bg-highlight",
+                      )}
                     >
                       <Checkbox
                         id={checkboxId}
                         checked={checked}
-                        disabled={duplicate || (full && !checked)}
+                        disabled={disabled}
                         onCheckedChange={(value) =>
                           setSelected((current) => {
                             const next = new Set(current);
@@ -145,16 +187,25 @@ export function DownloadCollection({
                       />
                       <label
                         htmlFor={checkboxId}
-                        className="flex min-w-0 flex-1 items-center gap-2 py-2.5"
+                        className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 py-2"
                       >
-                        <span className="min-w-0 flex-1 text-[13px]/[18px] font-medium wrap-anywhere">
-                          {video.title}
-                        </span>
-                        {duplicate ? (
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            Already added
+                        <MediaThumbnail
+                          item={{ id: video.url, kind: "video" }}
+                          className="max-[360px]:hidden"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={cn(
+                              "block text-[13px]/[18px] font-medium wrap-anywhere",
+                              disabled && "text-muted-foreground",
+                            )}
+                          >
+                            {video.title}
                           </span>
-                        ) : null}
+                          {duplicate ? (
+                            <span className="block text-xs/4 text-muted-foreground">In draft</span>
+                          ) : null}
+                        </span>
                         {video.durationSeconds !== null ? (
                           <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                             {formatDuration(video.durationSeconds)}
@@ -166,23 +217,37 @@ export function DownloadCollection({
                 })}
               </ul>
             ) : (
-              <p className="text-xs/[17px] text-muted-foreground">
+              <p className="px-3 py-2.5 text-xs/[17px] text-muted-foreground">
                 No available videos on this page.
               </p>
             )}
             {collection.hasNextPage ? (
-              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-                {collection.isFetchNextPageError ? (
-                  <p role="alert" className="min-w-0 text-xs/[17px] wrap-anywhere text-destructive">
-                    {collection.error.message}
-                    {restartNeeded && selected.size > 0
-                      ? " Add your selected videos before starting again."
-                      : null}
-                  </p>
+              <div
+                className={cn(
+                  "flex shrink-0 flex-wrap items-center gap-2 bg-subtle px-3 py-2",
+                  pageError ? "justify-end rounded-xl border" : "justify-center border-t",
+                )}
+              >
+                {pageError ? (
+                  <div className="flex min-w-0 flex-1 basis-36 items-start gap-2">
+                    <HugeiconsIcon
+                      icon={AlertCircleIcon}
+                      className="mt-px size-3.5 shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <p
+                      role="alert"
+                      className="min-w-0 text-xs/[17px] wrap-anywhere text-muted-foreground"
+                    >
+                      {pageError.message}
+                      {restartNeeded && selected.size > 0
+                        ? " Add your selected videos before starting again."
+                        : null}
+                    </p>
+                  </div>
                 ) : null}
                 <Button
                   ref={loadMore}
-                  className="ml-auto"
                   variant="outline"
                   size="sm"
                   focusableWhenDisabled
@@ -205,27 +270,36 @@ export function DownloadCollection({
                   ) : collection.isFetchNextPageError ? (
                     "Retry load more"
                   ) : (
-                    "Load more"
+                    <>
+                      Load more
+                      <HugeiconsIcon
+                        icon={ArrowDown01Icon}
+                        className="size-3.5"
+                        aria-hidden="true"
+                      />
+                    </>
                   )}
                 </Button>
               </div>
             ) : null}
-          </>
+          </div>
         )}
       </div>
-      <DialogFooter className="mt-3 shrink-0 sm:justify-between">
-        <div className="text-xs text-muted-foreground">
+      <DialogFooter className="mt-0 shrink-0 flex-row items-center justify-between gap-2 max-sm:px-4 sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-x-1.5 text-xs/4 text-muted-foreground sm:flex-row sm:items-baseline">
           <output className="font-medium text-foreground">{selected.size} selected</output>
-          {full ? (
-            <p className="mt-0.5">
-              {capacity === 0
-                ? "Remove a link to make room."
-                : `${maxDownloadLinks}-link limit reached.`}
-            </p>
-          ) : null}
+          <span aria-hidden="true" className="hidden sm:inline">
+            ·
+          </span>
+          <span>
+            {capacity === 0
+              ? "Remove a link to make room."
+              : full
+                ? `${maxDownloadLinks}-link limit reached.`
+                : `${countLabel(capacity - selected.size, "slot")} left`}
+          </span>
         </div>
         <Button
-          className="max-sm:self-end"
           disabled={!ready || selected.size === 0}
           onClick={() =>
             onAdd(
