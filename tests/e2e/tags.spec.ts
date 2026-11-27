@@ -21,6 +21,7 @@ test("creates, manages and filters a recording's tags with the mouse and keyboar
   await page.keyboard.press("t");
   const find = page.getByRole("combobox", { name: "Find or create a tag" });
   await find.press("Escape");
+  await expect(link).toBeFocused();
   await link.hover();
   await page.getByRole("button", { name: `More actions for ${title}` }).click();
   await page.getByRole("menuitem", { name: /Tags…/u }).click();
@@ -59,6 +60,37 @@ test("creates, manages and filters a recording's tags with the mouse and keyboar
   await confirm.getByRole("button", { name: "Delete tag" }).click();
   await expect(confirm).toBeHidden();
   await expect(page.getByRole("option", { name: renamed, exact: true })).toBeHidden();
+});
+
+test("lets focus move to the library search while the recording tag picker closes", async ({
+  page,
+  request,
+}) => {
+  const title = `Tags focus ${randomUUID()}`;
+  const upload = await request.post("/api/media", {
+    data: readFileSync(new URL("../fixtures/tone.wav", import.meta.url)),
+    headers: { "x-file-name": `${title}.wav` },
+  });
+  expect(upload.status()).toBe(201);
+  await page.goto("/");
+  await page.addStyleTag({
+    content: '[role="dialog"][data-closed] { animation-play-state: paused; }',
+  });
+  const row = page.getByRole("link", { name: `Open ${title}`, exact: true });
+  await row.press("t");
+  const picker = page.getByRole("dialog", { name: `Tags for ${title}`, includeHidden: true });
+  const find = picker.getByRole("combobox", { name: "Find or create a tag" });
+  await expect(find).toBeFocused();
+  await find.press("Escape");
+  await expect(picker).toHaveAttribute("data-closed", "");
+  const search = page.getByRole("combobox", { name: "Search", exact: true });
+  await search.focus();
+  await expect(search).toBeFocused();
+  await picker.evaluate((element) => {
+    for (const animation of element.getAnimations()) animation.finish();
+  });
+  await expect(picker).toHaveCount(0);
+  await expect(search).toBeFocused();
 });
 
 test("applies draft tags on import and edits a partially tagged selection", async ({

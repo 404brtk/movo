@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode, RefObject } from "react";
+import { type ReactElement, type ReactNode, type RefObject, useRef } from "react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { MediaItem } from "../../shared/contracts/media.ts";
 import { maxTagsPerRecording, type Tag } from "../../shared/contracts/tags.ts";
@@ -27,6 +27,14 @@ export function TagPopover({
   label: string;
   children: ReactNode;
 }) {
+  const popup = useRef<HTMLDivElement>(null);
+  const restoreFocus = finalFocus
+    ? () => {
+        const active = document.activeElement;
+        if (active !== document.body && !popup.current?.contains(active)) return false;
+        return finalFocus.current;
+      }
+    : undefined;
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={onOpenChange}>
       {trigger ? <PopoverPrimitive.Trigger render={trigger} /> : null}
@@ -39,8 +47,9 @@ export function TagPopover({
           className="isolate z-50"
         >
           <PopoverPrimitive.Popup
+            ref={popup}
             aria-label={label}
-            finalFocus={finalFocus}
+            finalFocus={restoreFocus}
             className={popupClassName}
           >
             {children}
