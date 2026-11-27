@@ -46,6 +46,7 @@ import {
   YtdlpStatus,
 } from "../../shared/contracts/media-tools.ts";
 import {
+  DownloadCollectionPage,
   DownloadJob,
   DownloadJobList,
   DownloadPreview,
@@ -295,6 +296,23 @@ export const previewOptions = (url: string) =>
         DownloadPreview,
       ),
     enabled: Boolean(url),
+    staleTime: Infinity,
+    retry: false,
+  });
+
+export const collectionOptions = (url: string) =>
+  infiniteQueryOptions({
+    queryKey: ["download-collection", url],
+    queryFn: ({ pageParam, signal }) =>
+      readResponse(
+        client.api.downloads.collection.$post(
+          {},
+          { init: { ...jsonBody({ url, cursor: pageParam ?? undefined }).init, signal } },
+        ),
+        DownloadCollectionPage,
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
     staleTime: Infinity,
     retry: false,
   });

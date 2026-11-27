@@ -42,12 +42,11 @@ const program = Effect.gen(function* () {
     Effect.sync(() => createYtdlp(config)),
     (managedYtdlp) => managedYtdlp.close(),
   );
-  const downloads = createDownloads(
-    database,
-    config,
-    tools,
-    createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools),
+  const downloader = yield* Effect.acquireRelease(
+    Effect.sync(() => createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools)),
+    (service) => service.closeCollections(),
   );
+  const downloads = createDownloads(database, config, tools, downloader);
   const models = yield* Effect.acquireRelease(
     Effect.sync(() => createModels({ database })),
     (manager) => manager.close(),
@@ -75,6 +74,7 @@ const program = Effect.gen(function* () {
   const app = createApp(database, config, staticDirectory, {
     tools,
     ytdlp,
+    downloader,
     downloads,
     models,
     transcriptions,

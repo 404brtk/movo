@@ -21,7 +21,12 @@ import {
   maxTermCharacters,
   maxTermVariants,
 } from "../../shared/contracts/dictionary.ts";
-import { DownloadPreviewRequest, DownloadRequest } from "../../shared/contracts/downloads.ts";
+import {
+  DownloadCollectionRequest,
+  DownloadPreviewRequest,
+  DownloadRequest,
+  maxDownloadRequestBytes,
+} from "../../shared/contracts/downloads.ts";
 import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
 import { SpeakerLabels } from "../../shared/contracts/models.ts";
 import {
@@ -63,7 +68,7 @@ import {
   type Downloads,
   type DownloadsConfig,
 } from "../downloads/jobs.ts";
-import { createMediaDownloader } from "../downloads/ytdlp.ts";
+import { createMediaDownloader, type MediaDownloader } from "../downloads/ytdlp.ts";
 import type { AppDatabase } from "../db/database.ts";
 import { MediaError, type MediaErrorReason } from "../media/error.ts";
 import { createMediaLibrary } from "../media/library.ts";
@@ -174,12 +179,8 @@ export function createApp(
   {
     tools = createMediaTools(config),
     ytdlp = createYtdlp(config),
-    downloads = createDownloads(
-      database,
-      config,
-      tools,
-      createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools),
-    ),
+    downloader = createMediaDownloader(() => ytdlp.resolve("ytdlp"), tools),
+    downloads: downloadsService,
     models = createModels({ database }),
     transcriptions = createTranscriptions(
       database,
@@ -192,6 +193,7 @@ export function createApp(
   }: {
     tools?: MediaTools;
     ytdlp?: Ytdlp;
+    downloader?: MediaDownloader;
     downloads?: Downloads;
     models?: Models;
     transcriptions?: Transcriptions;
@@ -199,6 +201,7 @@ export function createApp(
     ask?: Ask;
   } = {},
 ) {
+  const downloads = downloadsService ?? createDownloads(database, config, tools, downloader);
   const library = createMediaLibrary(database, config.dataDirectory, () =>
     tools.resolve("ffprobe"),
   );
@@ -219,7 +222,7 @@ export function createApp(
   });
 
   const downloadBodyLimit = bodyLimit({
-    maxSize: 1024 * 1024,
+    maxSize: maxDownloadRequestBytes,
     onError: (context) =>
       context.json({ error: "Download requests must be 1 MiB or smaller." }, 413),
   });
@@ -286,6 +289,16 @@ export function createApp(
         ),
       ),
     )
+    .post("/downloads/collection", async (context) => {
+      const request = await readJson(
+        context.req.json(),
+        DownloadCollectionRequest,
+        "Provide a YouTube collection URL and a valid cursor.",
+      );
+      return context.json(
+        await runMedia(downloader.previewCollection(request), context.req.raw.signal),
+      );
+    })
     .post("/downloads", async (context) =>
       context.json(
         await runMedia(

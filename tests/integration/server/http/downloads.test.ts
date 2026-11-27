@@ -225,11 +225,13 @@ it("validates HTTP input, queues independently of its request and exposes cancel
               ).json(),
             );
             expect(mixed.map((item) => item.preset)).toEqual(["audio", "video-1080p"]);
-            const tooMany = Array.from({ length: 21 }, (_, index) => ({
-              url: `https://youtu.be/${String(index).padStart(11, "e")}`,
+            const largeBatch = Array.from({ length: 256 }, (_, index) => ({
+              url: `https://www.youtube.com/watch?v=${String(index).padStart(11, "e")}`,
             }));
-            expect((await app.request(base, json({ links: tooMany }))).status).toBe(400);
-            expect((await app.request(base, json({ links: tooMany.slice(1) }))).status).toBe(202);
+            const largeResponse = await app.request(base, json({ links: largeBatch }));
+            expect(largeResponse.status).toBe(202);
+            const largeJobs = Schema.decodeUnknownSync(DownloadJobList)(await largeResponse.json());
+            expect(largeJobs.map(({ url: jobUrl }) => ({ url: jobUrl }))).toEqual(largeBatch);
             expect((await app.request(`${base}/${job.id}/cancel`, { method: "POST" })).status).toBe(
               200,
             );

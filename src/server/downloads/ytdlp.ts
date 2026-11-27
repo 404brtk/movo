@@ -10,8 +10,9 @@ import {
 import { maxImportBytes } from "../../shared/contracts/media.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
-import { runCommand } from "../process/command.ts";
+import { runCommand, streamCommand } from "../process/command.ts";
 import type { DownloadSite } from "../../shared/download-sources.ts";
+import { collectionArguments, createCollectionPreviews } from "./collection.ts";
 import { downloadSource } from "./url.ts";
 
 type SiteProfile = {
@@ -152,7 +153,6 @@ const baseArguments = [
   "--no-js-runtimes",
   "--js-runtimes",
   `node:${process.execPath}`,
-  "--no-playlist",
   "--socket-timeout",
   "20",
   "--retries",
@@ -163,6 +163,11 @@ export function createMediaDownloader(
   resolveYtdlp: () => Effect.Effect<string, MediaError>,
   tools: MediaTools,
 ) {
+  const collections = createCollectionPreviews(({ url }) =>
+    Effect.flatMap(resolveYtdlp(), (executable) =>
+      streamCommand(executable, [...baseArguments, ...collectionArguments, "--", url], 64 * 1024),
+    ),
+  );
   const run = (
     args: string[],
     options: Parameters<typeof runCommand>[2],
@@ -191,6 +196,7 @@ export function createMediaDownloader(
       const raw = yield* run(
         [
           ...baseArguments,
+          "--no-playlist",
           "--use-extractors",
           profile.extractor,
           "--simulate",
@@ -246,6 +252,8 @@ export function createMediaDownloader(
 
   return {
     preview: (url: string) => inspect(url).pipe(Effect.map((result) => result.preview)),
+    previewCollection: collections.preview,
+    closeCollections: collections.close,
     download: (
       url: string,
       directory: string,
@@ -294,6 +302,7 @@ export function createMediaDownloader(
         yield* run(
           [
             ...baseArguments,
+            "--no-playlist",
             "--load-info-json",
             join(directory, "source.info.json"),
             "--no-simulate",
