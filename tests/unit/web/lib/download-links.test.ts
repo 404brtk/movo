@@ -14,6 +14,7 @@ const job = (changes: Partial<DownloadJob>): DownloadJob => ({
   id: "6f1f4f8e-8a7c-4d2b-9a55-0d7c2f4b9e11",
   url: youtube,
   preset: "video-1080p",
+  tagIds: [],
   transcribe: false,
   title: null,
   durationSeconds: null,

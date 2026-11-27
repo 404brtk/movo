@@ -13,6 +13,7 @@ const job: DownloadJob = {
   id: "8f7f2c1e-5a43-4c1b-9b8e-3a2d1c0b9a87",
   url: "https://www.youtube.com/watch?v=aaaaaaaaaaa",
   preset: "video-720p",
+  tagIds: [],
   transcribe: false,
   title: null,
   durationSeconds: null,

@@ -1,5 +1,10 @@
 import { useId, useState } from "react";
-import { Cancel01Icon, Delete02Icon, SpeechToTextIcon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  Delete02Icon,
+  SpeechToTextIcon,
+  Tag01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { LibraryItem } from "../../shared/contracts/library.ts";
@@ -21,6 +26,7 @@ import { forgetDeletedRecording } from "../lib/recording-mutations.ts";
 import { ConfirmDialog } from "./confirm-dialog.tsx";
 import { focusRecordingRow, useLibraryManagement } from "./library-management.tsx";
 import { Spinner } from "./spinner.tsx";
+import { BulkTagsPanel, TagPopover } from "./tag-popovers.tsx";
 import { Button } from "./ui/button.tsx";
 import { Checkbox } from "./ui/checkbox.tsx";
 
@@ -137,6 +143,18 @@ export function LibrarySelectionBar() {
           {management.selectedItems.length} of {management.total}
           <span className="max-sm:sr-only"> selected</span>
         </output>
+        <TagPopover
+          label="Tags for the selected recordings"
+          align="end"
+          trigger={
+            <Button variant="outline" size="sm" className="max-sm:w-7 max-sm:px-0">
+              <HugeiconsIcon icon={Tag01Icon} data-icon="inline-start" aria-hidden="true" />
+              <span className="max-sm:sr-only">Tags</span>
+            </Button>
+          }
+        >
+          <BulkTagsPanel items={management.selectedItems} />
+        </TagPopover>
         {transcribable.length > 0 ? (
           <Button
             variant="outline"

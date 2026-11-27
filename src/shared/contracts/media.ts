@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { maxTaggedRecordings, maxTags, TagId, TagIdList, TagIds, TagRef } from "./tags.ts";
 
 export const maxImportBytes = 10 * 1024 * 1024 * 1024;
 export const mediaContentTypes = [
@@ -35,6 +36,7 @@ export const MediaTitle = Schema.String.check(
 export const RenameMediaRequest = Schema.Struct({ title: MediaTitle });
 export const ImportMediaQuery = Schema.Struct({
   transcribe: Schema.optional(Schema.Literal("true")),
+  tags: Schema.optional(TagIdList),
 });
 export const MediaItem = Schema.Struct({
   id: MediaId,
@@ -50,6 +52,7 @@ export const MediaItem = Schema.Struct({
   importedAt: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
   sourceUrl: Schema.NullOr(Schema.String),
   fileRemovedAt: Schema.NullOr(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
+  tags: Schema.Array(TagRef),
 });
 export type MediaItem = typeof MediaItem.Type;
 export const MediaDeletion = Schema.Struct({
@@ -59,3 +62,23 @@ export const MediaDeletion = Schema.Struct({
 export type MediaDeletion = typeof MediaDeletion.Type;
 export const MediaList = Schema.Array(MediaItem);
 export const ApiErrorResponse = Schema.Struct({ error: Schema.String });
+export const SetRecordingTags = Schema.Struct({ tagIds: TagIds });
+export const ChangeRecordingTags = Schema.Struct({
+  mediaIds: Schema.Array(MediaId).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(maxTaggedRecordings),
+    Schema.makeFilter((ids) => new Set(ids).size === ids.length || "List each recording once."),
+  ),
+  add: Schema.Array(TagId).check(Schema.isMaxLength(maxTags)),
+  remove: Schema.Array(TagId).check(Schema.isMaxLength(maxTags)),
+}).check(
+  Schema.makeFilter(
+    ({ add, remove }) =>
+      ((add.length > 0 || remove.length > 0) &&
+        add.every((id) => !remove.includes(id)) &&
+        new Set(add).size === add.length &&
+        new Set(remove).size === remove.length) ||
+      "Add or remove each tag once.",
+  ),
+);
+export type ChangeRecordingTags = typeof ChangeRecordingTags.Type;

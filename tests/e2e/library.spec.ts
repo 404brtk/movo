@@ -376,6 +376,7 @@ const listedRecording = (id: string, title: string, transcription: "none" | "don
   durationSeconds: 2,
   importedAt: Date.now(),
   sourceUrl: null,
+  tags: [],
   fileRemovedAt: null,
   transcription,
 });

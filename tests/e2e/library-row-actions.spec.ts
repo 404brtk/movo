@@ -23,6 +23,7 @@ const listed = (
   durationSeconds: 2,
   importedAt: Date.now(),
   sourceUrl: null,
+  tags: [],
   fileRemovedAt: null,
   transcription,
   ...overrides,
@@ -155,6 +156,7 @@ test("opens the row menu with a right click, moves between rows with arrows and 
   await expect(menu.getByRole("menuitem")).toHaveText([
     "Transcribe",
     /Rename recording/u,
+    /Tags…/u,
     "Save a copy",
     "View original source",
     "Copy link",
@@ -319,7 +321,7 @@ test("clears the selection when the search changes instead of restoring it later
   const bar = page.getByRole("group", { name: "Selected recordings" });
   await expect(bar.getByRole("status")).toHaveText("1 of 2 selected");
 
-  const search = page.getByRole("searchbox", { name: "Search" });
+  const search = page.getByRole("combobox", { name: "Search" });
   await search.fill("notes");
   await expect(page).toHaveURL(/q=notes/u);
   await expect(bar).toHaveCount(0);

@@ -8,6 +8,7 @@ import { type ImportEntry, type ImportOutcome, useMediaImport } from "../lib/med
 import { MediaDropZone } from "./media-drop-zone.tsx";
 import { MediaToolsSetup } from "./media-tools-setup.tsx";
 import { Spinner } from "./spinner.tsx";
+import { TagsField } from "./tags-field.tsx";
 import { Button } from "./ui/button.tsx";
 import {
   Dialog,
@@ -62,6 +63,7 @@ export function ImportMedia() {
   const [open, setOpen] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [transcribe, setTranscribe] = useState(false);
+  const [tagIds, setTagIds] = useState<readonly string[]>([]);
   const chooseFiles = useRef<HTMLButtonElement>(null);
   const tools = useQuery(mediaToolsOptions);
   const queue = useMediaImport();
@@ -108,14 +110,24 @@ export function ImportMedia() {
                   />
                 ))}
               </ul>
-              <div className="mt-[18px] flex items-center gap-2.5 text-[13px]">
-                <Switch
-                  id="import-transcribe"
-                  checked={transcribe}
+              <div className="mt-4 grid grid-cols-1 items-center gap-x-4 gap-y-1.5 sm:grid-cols-[auto_1fr] sm:gap-y-3">
+                <span className="text-[12.5px] font-medium text-muted-foreground">Transcript</span>
+                <div className="flex items-center gap-2.5 text-[13px]">
+                  <Switch
+                    id="import-transcribe"
+                    checked={transcribe}
+                    disabled={queue.pending}
+                    onCheckedChange={setTranscribe}
+                  />
+                  <label htmlFor="import-transcribe">Transcribe after import</label>
+                </div>
+                <span className="text-[12.5px] font-medium text-muted-foreground">Tags</span>
+                <TagsField
+                  id="import-tags"
+                  value={tagIds}
                   disabled={queue.pending}
-                  onCheckedChange={setTranscribe}
+                  onChange={setTagIds}
                 />
-                <label htmlFor="import-transcribe">Transcribe after import</label>
               </div>
             </>
           ) : null}
@@ -150,7 +162,7 @@ export function ImportMedia() {
             <Button
               aria-busy={queue.pending}
               disabled={count === 0 || queue.pending}
-              onClick={() => queue.start(transcribe, finish)}
+              onClick={() => queue.start({ transcribe, tagIds }, finish)}
             >
               {queue.pending ? (
                 <Spinner />

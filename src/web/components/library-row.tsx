@@ -20,6 +20,8 @@ import { MediaThumbnail } from "./media-thumbnail.tsx";
 import { useRecordingActions } from "./recording-actions.tsx";
 import { SourceLink } from "./source-site.tsx";
 import { Spinner } from "./spinner.tsx";
+import { RowTags } from "./tag-count.tsx";
+import { RecordingTagsPanel, TagPopover } from "./tag-popovers.tsx";
 import { TranscriptionStatus } from "./transcription-status.tsx";
 import { Button } from "./ui/button.tsx";
 import { Checkbox } from "./ui/checkbox.tsx";
@@ -174,7 +176,9 @@ export function LibraryRow({
   const transcribe = useTranscriptionAction(item.id);
   const [engaged, setEngaged] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [tagging, setTagging] = useState(false);
   const rowLink = useRef<HTMLAnchorElement>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
   const actions = useRecordingActions({
     item,
     transcribe,
@@ -182,6 +186,7 @@ export function LibraryRow({
       engaged && (item.transcription === "done" || item.transcription === "stopped"),
     returnFocus: rowLink,
     onRename: () => setRenaming(true),
+    onTags: () => setTagging(true),
     onDeleted: (deletion) => {
       const next = neighbourRow(rowLink.current, 1) ?? neighbourRow(rowLink.current, -1);
       if (deletion.cleanupError) management.reportCleanup(deletion.cleanupError);
@@ -205,6 +210,14 @@ export function LibraryRow({
     } else if (event.key === "F2") {
       event.preventDefault();
       setRenaming(true);
+    } else if (
+      (event.key === "t" || event.key === "T") &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey
+    ) {
+      event.preventDefault();
+      setTagging(true);
     } else if (event.key === "Delete" || (event.key === "Backspace" && event.metaKey)) {
       event.preventDefault();
       actions.confirmDelete();
@@ -225,15 +238,20 @@ export function LibraryRow({
       Transcript copied
     </output>
   ) : (
-    <>
-      {describeMedia(item, { detailed })}
-      {detailed && item.sourceUrl ? (
-        <>
-          {" · "}
-          <SourceLink url={item.sourceUrl} />
-        </>
-      ) : null}
-    </>
+    <span className="flex min-w-0 items-center">
+      <span
+        className={cn("min-w-0 truncate", item.tags.length > 0 && "max-w-[calc(100%-5.25rem)]")}
+      >
+        {describeMedia(item, { detailed })}
+        {detailed && item.sourceUrl ? (
+          <>
+            {" · "}
+            <SourceLink url={item.sourceUrl} />
+          </>
+        ) : null}
+      </span>
+      <RowTags tags={item.tags} />
+    </span>
   );
 
   return (
@@ -247,6 +265,7 @@ export function LibraryRow({
               title={title ?? item.title}
               details={details}
               data-selected={management.selected.has(item.id) || undefined}
+              data-popup-open={tagging || undefined}
               className={cn(
                 "transition-colors hover:bg-subtle has-data-popup-open:bg-subtle data-popup-open:bg-subtle pointer-coarse:select-none data-selected:bg-tint data-selected:hover:bg-tint",
                 className,
@@ -280,6 +299,7 @@ export function LibraryRow({
                   </span>
                   <DropdownMenu>
                     <DropdownMenuTrigger
+                      ref={menuTrigger}
                       render={<Button variant="ghost" size="icon-sm" />}
                       aria-label={`More actions for ${item.title}`}
                       disabled={actions.busy}
@@ -299,6 +319,16 @@ export function LibraryRow({
         <ContextMenuContent className="w-[236px]">{actions.items}</ContextMenuContent>
       </ContextMenu>
       {actions.dialogs}
+      <TagPopover
+        open={tagging}
+        onOpenChange={setTagging}
+        anchor={menuTrigger}
+        finalFocus={rowLink}
+        align="end"
+        label={`Tags for ${item.title}`}
+      >
+        <RecordingTagsPanel item={item} />
+      </TagPopover>
     </>
   );
 }

@@ -15,6 +15,12 @@ Clients configured through a file use the same URL, such as `url = "http://127.0
 
 Movo accepts protocol revisions 2026-07-28, 2025-11-25, 2025-06-18 and 2025-03-26. Sessions of the older revisions are kept in memory; after a restart the client starts a new one.
 
+## Tags
+
+Use `list_tags` to see names, colours and recording counts. Create a tag with `create_tag`, change its name or colour with `update_tag`, and remove it from the library with `delete_tag`. Recordings survive deletion. Use `tag_recordings` with recording IDs and arrays of tag names to add or remove tags in one operation.
+
+`search_library`, `import_file` and `download_links` accept existing tag names in `tags`, ignoring case. A search matches recordings with every requested tag. Both `search_library` and `get_recording` include tags in recording metadata.
+
 ## Tools
 
 | Tool                                                                  | Purpose                                                                                                                                                                                                                                      |
