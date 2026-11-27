@@ -241,6 +241,23 @@ describe("YouTube collection preview", () => {
     }
   });
 
+  it.each([
+    ["This channel does not have a videos tab", "This YouTube channel has no Videos tab."],
+    [
+      "HTTP Error 404: Not Found",
+      "YouTube could not find this playlist or channel. Check the link.",
+    ],
+    ["The required executable is unavailable.", "The required executable is unavailable."],
+  ])("reports an actionable collection error for %s", async (detail, message) => {
+    const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));
+    stream.mockReturnValueOnce(Effect.fail(new MediaError("unavailable", detail)));
+    await expect(
+      Effect.runPromise(downloader.previewCollection({ url: playlist })),
+    ).rejects.toMatchObject({
+      message,
+    });
+  });
+
   it("closes the active traversal on expiry and invalidates its cursor", async () => {
     vi.useFakeTimers();
     const downloader = createMediaDownloader(ytdlp, createMediaTools({ dataDirectory: tmpdir() }));

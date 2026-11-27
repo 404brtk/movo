@@ -169,6 +169,14 @@ async function* readCollection(source: YouTubeCollection, lines: AsyncIterable<s
 function collectionError(cause: unknown) {
   if (!(cause instanceof MediaError))
     return new MediaError("unsupported", "Could not read this YouTube collection.", cause);
+  if (/does not have a videos tab/iu.test(cause.message))
+    return new MediaError("notFound", "This YouTube channel has no Videos tab.", cause);
+  if (/HTTP Error 404/iu.test(cause.message))
+    return new MediaError(
+      "notFound",
+      "YouTube could not find this playlist or channel. Check the link.",
+      cause,
+    );
   return cause;
 }
 
