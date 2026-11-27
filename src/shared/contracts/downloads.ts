@@ -49,6 +49,7 @@ export const DownloadRequest = Schema.Struct({
   tagIds: Schema.optional(TagIds),
 });
 export type DownloadRequest = typeof DownloadRequest.Type;
+export const maxDownloadRequestBytes = 1024 * 1024;
 export const DownloadSourceDetails = Schema.Struct({
   url: Schema.String,
   title: DownloadTitle,

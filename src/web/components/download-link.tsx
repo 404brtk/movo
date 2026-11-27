@@ -20,6 +20,7 @@ import {
   downloadPresets,
   type DownloadPreset,
   type DownloadPreview,
+  type DownloadRequest,
   downloadSiteNames,
   getDownloadPreset,
 } from "../../shared/contracts/downloads.ts";
@@ -30,6 +31,7 @@ import {
   canChooseKind,
   type CollectionOffer,
   countLabel,
+  downloadRequestBatches,
   type LinkRow,
   linkPreset,
   type LinkSkip,
@@ -266,8 +268,26 @@ export function DownloadLink() {
     setOpen(next);
   };
   const download = useMutation({
-    mutationFn: enqueueDownload,
-    onSuccess: async (_jobs, request) => {
+    mutationFn: async (request: DownloadRequest) => {
+      let added = 0;
+      try {
+        for (const batch of downloadRequestBatches(request)) {
+          await enqueueDownload(batch);
+          added += batch.links.length;
+        }
+      } catch (cause) {
+        if (added === 0) throw cause;
+        const accepted = new Set(request.links.slice(0, added).map((link) => link.url));
+        setRows((current) => current.filter((row) => !accepted.has(row.key)));
+        const message =
+          cause instanceof Error ? cause.message : "Could not add the remaining downloads.";
+        throw new Error(`${countLabel(added, "download")} added. ${message}`, { cause });
+      }
+    },
+    onError: async () => {
+      await queryClient.invalidateQueries({ queryKey: downloadsOptions.queryKey });
+    },
+    onSuccess: async (_result, request) => {
       const rest = addLinks([], field, lastKind);
       setRows(rest.rows);
       setField(rest.remaining);

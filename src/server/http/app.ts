@@ -25,6 +25,7 @@ import {
   DownloadCollectionRequest,
   DownloadPreviewRequest,
   DownloadRequest,
+  maxDownloadRequestBytes,
 } from "../../shared/contracts/downloads.ts";
 import { LibraryQuery, maxSearchLength } from "../../shared/contracts/library.ts";
 import { SpeakerLabels } from "../../shared/contracts/models.ts";
@@ -221,7 +222,7 @@ export function createApp(
   });
 
   const downloadBodyLimit = bodyLimit({
-    maxSize: 1024 * 1024,
+    maxSize: maxDownloadRequestBytes,
     onError: (context) =>
       context.json({ error: "Download requests must be 1 MiB or smaller." }, 413),
   });

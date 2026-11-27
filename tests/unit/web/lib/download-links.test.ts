@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { DownloadJob } from "../../../../src/shared/contracts/downloads.ts";
+import {
+  type DownloadJob,
+  type DownloadRequest,
+  maxDownloadRequestBytes,
+} from "../../../../src/shared/contracts/downloads.ts";
 import { recognizeYouTubeCollection } from "../../../../src/shared/download-sources.ts";
 import {
   addLinks,
   canChooseKind,
+  downloadRequestBatches,
   linkPreset,
   linkSkip,
 } from "../../../../src/web/lib/download-links.ts";
@@ -12,6 +17,32 @@ const youtube = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
 const episode = "https://podcasts.apple.com/us/podcast/a-show/id1?i=2";
 const playlist = "https://www.youtube.com/playlist?list=PLabcdefghijk";
 const channel = "https://www.youtube.com/@example/videos";
+const byteLength = (value: DownloadRequest) => Buffer.byteLength(JSON.stringify(value), "utf8");
+
+it("batches the UTF-8 JSON body without changing link order or download settings", () => {
+  const request: DownloadRequest = {
+    links: Array.from({ length: 650 }, (_, index) => ({
+      url: `https://www.youtube.com/watch?v=${String(index).padStart(11, "0")}`,
+      preset: index % 2 === 0 ? "video-1080p" : "audio",
+      title: `${"あ".repeat(510)}"\n`,
+    })),
+    transcribe: true,
+    tagIds: ["6f1f4f8e-8a7c-4d2b-9a55-0d7c2f4b9e11"],
+  };
+  expect(JSON.stringify(request).length).toBeLessThan(maxDownloadRequestBytes);
+  expect(byteLength(request)).toBeGreaterThan(maxDownloadRequestBytes);
+  const [first, next, ...rest] = downloadRequestBatches(request);
+  if (!first || !next) throw new Error("Expected two download batches");
+  expect(rest).toEqual([]);
+  expect([...first.links, ...next.links]).toEqual(request.links);
+  for (const batch of [first, next]) {
+    expect(byteLength(batch)).toBeLessThanOrEqual(maxDownloadRequestBytes);
+    expect(batch).toMatchObject({ transcribe: request.transcribe, tagIds: request.tagIds });
+  }
+  expect(
+    byteLength({ ...first, links: [...first.links, ...next.links.slice(0, 1)] }),
+  ).toBeGreaterThan(maxDownloadRequestBytes);
+});
 
 const job = (changes: Partial<DownloadJob>): DownloadJob => ({
   id: "6f1f4f8e-8a7c-4d2b-9a55-0d7c2f4b9e11",

@@ -2,7 +2,10 @@ import {
   type DownloadJob,
   type DownloadPreset,
   type DownloadPreview,
+  type DownloadLinkRequest,
+  type DownloadRequest,
   getDownloadPreset,
+  maxDownloadRequestBytes,
   retryableDownloadStates,
 } from "../../shared/contracts/downloads.ts";
 import {
@@ -28,6 +31,27 @@ export type CollectionOffer = { source: YouTubeCollection; fromWatch: boolean };
 
 export const countLabel = (count: number, noun: string) =>
   `${count} ${count === 1 ? noun : `${noun}s`}`;
+
+export function* downloadRequestBatches(request: DownloadRequest): Iterable<DownloadRequest> {
+  const encoder = new TextEncoder();
+  const emptyRequest = { ...request, links: [] };
+  const overhead = encoder.encode(JSON.stringify(emptyRequest)).byteLength;
+  let links: DownloadLinkRequest[] = [];
+  let bytes = overhead;
+  for (const link of request.links) {
+    const linkBytes = encoder.encode(JSON.stringify(link)).byteLength;
+    if (overhead + linkBytes > maxDownloadRequestBytes)
+      throw new Error("A download link is too large to send.");
+    if (bytes + 1 + linkBytes > maxDownloadRequestBytes && links.length > 0) {
+      yield { ...emptyRequest, links };
+      links = [];
+      bytes = overhead;
+    }
+    bytes += linkBytes + (links.length > 0 ? 1 : 0);
+    links.push(link);
+  }
+  if (links.length > 0) yield { ...emptyRequest, links };
+}
 
 export function addLinks(rows: readonly LinkRow[], text: string, kind: SaveKind) {
   const inputs = text.split(/\s+/u).filter(Boolean);

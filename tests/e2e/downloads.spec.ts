@@ -6,6 +6,8 @@ import {
   DownloadCollectionRequest,
   type DownloadJob,
   DownloadPreviewRequest,
+  DownloadRequest,
+  maxDownloadRequestBytes,
 } from "../../src/shared/contracts/downloads.ts";
 import type { YtdlpStatus } from "../../src/shared/contracts/media-tools.ts";
 import { MediaItem } from "../../src/shared/contracts/media.ts";
@@ -766,6 +768,83 @@ test("scrolls only the link list and keeps the options in view for large pastes"
   await download.click();
   await expect(page.getByText("125 downloads added", { exact: true })).toBeVisible();
   await expect(dialog).toBeHidden();
+});
+
+test("keeps only unqueued links when the second download batch fails", async ({ page }) => {
+  test.setTimeout(90000);
+  const tag = {
+    id: randomUUID(),
+    name: "Interviews",
+    color: "teal",
+    recordingCount: 0,
+    createdAt: Date.now(),
+  };
+  const videos = Array.from({ length: 350 }, (_, index) => collectionVideo(index));
+  const longTitle = `Video ${"\u0001".repeat(506)}`;
+  const batches: DownloadRequest[] = [];
+  await page.route("**/api/tags", (route) => route.fulfill({ json: [tag] }));
+  await page.route("**/api/downloads/preview", (route) => {
+    const { url: previewUrl } = Schema.decodeUnknownSync(DownloadPreviewRequest)(
+      route.request().postDataJSON(),
+    );
+    return route.fulfill({
+      json: { url: previewUrl, title: longTitle, durationSeconds: null, saved: [] },
+    });
+  });
+  await page.route("**/api/downloads", (route) => {
+    if (route.request().method() !== "POST") return route.fulfill({ json: [] });
+    const request = route.request();
+    const batch = Schema.decodeUnknownSync(DownloadRequest)(request.postDataJSON());
+    expect(request.postDataBuffer()?.byteLength).toBeLessThanOrEqual(maxDownloadRequestBytes);
+    batches.push(batch);
+    if (batches.length === 2)
+      return route.fulfill({
+        status: 503,
+        json: { error: "The queue is unavailable. Try again." },
+      });
+    return route.fulfill({
+      status: 202,
+      json: batch.links.map((link) => ({
+        ...jobFixture(),
+        ...link,
+        tagIds: batch.tagIds ?? [],
+        transcribe: batch.transcribe ?? false,
+      })),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Download from links" });
+  const links = dialog.getByRole("textbox", { name: "Add links" });
+  await links.fill(videos.map((video) => video.url).join("\n"));
+  await links.press("Enter");
+  await dialog.getByRole("switch", { name: "Transcribe after download" }).click();
+  await dialog.getByRole("button", { name: "Add tags" }).click();
+  await page.getByRole("option", { name: /Interviews/u }).click();
+  await page.getByRole("combobox", { name: "Find or create a tag" }).press("Escape");
+  await expect(dialog.getByText("YouTube", { exact: true })).toHaveCount(videos.length, {
+    timeout: 70000,
+  });
+  await dialog.getByRole("button", { name: `Download ${videos.length}`, exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("The queue is unavailable. Try again.");
+  const [accepted, failed] = batches;
+  if (!accepted || !failed) throw new Error("Expected one accepted and one failed batch");
+  await expect(dialog.getByRole("alert")).toContainText(
+    `${accepted.links.length} downloads added.`,
+  );
+  await expect(dialog.getByRole("list", { name: "Links" }).getByRole("listitem")).toHaveCount(
+    failed.links.length,
+  );
+  await dialog
+    .getByRole("button", { name: `Download ${failed.links.length}`, exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  expect(batches).toHaveLength(3);
+  expect(batches[2]).toEqual(failed);
+  expect([...accepted.links, ...failed.links].map((link) => link.url)).toEqual(
+    videos.map((video) => video.url),
+  );
+  for (const batch of batches) expect(batch).toMatchObject({ tagIds: [tag.id], transcribe: true });
 });
 
 test("retries and cancels a download, retains its state after reload and fits a narrow screen", async ({
