@@ -78,6 +78,38 @@ async function serveLibrary(page: Page, items: LibraryItem[], cleanupError?: str
 const row = (page: Page, title: string) =>
   page.getByRole("link", { name: `Open ${title}`, exact: true });
 
+test("explains the bulk tag limit and restores the action when one recording is deselected", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const items = Array.from({ length: 1001 }, (_, index) =>
+    listed(`Recording ${index + 1}`, "done", { importedAt: index + 1 }),
+  );
+  await serveLibrary(page, items);
+  await page.goto("/");
+
+  const last = page.getByRole("checkbox", { name: "Select Recording 1001", exact: true });
+  await row(page, "Recording 1001").hover();
+  await last.check();
+  const bar = page.getByRole("group", { name: "Selected recordings" });
+  await bar.getByRole("checkbox", { name: "Select all", exact: true }).click();
+  await expect(bar.getByRole("status")).toHaveText("1001 of 1001 selected");
+  const tags = bar.getByRole("button", { name: "Tags", exact: true });
+  const limit = "Select up to 1,000 recordings to edit tags.";
+  await expect(tags).toBeDisabled();
+  await expect(tags).toHaveAccessibleDescription(limit);
+  await expect(page.getByText(limit, { exact: true })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Delete…", exact: true })).toBeEnabled();
+
+  await last.uncheck();
+  await expect(bar.getByRole("status")).toHaveText("1000 of 1001 selected");
+  await expect(page.getByText(limit, { exact: true })).toBeHidden();
+  await tags.click();
+  await expect(
+    page.getByRole("dialog", { name: "Tags for the selected recordings" }),
+  ).toBeVisible();
+});
+
 test("renames a recording in place from its row, recovers from a rejected title and keeps it after reload", async ({
   page,
 }) => {

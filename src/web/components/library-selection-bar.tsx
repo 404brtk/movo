@@ -8,6 +8,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { LibraryItem } from "../../shared/contracts/library.ts";
+import { maxTaggedRecordings } from "../../shared/contracts/tags.ts";
 import {
   deleteMedia,
   downloadsOptions,
@@ -116,6 +117,20 @@ export function LibrarySelectionBar() {
     : (remove.error?.message ?? null);
   const one = count === 1;
   const selectAllId = useId();
+  const tagLimitId = useId();
+  const overTagLimit = management.selectedItems.length > maxTaggedRecordings;
+  const tagsButton = (
+    <Button
+      variant="outline"
+      size="sm"
+      className="max-sm:w-7 max-sm:px-0"
+      disabled={overTagLimit}
+      aria-describedby={overTagLimit ? tagLimitId : undefined}
+    >
+      <HugeiconsIcon icon={Tag01Icon} data-icon="inline-start" aria-hidden="true" />
+      <span className="max-sm:sr-only">Tags</span>
+    </Button>
+  );
   const clearSelection = () => {
     management.clear();
     focusRecordingRow(null);
@@ -143,18 +158,13 @@ export function LibrarySelectionBar() {
           {management.selectedItems.length} of {management.total}
           <span className="max-sm:sr-only"> selected</span>
         </output>
-        <TagPopover
-          label="Tags for the selected recordings"
-          align="end"
-          trigger={
-            <Button variant="outline" size="sm" className="max-sm:w-7 max-sm:px-0">
-              <HugeiconsIcon icon={Tag01Icon} data-icon="inline-start" aria-hidden="true" />
-              <span className="max-sm:sr-only">Tags</span>
-            </Button>
-          }
-        >
-          <BulkTagsPanel items={management.selectedItems} />
-        </TagPopover>
+        {overTagLimit ? (
+          tagsButton
+        ) : (
+          <TagPopover label="Tags for the selected recordings" align="end" trigger={tagsButton}>
+            <BulkTagsPanel items={management.selectedItems} />
+          </TagPopover>
+        )}
         {transcribable.length > 0 ? (
           <Button
             variant="outline"
@@ -196,6 +206,13 @@ export function LibrarySelectionBar() {
           <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
         </Button>
       </fieldset>
+      <output className="block">
+        {overTagLimit ? (
+          <span id={tagLimitId} className="mt-2 block pl-[13px] text-xs text-muted-foreground">
+            Select up to {maxTaggedRecordings.toLocaleString("en-US")} recordings to edit tags.
+          </span>
+        ) : null}
+      </output>
       {transcribe.data?.failure ? (
         <p role="alert" className="mt-2 text-xs text-destructive">
           {transcribe.data.failure}

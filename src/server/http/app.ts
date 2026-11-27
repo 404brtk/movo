@@ -32,6 +32,7 @@ import {
 } from "../../shared/contracts/media.ts";
 import {
   CreateTag,
+  maxTaggedRecordings,
   maxTagNameCharacters,
   maxTagsPerRecording,
   TagId,
@@ -340,7 +341,7 @@ export function createApp(
       const request = await readJson(
         context.req.json(),
         ChangeRecordingTags,
-        "Choose recordings and the tags to add to or remove from them.",
+        `Choose between 1 and ${maxTaggedRecordings.toLocaleString("en-US")} different recordings and the tags to add to or remove from them.`,
       );
       return context.json(await runMedia(tags.change(request)));
     })

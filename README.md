@@ -71,7 +71,7 @@ The local API provides `GET /api/media`, `POST /api/media`, `GET /api/media/:id`
 
 Choose **Tags…** from a recording’s menu, press **T** on a focused library row, or use **Add tags** on the recording page. Type to find or create a tag. The ⋯ menu beside a tag lets you rename it, change its colour or delete it. Deleting an assigned tag asks for confirmation and keeps the recordings. The library supports 500 distinct tags. Each recording can have 20, and each name can contain up to 64 characters.
 
-Select several recordings and choose **Tags** to edit them together. A dash marks a tag assigned to part of the selection. Choose it to add it to all selected recordings. In either import dialog, the selected tags apply to every file or link. Download jobs retain their tags across restarts. The download dialog leaves skipped links unchanged. When the API receives an already saved link, it applies new tags up to the recording limit.
+Select up to 1,000 recordings and choose **Tags** to edit them together. A dash marks a tag assigned to part of the selection. Choose it to add it to all selected recordings. In either import dialog, the selected tags apply to every file or link. Download jobs retain their tags across restarts. The download dialog leaves skipped links unchanged. When the API receives an already saved link, it applies new tags up to the recording limit.
 
 Use **Tags** in the library search field or type **#** and choose an existing tag. The URL keeps the selected filters. Results must have every selected tag. Text search still searches recording titles and transcripts. Backspace in an empty field removes the last token.
 

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,15 +7,16 @@ import { describe, expect, it } from "vitest";
 import { LibraryList } from "../../../../src/shared/contracts/library.ts";
 import { MediaItem } from "../../../../src/shared/contracts/media.ts";
 import { Tag, TagList, tagColors } from "../../../../src/shared/contracts/tags.ts";
-import { openDatabase } from "../../../../src/server/db/database.ts";
+import { openDatabase, type AppDatabase } from "../../../../src/server/db/database.ts";
 import { createApp } from "../../../../src/server/http/app.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
+import { mediaItems } from "../../../../src/server/media/media.schema.ts";
 
 const wave = readFileSync(new URL("../../../fixtures/tone.wav", import.meta.url));
 const api = "http://127.0.0.1:4310/api";
 type App = ReturnType<typeof createApp>;
 
-async function withApp(run: (app: App, directory: string) => Promise<void>) {
+async function withApp(run: (app: App, directory: string, database: AppDatabase) => Promise<void>) {
   const directory = mkdtempSync(join(tmpdir(), "movo-tags-http-"));
   try {
     await Effect.runPromise(
@@ -28,7 +30,7 @@ async function withApp(run: (app: App, directory: string) => Promise<void>) {
           const app = createApp(database, config, undefined, {
             tools: createMediaTools(config),
           });
-          yield* Effect.promise(() => run(app, directory));
+          yield* Effect.promise(() => run(app, directory, database));
         }),
       ),
     );
@@ -205,6 +207,48 @@ describe("tags HTTP interface", () => {
           })
         ).status,
       ).toBe(400);
+    });
+  });
+
+  it("tags 1,000 recordings at once and rejects a larger change before writing", async () => {
+    await withApp(async (app, _directory, database) => {
+      const tag = await createTag(app, "Bulk tag");
+      const ids = Array.from({ length: 1001 }, () => randomUUID());
+      database
+        .insert(mediaItems)
+        .values(
+          ids.map<typeof mediaItems.$inferInsert>((id, index) => ({
+            id,
+            title: `Recording ${index + 1}`,
+            originalName: `Recording ${index + 1}.wav`,
+            kind: "audio",
+            contentType: "audio/wav",
+            byteSize: wave.length,
+            durationSeconds: 2,
+            importedAt: Date.now(),
+          })),
+        )
+        .run();
+
+      const accepted = await send(app, "POST", "/media/tags", {
+        mediaIds: ids.slice(0, 1000),
+        add: [tag.id],
+        remove: [],
+      });
+      expect(accepted.status).toBe(200);
+      expect(await accepted.json()).toHaveLength(1000);
+
+      const rejected = await send(app, "POST", "/media/tags", {
+        mediaIds: ids,
+        add: [],
+        remove: [tag.id],
+      });
+      expect(rejected.status).toBe(400);
+      expect(await rejected.json()).toEqual({
+        error:
+          "Choose between 1 and 1,000 different recordings and the tags to add to or remove from them.",
+      });
+      expect(await listTags(app)).toEqual([expect.objectContaining({ recordingCount: 1000 })]);
     });
   });
 
