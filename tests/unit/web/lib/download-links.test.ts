@@ -65,6 +65,15 @@ describe("adding pasted links", () => {
     expect(mixed.collections).toEqual([]);
   });
 
+  it("offers curated YouTube Music playlists that start with RD", () => {
+    const id = "RDCLAK5uy_abcdefghijk";
+    const url = `https://www.youtube.com/playlist?list=${id}`;
+    expect(addLinks([], url, "video").openCollection).toEqual({ kind: "playlist", id, url });
+    expect(addLinks([], `${youtube}&list=${id}`, "video").collections).toEqual([
+      { source: { kind: "playlist", id, url }, fromWatch: true },
+    ]);
+  });
+
   it("only recognizes collection links that can be listed without sign-in", () => {
     const channelId = "UCabcdefghijklmnopqrstuv";
     expect(recognizeYouTubeCollection(`https://youtube.com/channel/${channelId}`)).toEqual({

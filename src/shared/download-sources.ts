@@ -158,9 +158,9 @@ export function recognizeYouTubeCollection(
       (url.pathname === "/watch" || url.hostname === "youtu.be"))
   ) {
     const id = url.searchParams.get("list");
-    if (id && /^RD[\w-]*$/u.test(id)) return { kind: "mix" };
-    if (id && /^(?:PL|LL|EC|UU|FL|UL|TL|PU|OLAK5uy_)[\w-]{10,100}$/u.test(id))
+    if (id && /^(?:PL|LL|EC|UU|FL|UL|TL|PU|RDCLAK5uy_|OLAK5uy_)[\w-]{10,100}$/u.test(id))
       return { kind: "playlist", id, url: `${youtubeOrigin}/playlist?list=${id}` };
+    if (id && /^RD[\w-]*$/u.test(id)) return { kind: "mix" };
     return undefined;
   }
   if (url.hostname === "youtu.be") return undefined;
