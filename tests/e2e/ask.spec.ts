@@ -437,10 +437,12 @@ test("keeps every audio control within reach beside the transcript and beside As
   await page.setViewportSize({ width: 1280, height: 700 });
   await page.goto(`/media/${media.id}`);
   await expect(page.getByRole("list", { name: "Timestamped passages" })).toBeVisible();
+  const duration = () => audio.evaluate((element: HTMLAudioElement) => element.duration);
+  await expect.poll(duration).toBeGreaterThan(0);
   await player.getByRole("button", { name: "Forward 10 seconds" }).click();
   await expect
     .poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime))
-    .toBe(await audio.evaluate((element: HTMLAudioElement) => element.duration));
+    .toBe(await duration());
   await player.getByRole("button", { name: "Back 10 seconds" }).click();
   await expect
     .poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime))
