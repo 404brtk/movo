@@ -11,7 +11,6 @@ import {
   MoreHorizontalIcon,
   Plug01Icon,
   RefreshIcon,
-  SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Toast } from "@base-ui/react/toast";
@@ -500,42 +499,54 @@ export function RecordingSummary({ context }: { context: SummaryContext }) {
   ) : null;
   if (!summary) {
     const problem = noModel ? null : failureLine;
+    const settings = (
+      <Link
+        to="/settings"
+        hash="ask"
+        className={
+          noModel
+            ? buttonVariants({ variant: "outline", className: "mt-[11px] h-[30px]" })
+            : "inline-flex h-[26px] items-center rounded-sm whitespace-nowrap underline-offset-3 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        }
+      >
+        {noModel ? (
+          <>
+            <HugeiconsIcon icon={Plug01Icon} data-icon="inline-start" aria-hidden="true" />
+            Connect a model
+          </>
+        ) : (
+          "Model settings"
+        )}
+      </Link>
+    );
     return section(
       <>
-        {problem}
-        <div className={cn("flex flex-wrap items-center gap-2", problem && "mt-2")}>
-          {!noModel && !problem ? (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={write.isPending || defaultModel.isPending}
-              onClick={() => write.mutate(startScope)}
-            >
-              {write.isPending ? (
-                <Spinner />
-              ) : (
-                <HugeiconsIcon icon={SparklesIcon} data-icon="inline-start" aria-hidden="true" />
-              )}
-              {chapters.length > 0 ? "Write summary" : "Write summary and chapters"}
-            </Button>
-          ) : null}
-          <Link
-            to="/settings"
-            hash="ask"
-            className={buttonVariants({ variant: noModel ? "outline" : "ghost", size: "sm" })}
-          >
+        {problem ?? (
+          <>
+            <p className="text-[15px]/[22px] tracking-[-0.014em] text-pretty sm:text-base/[23px]">
+              {context.onSeek
+                ? "Get the main ideas and jump to the moments that matter."
+                : "Get the main ideas and key points from this recording."}
+            </p>
             {noModel ? (
-              <>
-                <HugeiconsIcon icon={Plug01Icon} data-icon="inline-start" aria-hidden="true" />
-                Connect a model
-              </>
+              settings
             ) : (
-              "Change model"
+              <Button
+                variant="outline"
+                className="mt-[11px] h-[30px]"
+                aria-busy={write.isPending}
+                disabled={write.isPending || defaultModel.isPending}
+                onClick={() => write.mutate(startScope)}
+              >
+                {write.isPending ? <Spinner /> : null}
+                {chapters.length > 0 ? "Write summary" : "Write summary and chapters"}
+              </Button>
             )}
-          </Link>
-        </div>
+          </>
+        )}
         {inlineError}
       </>,
+      noModel ? null : settings,
     );
   }
   const meta =

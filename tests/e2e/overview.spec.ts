@@ -141,7 +141,10 @@ test("writes a summary on request and remembers whether it is expanded", async (
 }) => {
   const state = await openRecording(page, request, empty);
   const section = page.getByRole("region", { name: "Summary" });
-  await expect(section).toHaveText(/^Summary\s*Write summary and chapters\s*Change model$/u);
+  await expect(
+    section.getByText("Get the main ideas and jump to the moments that matter."),
+  ).toBeVisible();
+  await expect(section.getByRole("link", { name: "Model settings" })).toBeVisible();
   expect(state.requests).toEqual([]);
   await section.getByRole("button", { name: "Write summary and chapters" }).click();
   await expect(section.getByRole("status")).toHaveText("Writing the summary");
@@ -324,7 +327,7 @@ test("opens the default model settings from an empty summary", async ({ page, re
   await page.setViewportSize({ width: 390, height: 844 });
   const state = await openRecording(page, request, empty);
   const section = page.getByRole("region", { name: "Summary" });
-  await section.getByRole("link", { name: "Change model" }).click();
+  await section.getByRole("link", { name: "Model settings" }).click();
   await expect(page).toHaveURL(/\/settings#ask$/u);
   const ask = page.getByRole("region", { name: "Ask", exact: true });
   await expect(ask.getByText("New chats answer with", { exact: true })).toBeInViewport();
@@ -335,7 +338,9 @@ test("asks to connect a model before writing", async ({ page, request }) => {
   await page.route("**/api/ask/default", (route) => route.fulfill({ json: null }));
   await openRecording(page, request, empty);
   const section = page.getByRole("region", { name: "Summary" });
-  await expect(section).toHaveText(/^Summary\s*Connect a model$/u);
-  await section.getByRole("link", { name: "Connect a model" }).click();
+  const connect = section.getByRole("link", { name: "Connect a model" });
+  await expect(connect).toBeVisible();
+  await expect(section.getByRole("button", { name: /Write summary/u })).toHaveCount(0);
+  await connect.click();
   await expect(page).toHaveURL(/\/settings#ask$/u);
 });
