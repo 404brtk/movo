@@ -7,7 +7,10 @@ import { formatDuration } from "../lib/format.ts";
 import type { PlaySegment } from "../lib/speaker-filter.ts";
 import { scrollBehavior } from "../lib/transcript-follow.ts";
 import { cn } from "../lib/utils.ts";
+import type { ChapterRange } from "../../shared/chapters.ts";
 import { AudioPlayerBar, dockedSurfaceClassName } from "./audio-player-bar.tsx";
+import type { ChapterContext } from "./chapter-list.tsx";
+import { CurrentChapter } from "./chapter-sheet.tsx";
 import { MediaThumbnail } from "./media-thumbnail.tsx";
 import {
   type MediaPlayback,
@@ -79,11 +82,13 @@ function CompactPlayer({
   playback,
   frame,
   onShowVideo,
+  chapterContext,
 }: {
   item: MediaItem;
   playback: MediaPlayback;
   frame: RefObject<HTMLElement | null>;
   onShowVideo: () => void;
+  chapterContext: ChapterContext;
 }) {
   const [shown, setShown] = useState(false);
   const { currentTime, duration } = playback.state;
@@ -147,7 +152,11 @@ function CompactPlayer({
         </TooltipProvider>
         <PlayButton playback={playback} className="size-10 shrink-0 rounded-xl px-0" />
         <div className="min-w-0 flex-1 sm:w-[150px] sm:flex-none">
-          <p className="truncate text-[12.5px]/[normal] font-medium">{item.title}</p>
+          {playback.chapters.length > 0 ? (
+            <CurrentChapter playback={playback} context={chapterContext} />
+          ) : (
+            <p className="truncate text-[12.5px]/[normal] font-medium">{item.title}</p>
+          )}
           <p className="text-[11.5px]/[normal] text-muted-foreground tabular-nums">
             {formatDuration(currentTime)} of {formatDuration(duration)}
           </p>
@@ -170,8 +179,12 @@ export function MediaPlayer({
   onSeeking,
   onShowVideo,
   playOnly,
+  chapters,
+  chapterContext,
 }: {
   item: MediaItem;
+  chapters: readonly ChapterRange[];
+  chapterContext: ChapterContext;
   playOnly?: { segments: readonly PlaySegment[]; names: string } | undefined;
   transcript?: Transcript | null | undefined;
   layout: "split" | "single";
@@ -184,7 +197,7 @@ export function MediaPlayer({
 }) {
   const [failed, setFailed] = useState(false);
   const frame = useRef<HTMLElement>(null);
-  const playback = useMediaPlayback(item.durationSeconds, playOnly?.segments);
+  const playback = useMediaPlayback(item.durationSeconds, playOnly?.segments, chapters);
   const { attach: attachPlayback, controls } = playback;
   const subtitles = useMemo(
     () =>
@@ -237,6 +250,7 @@ export function MediaPlayer({
           playback={playback}
           title={item.title}
           docked={layout === "split"}
+          chapterContext={chapterContext}
           className={className}
         />
         {playOnlyNote}
@@ -290,7 +304,13 @@ export function MediaPlayer({
         />
       </section>
       {layout === "single" ? (
-        <CompactPlayer item={item} playback={playback} frame={frame} onShowVideo={onShowVideo} />
+        <CompactPlayer
+          item={item}
+          playback={playback}
+          frame={frame}
+          onShowVideo={onShowVideo}
+          chapterContext={chapterContext}
+        />
       ) : null}
       {playOnlyNote}
       {failure}

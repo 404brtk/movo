@@ -5,6 +5,8 @@ import {
   type TranscriptExportFormat,
   type TranscriptExportOptions,
 } from "./contracts/transcriptions.ts";
+import { timedLines } from "./chapters.ts";
+import type { RecordingOverview } from "./contracts/overview.ts";
 import { transcriptPassages, type TranscriptPassage } from "./transcript-passages.ts";
 import { transcriptSpeakers } from "./transcript-speakers.ts";
 
@@ -74,12 +76,30 @@ function cueText(
   return named ? `${escaped(speaker)}: ${text}` : text;
 }
 
+export function overviewText({
+  summary,
+  chapters,
+}: Pick<RecordingOverview, "summary" | "chapters">) {
+  const sections = [
+    ...(summary ? [`Summary\n${summary.text}`] : []),
+    ...(summary?.keyPoints.length ? [`Key points\n${timedLines(summary.keyPoints)}`] : []),
+    ...(chapters.length > 0
+      ? [
+          `Chapters\n${timedLines(chapters.map(({ startMs, title }) => ({ startMs, text: title })))}`,
+        ]
+      : []),
+  ];
+  return sections.map((section) => `${section}\n\n`).join("");
+}
+
 export function exportTranscript(
   transcript: Transcript,
   format: TranscriptExportFormat,
   options: TranscriptExportOptions = defaultTranscriptExportOptions,
+  overview?: Pick<RecordingOverview, "summary" | "chapters">,
 ) {
-  if (format === "txt") return transcriptText(transcript, options);
+  if (format === "txt")
+    return (overview ? overviewText(overview) : "") + transcriptText(transcript, options);
   const separator = format === "srt" ? "," : ".";
   const cues = labeledPassages(transcript, options.speakers).map((cue, index) => {
     const start = cueTime(cue.passage.startMs, separator);

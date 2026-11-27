@@ -409,7 +409,9 @@ test("keeps the recording in view and moves it only as far as the open panel nee
   expect((await box(player)).x + (await box(player)).width).toBeLessThan((await box(transcript)).x);
 
   await page.setViewportSize({ width: 1100, height: 900 });
-  await expect.poll(async () => (await box(player)).y).toBeGreaterThan((await box(title)).y);
+  await expect(async () => {
+    expect((await box(player)).y).toBeGreaterThan((await box(title)).y);
+  }).toPass();
   expect((await box(transcript)).x).toBe((await box(title)).x);
   await expect.poll(() => noHorizontalScroll(page)).toBe(true);
 });

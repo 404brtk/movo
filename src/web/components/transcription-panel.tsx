@@ -3,6 +3,7 @@ import { Search01Icon, SearchReplaceIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { maxSearchLength } from "../../shared/contracts/library.ts";
+import type { ChapterRange } from "../../shared/chapters.ts";
 import type { Transcript, TranscriptionJob } from "../../shared/contracts/transcriptions.ts";
 import { transcriptionOptions } from "../lib/api.ts";
 import { focusOnMount } from "../lib/match-stepper.ts";
@@ -71,7 +72,11 @@ function TranscriptView({
   revealMs,
   toolbarAction,
   status,
+  summary,
+  chapters,
 }: {
+  summary: ReactNode;
+  chapters: readonly ChapterRange[] | undefined;
   mediaId: string;
   job: TranscriptionJob;
   transcript: Transcript;
@@ -241,8 +246,10 @@ function TranscriptView({
       </ToolsZone>
       {shown ? history(false) : null}
       <div className={statusClassName}>{status}</div>
+      {hasWords ? summary : null}
       {hasWords ? (
         <TranscriptReader
+          chapters={chapters}
           transcript={transcript}
           playback={playback}
           revealMs={revealMs}
@@ -270,7 +277,11 @@ export function TranscriptionPanel({
   playback,
   revealMs,
   toolbarAction,
+  summary,
+  chapters,
 }: {
+  summary?: ReactNode;
+  chapters?: readonly ChapterRange[] | undefined;
   mediaId: string;
   action: TranscriptionActionMutation;
   playback?: TranscriptPlayback | undefined;
@@ -367,6 +378,8 @@ export function TranscriptionPanel({
           revealMs={revealMs}
           toolbarAction={toolbarAction}
           status={status}
+          summary={summary}
+          chapters={chapters}
         />
       ) : (
         <>

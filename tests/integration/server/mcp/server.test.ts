@@ -13,6 +13,7 @@ import { createApp } from "../../../../src/server/http/app.ts";
 import { createMcpHandler } from "../../../../src/server/mcp/server.ts";
 import { TranscriptionSummary } from "../../../../src/server/mcp/tools.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
+import { createOverviews } from "../../../../src/server/overview/overviews.ts";
 import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import {
@@ -116,13 +117,19 @@ function withMovo(
               preview: (url) => Effect.succeed({ url, title: "A source", durationSeconds: 2 }),
               download: () => Effect.never,
             });
+            const overviews = createOverviews(database, { library, transcriptions });
             const mcp = yield* Effect.acquireRelease(
               Effect.sync(() =>
-                createMcpHandler({ library, downloads, transcriptions, port: 4310 }),
+                createMcpHandler({ library, downloads, transcriptions, overviews, port: 4310 }),
               ),
               (handler) => Effect.promise(() => handler.dispose()),
             );
-            const app = createApp(database, config, undefined, { tools, transcriptions, mcp });
+            const app = createApp(database, config, undefined, {
+              tools,
+              transcriptions,
+              mcp,
+              overviews,
+            });
             const worker = yield* transcriptions.start();
             yield* Effect.promise(() => run(app, directory));
             yield* Fiber.interrupt(worker);
@@ -312,6 +319,18 @@ describe("MCP endpoint", () => {
           status: "completed",
           transcript: { language: "en", passageCount: 3 },
         });
+
+      expect(
+        (await callTool(app, "get_recording", { mediaId: item.id })).structuredContent,
+      ).toMatchObject({ summary: null, chapters: [] });
+      await app.request(`http://127.0.0.1:4310/api/media/${item.id}/chapters`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ startMs: 0, title: "Opening" }),
+      });
+      expect(
+        (await callTool(app, "get_recording", { mediaId: item.id })).structuredContent,
+      ).toMatchObject({ summary: null, chapters: [{ startMs: 0, title: "Opening" }] });
 
       const search = await callTool(app, "search_library", { q: "second" });
       expect(search.structuredContent).toMatchObject({

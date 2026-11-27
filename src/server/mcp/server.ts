@@ -11,6 +11,7 @@ import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import { requestDownload, type Downloads } from "../downloads/jobs.ts";
 import { MediaError } from "../media/error.ts";
 import type { createMediaLibrary } from "../media/library.ts";
+import type { Overviews } from "../overview/overviews.ts";
 import type { Transcriptions } from "../transcriptions/jobs.ts";
 import { defaultListLimit, movoTools } from "./tools.ts";
 import { defaultPagePassages, transcriptPage } from "./transcript-page.ts";
@@ -19,6 +20,7 @@ export interface McpServices {
   library: ReturnType<typeof createMediaLibrary>;
   downloads: Downloads;
   transcriptions: Transcriptions;
+  overviews: Pick<Overviews, "get">;
   port: number;
 }
 
@@ -43,7 +45,7 @@ const reported = <A>(operation: Effect.Effect<A, MediaError>) =>
   );
 
 export const toolHandlers = (
-  { library, downloads, transcriptions }: Omit<McpServices, "port">,
+  { library, downloads, transcriptions, overviews }: Omit<McpServices, "port">,
   source: TranscriptChangeSource,
 ) =>
   ({
@@ -62,7 +64,18 @@ export const toolHandlers = (
         Effect.all({
           recording: library.get(mediaId),
           transcription: transcriptions.get(mediaId).pipe(Effect.map(summarize)),
-        }),
+          overview: overviews.get(mediaId),
+        }).pipe(
+          Effect.map(({ recording, transcription, overview }) => ({
+            recording,
+            transcription,
+            summary: overview.summary && {
+              text: overview.summary.text,
+              keyPoints: overview.summary.keyPoints,
+            },
+            chapters: overview.chapters.map(({ startMs, title }) => ({ startMs, title })),
+          })),
+        ),
       ),
     read_transcript: ({ mediaId, fromMs = 0, maxPassages = defaultPagePassages }) =>
       reported(

@@ -7,13 +7,14 @@ import { foldSearchText, matchedRanges } from "../../shared/search-text.ts";
 import { transcriptPassages } from "../../shared/transcript-passages.ts";
 import { transcriptSpeakers } from "../../shared/transcript-speakers.ts";
 import type { AppDatabase } from "../db/database.ts";
+import { recordingOverviews } from "../overview/overview.schema.ts";
 import { transcriptionJobs } from "../transcriptions/transcriptions.schema.ts";
 import { mediaItems } from "./media.schema.ts";
 import { searchIndex, searchPassages } from "./search.schema.ts";
 
 type SearchDatabase = Pick<AppDatabase, "run" | "all" | "insert" | "delete">;
 
-export const searchIndexVersion = 3;
+export const searchIndexVersion = 4;
 const maxPassageMatches = 3;
 const passagesPerInsert = 1000;
 
@@ -28,13 +29,24 @@ const matchExpression = (terms: readonly string[], operator: " " | " OR ") =>
 
 export function addSearchEntry(database: SearchDatabase, item: Pick<MediaItem, "id" | "title">) {
   database.run(
-    sql`insert into media_search (media_id, title, transcript, speakers) values (${item.id}, ${foldSearchText(item.title)}, '', '')`,
+    sql`insert into media_search (media_id, title, transcript, speakers, summary) values (${item.id}, ${foldSearchText(item.title)}, '', '', '')`,
   );
 }
 
 export function setSearchTitle(database: SearchDatabase, id: string, title: string) {
   database.run(
     sql`update media_search set title = ${foldSearchText(title)} where media_id = ${id}`,
+  );
+}
+
+export function setSearchSummary(
+  database: SearchDatabase,
+  id: string,
+  summary: { text: string; keyPoints: readonly { text: string }[] } | null,
+) {
+  const text = summary ? [summary.text, ...summary.keyPoints.map((point) => point.text)] : [];
+  database.run(
+    sql`update media_search set summary = ${foldSearchText(text.join(" "))} where media_id = ${id}`,
   );
 }
 
@@ -97,13 +109,23 @@ export function syncSearchIndex(database: AppDatabase) {
         Schema.decodeUnknownSync(Transcript)(stored?.transcript),
       );
     }
+    for (const { mediaId, text, keyPoints } of transaction
+      .select({
+        mediaId: recordingOverviews.mediaId,
+        text: recordingOverviews.summary,
+        keyPoints: recordingOverviews.keyPoints,
+      })
+      .from(recordingOverviews)
+      .where(isNotNull(recordingOverviews.summary))
+      .all())
+      setSearchSummary(transaction, mediaId, { text: text ?? "", keyPoints: keyPoints ?? [] });
     transaction.insert(searchIndex).values({ version: searchIndexVersion }).run();
   });
 }
 
 export function rankSearchMatches(database: SearchDatabase, terms: readonly string[]) {
   const matches = database.all<{ mediaId: string; rank: number }>(
-    sql`select media_id as mediaId, bm25(media_search, 0, 10, 1, 5) as rank from media_search where media_search match ${matchExpression(terms, " ")}`,
+    sql`select media_id as mediaId, bm25(media_search, 0, 10, 1, 5, 2) as rank from media_search where media_search match ${matchExpression(terms, " ")}`,
   );
   return new Map(matches.map((match) => [match.mediaId, match.rank]));
 }

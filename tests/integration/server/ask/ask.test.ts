@@ -24,6 +24,7 @@ import { openDatabase, type AppDatabase } from "../../../../src/server/db/databa
 import { createDownloads } from "../../../../src/server/downloads/jobs.ts";
 import { createApp } from "../../../../src/server/http/app.ts";
 import { MediaError } from "../../../../src/server/media/error.ts";
+import { createOverviews } from "../../../../src/server/overview/overviews.ts";
 import { createMediaLibrary } from "../../../../src/server/media/library.ts";
 import { createMediaTools } from "../../../../src/server/media-tools/tools.ts";
 import { createTranscriptions } from "../../../../src/server/transcriptions/jobs.ts";
@@ -155,13 +156,19 @@ function withAsk(
                     },
                   })),
             };
+            const overviews = createOverviews(database, { library, transcriptions }, boundaries);
             const ask = yield* Effect.acquireRelease(
               Effect.sync(() =>
-                createAsk(database, { library, downloads, transcriptions }, boundaries),
+                createAsk(database, { library, downloads, transcriptions, overviews }, boundaries),
               ),
               (service) => service.close(),
             );
-            const app = createApp(database, config, undefined, { tools, transcriptions, ask });
+            const app = createApp(database, config, undefined, {
+              tools,
+              transcriptions,
+              ask,
+              overviews,
+            });
             yield* Effect.promise(async () => {
               await expect
                 .poll(async () => (await Effect.runPromise(transcriptions.get(media.id)))?.status)

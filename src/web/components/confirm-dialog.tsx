@@ -85,6 +85,42 @@ export function ConfirmDialog({
   );
 }
 
+export function ReplaceWithModelDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirm,
+  busy,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: string;
+  confirm: string;
+  busy: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <Button disabled={busy} aria-busy={busy} onClick={onConfirm}>
+            {busy ? <Spinner /> : null}
+            {confirm}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 export function ReplaceEditsDialog({
   open,
   onOpenChange,

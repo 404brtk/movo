@@ -17,6 +17,7 @@ import { createTranscriptionEngine } from "./transcriptions/engine.ts";
 import { createMediaLibrary } from "./media/library.ts";
 import { createMcpHandler } from "./mcp/server.ts";
 import { createAsk } from "./ask/ask.ts";
+import { createOverviews } from "./overview/overviews.ts";
 
 const program = Effect.gen(function* () {
   const config = yield* Effect.try(() => readServerConfig(process.env));
@@ -59,12 +60,19 @@ const program = Effect.gen(function* () {
   );
   const downloadWorker = yield* downloads.start();
   const transcriptionWorker = yield* transcriptions.start();
+  const overviews = yield* Effect.acquireRelease(
+    Effect.sync(() => createOverviews(database, { library, transcriptions })),
+    (service) => service.close(),
+  );
+  yield* overviews.recover();
   const mcp = yield* Effect.acquireRelease(
-    Effect.sync(() => createMcpHandler({ library, downloads, transcriptions, port: config.port })),
+    Effect.sync(() =>
+      createMcpHandler({ library, downloads, transcriptions, overviews, port: config.port }),
+    ),
     (handler) => Effect.promise(() => handler.dispose()),
   );
   const ask = yield* Effect.acquireRelease(
-    Effect.sync(() => createAsk(database, { library, downloads, transcriptions })),
+    Effect.sync(() => createAsk(database, { library, downloads, transcriptions, overviews })),
     (service) => service.close(),
   );
   yield* ask.recover();
@@ -76,6 +84,7 @@ const program = Effect.gen(function* () {
     transcriptions,
     mcp,
     ask,
+    overviews,
   });
   yield* Effect.acquireRelease(
     Effect.tryPromise(

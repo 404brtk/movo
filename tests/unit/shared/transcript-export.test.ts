@@ -185,3 +185,32 @@ describe("speaker labels", () => {
     expect(transcriptText({ ...alone, speakers: [{ id: 1, name: "Ann" }] })).toBe("Ann: Solo.");
   });
 });
+
+describe("TXT export with an overview", () => {
+  it("starts with the summary, key points and chapters", () => {
+    const greeting = {
+      language: "en",
+      words: [{ startMs: 0, endMs: 400, text: "Hello." }],
+    };
+    const overview = {
+      summary: {
+        text: "A greeting.",
+        keyPoints: [{ startMs: 33_000, text: "Someone says hello" }],
+        source: "model" as const,
+        modelName: "Model A",
+        updatedAt: 1,
+      },
+      chapters: [
+        { id: "a", startMs: 0, title: "Opening" },
+        { id: "b", startMs: 700_000, title: "Questions" },
+      ],
+    };
+    expect(exportTranscript(greeting, "txt", undefined, overview)).toBe(
+      "Summary\nA greeting.\n\nKey points\n0:33 Someone says hello\n\nChapters\n0:00 Opening\n11:40 Questions\n\nHello.",
+    );
+    expect(exportTranscript(greeting, "srt", undefined, overview)).not.toContain("Summary");
+    expect(exportTranscript(greeting, "txt", undefined, { summary: null, chapters: [] })).toBe(
+      "Hello.",
+    );
+  });
+});

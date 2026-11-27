@@ -17,17 +17,19 @@ import { mediaToolsOptions, modelsOptions, ytdlpOptions } from "../lib/api.ts";
 export const Route = createFileRoute("/settings")({ component: Settings });
 
 function SettingsSection({
+  id,
   title,
   description,
   children,
 }: {
+  id?: string;
   title: string;
   description: string;
   children: ReactNode;
 }) {
   const headingId = useId();
   return (
-    <section aria-labelledby={headingId} className="mt-10">
+    <section id={id} aria-labelledby={headingId} className="mt-10">
       <h2 id={headingId} className="text-[17px]/6 font-semibold tracking-[-0.01em]">
         {title}
       </h2>
@@ -98,6 +100,7 @@ function Settings() {
         </ul>
       </SettingsSection>
       <SettingsSection
+        id="ask"
         title="Ask"
         description="Answers questions about your recordings with a model you connect."
       >

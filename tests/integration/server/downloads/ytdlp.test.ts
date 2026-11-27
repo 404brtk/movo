@@ -57,11 +57,21 @@ describe("Media downloader protocol", () => {
     });
   });
 
-  it("extracts X audio with a combined-stream fallback and reports the final audio file", async () => {
+  it("extracts X audio with a combined-stream fallback and reports the final audio file and its chapters", async () => {
     const directory = await mkdtemp(join(tmpdir(), "movo-ytdlp-x-audio-"));
     const tools = createMediaTools({ dataDirectory: directory });
     try {
-      command.mockReturnValueOnce(Effect.succeed(JSON.stringify(xMetadata)));
+      command.mockReturnValueOnce(
+        Effect.succeed(
+          JSON.stringify({
+            ...xMetadata,
+            chapters: [
+              { start_time: 0, end_time: 1, title: "Intro" },
+              { start_time: 1, title: null },
+            ],
+          }),
+        ),
+      );
       command.mockImplementationOnce((_file, args, options) =>
         Effect.promise(async () => {
           expect(args[args.indexOf("--format") + 1]).toBe("ba/b");
@@ -82,6 +92,10 @@ describe("Media downloader protocol", () => {
       expect(result).toEqual({
         path: join(directory, "media.m4a"),
         preview: { url: xUrl, title: xMetadata.title, durationSeconds: 2 },
+        chapters: [
+          { start_time: 0, title: "Intro" },
+          { start_time: 1, title: null },
+        ],
       });
     } finally {
       await Effect.runPromise(tools.close());

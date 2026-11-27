@@ -20,7 +20,7 @@ Movo accepts protocol revisions 2026-07-28, 2025-11-25, 2025-06-18 and 2025-03-2
 | Tool                                                                  | Purpose                                                                                                                                                                                                                                      |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `search_library`                                                      | Search titles, transcripts and speaker names with the library's filters and sort orders; returns up to `limit` recordings (default 20, at most 100) after `offset`, with each recording's transcription state, the total and passage matches |
-| `get_recording`                                                       | A recording and the state of its transcription                                                                                                                                                                                               |
+| `get_recording`                                                       | Recording details, transcription state, saved summary with timed key points, and chapters                                                                                                                                                    |
 | `read_transcript`                                                     | Timestamped passages from `fromMs`, up to `maxPassages` (default 200, at most 300); continue with `nextFromMs`                                                                                                                               |
 | `list_downloads`, `get_download`                                      | Download jobs, newest first, paged with `limit` and `offset` like `search_library`, and one job's state                                                                                                                                      |
 | `preview_link`                                                        | Title and duration of a video or podcast link without downloading, and which presets of it the library already has                                                                                                                           |
@@ -41,6 +41,8 @@ Each tool declares MCP hints: the seven query tools are read-only, `retry_transc
 Installing the transcription model, FFmpeg/FFprobe or yt-dlp is not available through MCP. A tool that needs a missing component returns the same message as the browser, and the component is installed in the Movo app.
 
 A failed operation returns a tool error with a readable message, for example `Media not found.` or `Install the transcription model first.`, so the agent can correct the request.
+
+`get_recording` returns `summary` as either `null` or an object with `text` and `keyPoints`. Each key point has `startMs` and `text`. The `chapters` array is ordered by `startMs` and each entry has a `title`. Recordings without chapters return an empty array. All start times are milliseconds from the beginning of the recording.
 
 ## Import by path
 

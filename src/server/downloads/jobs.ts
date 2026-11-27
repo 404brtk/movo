@@ -266,6 +266,7 @@ export function createDownloads(
                 result.preview.title,
                 { url: result.preview.url, preset: job.preset },
                 job.id,
+                result.chapters,
               );
               yield* databaseOperation(() => markCompleted(job.id, item));
             }),

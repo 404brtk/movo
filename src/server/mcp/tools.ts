@@ -10,6 +10,7 @@ import {
 } from "../../shared/contracts/downloads.ts";
 import { LibraryItem, LibraryQuery } from "../../shared/contracts/library.ts";
 import { MediaDeletion, MediaId, MediaItem, MediaTitle } from "../../shared/contracts/media.ts";
+import { ChapterTitle, KeyPoint, SummaryText } from "../../shared/contracts/overview.ts";
 import {
   PassageEdit,
   SpeakerAssignment,
@@ -84,9 +85,16 @@ export const movoTools = Toolkit.make(
   }).annotateMerge(reads),
   Tool.make("get_recording", {
     description:
-      "Get a recording's details and the state of its transcription. transcription is null when it was never transcribed. A completed transcript stays available while a new attempt runs.",
+      "Get a recording's details, the state of its transcription, its summary and its chapters. transcription is null when it was never transcribed. A completed transcript stays available while a new attempt runs. summary is null until the user writes one in Movo; its first sentence states the main point, and each key point and chapter starts at startMs. chapters is empty when the recording has none.",
     parameters: Recording,
-    success: Schema.Struct({ recording: MediaItem, transcription: TranscriptionSummary }),
+    success: Schema.Struct({
+      recording: MediaItem,
+      transcription: TranscriptionSummary,
+      summary: Schema.NullOr(
+        Schema.Struct({ text: SummaryText, keyPoints: Schema.Array(KeyPoint) }),
+      ),
+      chapters: Schema.Array(Schema.Struct({ startMs: Milliseconds, title: ChapterTitle })),
+    }),
     failure,
   }).annotateMerge(reads),
   Tool.make("read_transcript", {

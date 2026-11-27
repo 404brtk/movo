@@ -28,6 +28,8 @@ Models that can't use tools are shown but can't be chosen. When a server doesn't
 
 **New chats answer with** sets the default model. Each chat remembers its own model; choosing another model mid-chat keeps the conversation and marks the change.
 
+The recording page uses this default for **Write summary and chapters**. It sends the transcript to that model only when you choose to write. If the transcript exceeds the context budget or the provider rejects it as too long, Movo reads it in parts with the same mechanism Ask uses. The result belongs to the recording and can be edited there. **Summarise** in the Ask panel still produces a chat answer.
+
 ## Asking
 
 - **Panel:** closed by default and remembered per browser. It opens with **Ask**, `/`, or **Ask about this** on selected transcript text, which attaches the passage and its moment to the next question. At 1100 px and wider it sits beside the transcript; between 700 and 1099 px it floats over the right edge; below 700 px it fills the screen and a timestamp closes it. One chat per recording is shown; earlier chats are under the clock. **Summarise** in the panel's header asks "Summarise this recording" with one click. Once the chat and transcript are loaded, it uses the current chat if it is empty and its model is connected. Otherwise it opens a new chat with the default model. Before a transcript exists the field offers **Transcribe**, and **Summarise** waits for the transcript like the field does.

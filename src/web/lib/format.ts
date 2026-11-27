@@ -1,14 +1,6 @@
 import type { TranscriptionDevice } from "../../shared/contracts/transcriptions.ts";
 
-export function formatDuration(seconds: number) {
-  const total = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor(total / 60) % 60;
-  const remainder = String(total % 60).padStart(2, "0");
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, "0")}:${remainder}`
-    : `${minutes}:${remainder}`;
-}
+export { formatDuration } from "../../shared/duration.ts";
 
 const byteUnits = ["B", "KiB", "MiB", "GiB"] as const;
 const byteExponent = (bytes: number) =>

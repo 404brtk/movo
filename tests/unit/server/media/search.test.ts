@@ -24,7 +24,7 @@ it("requires a new search index version when stored passages or their search tex
       foldSearchText(passage.text),
     ]),
   }).toEqual({
-    version: 3,
+    version: 4,
     passages: [
       [0, "dr. kowalski omowil np."],
       [889, "budzet lodzi na rok 2026."],

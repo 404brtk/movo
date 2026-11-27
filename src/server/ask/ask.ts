@@ -84,7 +84,7 @@ interface LiveAnswer {
 }
 
 export const maxAnswerSteps = 12;
-const fallbackContextTokens: Record<ConnectionKind, number> = {
+export const fallbackContextTokens: Record<ConnectionKind, number> = {
   anthropic: 200_000,
   openai: 128_000,
   openrouter: 128_000,

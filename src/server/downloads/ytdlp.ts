@@ -10,6 +10,7 @@ import {
 import { maxImportBytes } from "../../shared/contracts/media.ts";
 import { MediaError } from "../media/error.ts";
 import type { MediaTools } from "../media-tools/tools.ts";
+import type { SiteChapter } from "../overview/chapters.ts";
 import { runCommand } from "../process/command.ts";
 import type { DownloadSite } from "../../shared/download-sources.ts";
 import { downloadSource } from "./url.ts";
@@ -133,7 +134,23 @@ const Metadata = Schema.Struct({
   ),
   live_status: Schema.optional(Schema.String),
   _type: Schema.optional(Schema.String),
+  chapters: Schema.optional(
+    Schema.NullOr(
+      Schema.Array(
+        Schema.Struct({
+          start_time: Schema.Number,
+          title: Schema.optional(Schema.NullOr(Schema.String)),
+        }),
+      ),
+    ),
+  ),
 });
+export interface DownloadedMedia {
+  path: string;
+  preview: DownloadSourceDetails;
+  chapters?: readonly SiteChapter[] | undefined;
+}
+
 const Progress = Schema.Struct({
   downloaded_bytes: Schema.optional(
     Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
@@ -203,7 +220,7 @@ export function createMediaDownloader(
           ? undefined
           : `This ${profile.label} link is unavailable to Movo. Use a public link that opens without signing in, or try again later.`,
       );
-      const preview = yield* Effect.try({
+      const { preview, chapters } = yield* Effect.try({
         try: () => {
           const metadata = Schema.decodeUnknownSync(Metadata)(JSON.parse(raw));
           if (metadata["_type"] && metadata["_type"] !== "video")
@@ -226,11 +243,14 @@ export function createMediaDownloader(
               "unsupported",
               "The source returned metadata for a different video.",
             );
-          return Schema.decodeUnknownSync(DownloadSourceDetails)({
-            url,
-            title: metadata.title,
-            durationSeconds: metadata.duration ?? null,
-          });
+          return {
+            preview: Schema.decodeUnknownSync(DownloadSourceDetails)({
+              url,
+              title: metadata.title,
+              durationSeconds: metadata.duration ?? null,
+            }),
+            chapters: metadata.chapters ?? [],
+          };
         },
         catch: (cause) =>
           cause instanceof MediaError
@@ -241,7 +261,7 @@ export function createMediaDownloader(
                 cause,
               ),
       });
-      return { preview, raw, profile };
+      return { preview, chapters, raw, profile };
     });
 
   return {
@@ -260,7 +280,7 @@ export function createMediaDownloader(
     ) =>
       Effect.gen(function* () {
         const selected = getDownloadPreset(preset);
-        const { preview, raw, profile } = yield* inspect(url);
+        const { preview, chapters, raw, profile } = yield* inspect(url);
         const video =
           selected.kind === "video" && profile.video !== null
             ? videoFormat(profile.video, selected.maxHeight)
@@ -379,7 +399,8 @@ export function createMediaDownloader(
           return yield* Effect.fail(
             new MediaError("unsupported", "The download has no completed media file."),
           );
-        return { path: output, preview };
+        const downloaded: DownloadedMedia = { path: output, preview, chapters };
+        return downloaded;
       }),
   };
 }
