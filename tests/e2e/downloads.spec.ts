@@ -136,6 +136,7 @@ test("loads collection pages on demand, preserves selection and queues videos in
   const later = collectionVideo(51);
   const pages: number[] = [];
   const enqueued: unknown[] = [];
+  await page.clock.install();
   await page.route("**/api/downloads/collection", (route) => {
     expect(route.request().method()).toBe("POST");
     const request = Schema.decodeUnknownSync(DownloadCollectionRequest)(
@@ -250,6 +251,8 @@ test("loads collection pages on demand, preserves selection and queues videos in
     .getByRole("group", { name: `Save ${collectionVideo(50).title} as` })
     .getByRole("button", { name: "Audio" })
     .click();
+  await page.clock.fastForward(5 * 60 * 1000 + 1);
+  await expect(form.getByText("Public playlist", { exact: true })).toBeVisible();
   await form.getByRole("button", { name: "Download", exact: true }).click();
   await expect
     .poll(() => enqueued.at(-1))
@@ -257,6 +260,10 @@ test("loads collection pages on demand, preserves selection and queues videos in
       links: [{ url: collectionVideo(50).url, title: collectionVideo(50).title, preset: "audio" }],
       transcribe: true,
     });
+  await expect(form.getByText("Public playlist", { exact: true })).toBeVisible();
+  await form.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Download from link", exact: true }).click();
+  await expect(form.getByRole("list", { name: "YouTube collections" })).toHaveCount(0);
 });
 
 test("keeps saved media available when temporary download cleanup fails", async ({ page }) => {

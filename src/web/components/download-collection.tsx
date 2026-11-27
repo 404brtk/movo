@@ -21,8 +21,8 @@ export function DownloadCollection({
 }: {
   source: YouTubeCollection;
   rows: readonly LinkRow[];
-  onBack: () => void;
-  onAdd: (urls: readonly string[]) => void;
+  onBack: (title?: string | null) => void;
+  onAdd: (urls: readonly string[], title?: string | null) => void;
 }) {
   const id = useId();
   const back = useRef<HTMLButtonElement>(null);
@@ -68,7 +68,7 @@ export function DownloadCollection({
           variant="ghost"
           size="icon-sm"
           aria-label="Back to links"
-          onClick={onBack}
+          onClick={() => onBack(title)}
         >
           <HugeiconsIcon icon={ArrowLeft01Icon} aria-hidden="true" />
         </Button>
@@ -84,7 +84,7 @@ export function DownloadCollection({
           <div className="overflow-y-auto overscroll-contain scroll-shadow-y">
             <YtdlpSetup
               className="rounded-xl p-4 shadow-[inset_0_0_0_1px_var(--color-border)]"
-              onClose={onBack}
+              onClose={() => onBack()}
             />
           </div>
         ) : !collection.data ? (
@@ -211,7 +211,10 @@ export function DownloadCollection({
           className="max-sm:self-end"
           disabled={!ready || selected.size === 0}
           onClick={() =>
-            onAdd(videos.filter((video) => selected.has(video.url)).map((video) => video.url))
+            onAdd(
+              videos.filter((video) => selected.has(video.url)).map((video) => video.url),
+              title,
+            )
           }
         >
           {selected.size === 0 ? "Add videos" : `Add ${countLabel(selected.size, "video")}`}

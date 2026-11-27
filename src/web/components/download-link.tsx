@@ -19,13 +19,7 @@ import {
   getDownloadPreset,
 } from "../../shared/contracts/downloads.ts";
 import type { YouTubeCollection } from "../../shared/download-sources.ts";
-import {
-  collectionOptions,
-  downloadsOptions,
-  enqueueDownload,
-  previewOptions,
-  ytdlpOptions,
-} from "../lib/api.ts";
+import { downloadsOptions, enqueueDownload, previewOptions, ytdlpOptions } from "../lib/api.ts";
 import {
   addLinks,
   canChooseKind,
@@ -79,6 +73,8 @@ interface LinkView {
   preset: DownloadPreset;
   skip: LinkSkip | null;
 }
+
+type DraftCollection = CollectionOffer & { title?: string | null };
 
 function LinkDetails({ view }: { view: LinkView }) {
   const { row, preview, skip } = view;
@@ -190,10 +186,11 @@ function LinkItem({
 
 export function DownloadLink() {
   const [open, setOpen] = useState(false);
+  const dialogOpen = useRef(false);
   const [field, setField] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [rows, setRows] = useState<LinkRow[]>([]);
-  const [collections, setCollections] = useState<CollectionOffer[]>([]);
+  const [collections, setCollections] = useState<DraftCollection[]>([]);
   const [activeCollection, setActiveCollection] = useState<YouTubeCollection | null>(null);
   const [lastKind, setLastKind] = useState<SaveKind>("video");
   const [videoPreset, setVideoPreset] = useState<DownloadPreset>(defaultDownloadPreset);
@@ -245,9 +242,21 @@ export function DownloadLink() {
   const videoLinks = queued.filter((view) => getDownloadPreset(view.preset).kind === "video");
   const rememberCollections = (offers: CollectionOffer[]) => {
     if (offers.length === 0) return;
-    setCollections((current) => [
-      ...new Map([...current, ...offers].map((offer) => [offer.source.url, offer])).values(),
-    ]);
+    setCollections((current) => {
+      const byUrl = new Map(current.map((offer) => [offer.source.url, offer]));
+      for (const offer of offers)
+        byUrl.set(offer.source.url, { ...byUrl.get(offer.source.url), ...offer });
+      return [...byUrl.values()];
+    });
+  };
+  const changeOpen = (next: boolean) => {
+    dialogOpen.current = next;
+    if (!next) {
+      setActiveCollection(null);
+      setCollections([]);
+      restoreInputFocus.current = false;
+    }
+    setOpen(next);
   };
   const download = useMutation({
     mutationFn: enqueueDownload,
@@ -256,15 +265,16 @@ export function DownloadLink() {
       setRows(rest.rows);
       setField(rest.remaining);
       setNote(rest.note);
-      rememberCollections(rest.collections);
-      const hasLoadedCollection = collections.some(({ source }) =>
-        queryClient.getQueryData(collectionOptions(source.url).queryKey),
-      );
-      setOpen(
-        (current) =>
-          rest.rows.length > 0 || rest.collections.length > 0 || (current && hasLoadedCollection),
-      );
-      if (hasLoadedCollection) restoreInputFocus.current = true;
+      if (dialogOpen.current) {
+        if (
+          rest.rows.length ||
+          rest.collections.length ||
+          collections.some((offer) => offer.title !== undefined)
+        ) {
+          rememberCollections(rest.collections);
+          restoreInputFocus.current = true;
+        } else changeOpen(false);
+      }
       await queryClient.invalidateQueries({ queryKey: downloadsOptions.queryKey });
       toastManager.add({
         title: `${countLabel(request.links.length, "download")} added`,
@@ -294,7 +304,13 @@ export function DownloadLink() {
     if (result.openCollection) setActiveCollection(result.openCollection);
     download.reset();
   };
-  const backToLinks = () => {
+  const backToLinks = (title?: string | null) => {
+    if (title !== undefined)
+      setCollections((current) =>
+        current.map((offer) =>
+          offer.source.url === activeCollection?.url ? { ...offer, title } : offer,
+        ),
+      );
     restoreInputFocus.current = true;
     setActiveCollection(null);
   };
@@ -318,10 +334,10 @@ export function DownloadLink() {
         source={activeCollection}
         rows={rows}
         onBack={backToLinks}
-        onAdd={(urls) => {
+        onAdd={(urls, title) => {
           setRows(addLinks(rows, urls.join(" "), lastKind).rows);
           download.reset();
-          backToLinks();
+          backToLinks(title);
         }}
       />
     );
@@ -373,10 +389,8 @@ export function DownloadLink() {
               aria-label="YouTube collections"
               className="mt-3 shrink-0 rounded-xl shadow-[inset_0_0_0_1px_var(--color-border)]"
             >
-              {collections.map(({ source, fromWatch }) => {
-                const loaded = queryClient.getQueryData(collectionOptions(source.url).queryKey);
-                const title =
-                  loaded?.pages[0]?.title ?? source.url.replace(/^https:\/\/www\./u, "");
+              {collections.map(({ source, fromWatch, title: previewTitle }) => {
+                const title = previewTitle ?? source.url.replace(/^https:\/\/www\./u, "");
                 return (
                   <li
                     key={source.url}
@@ -575,13 +589,7 @@ export function DownloadLink() {
     );
   }
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) setActiveCollection(null);
-        setOpen(next);
-      }}
-    >
+    <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger render={<Button variant="outline" />} data-download-link-trigger="">
         <HugeiconsIcon icon={Link01Icon} data-icon="inline-start" aria-hidden="true" />
         Download from link
