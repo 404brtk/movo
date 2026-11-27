@@ -178,7 +178,7 @@ function withOverviews(
 }
 
 it(
-  "writes the summary, key points and chapters in the background and makes them searchable and exportable",
+  "writes the summary, key points and chapters in the background and makes them searchable but leaves them out of the transcript export",
   withOverviews(
     async () => overviewAnswer,
     async ({ request, mediaId, settled }) => {
@@ -208,9 +208,8 @@ it(
       const found = await (await request("/media?q=agrees")).json();
       expect(found).toMatchObject({ items: [{ id: mediaId }] });
       const exported = await (await request(`/media/${mediaId}/transcription/export/txt`)).text();
-      expect(exported).toMatch(
-        /^Summary\nThe team agrees.*\n\nKey points\n0:00 The meeting opens with the plan\n2:10 The hiring budget grows next year\n\nChapters\n0:00 Opening\n2:10 Hiring budget\n6:40 Questions\n\nWelcome/u,
-      );
+      expect(exported).toMatch(/^Welcome to the quarterly planning meeting\./u);
+      expect(exported).not.toContain("The team agrees");
       const conflict = await request(`/media/${mediaId}/overview/write`, json({ scope: "bad" }));
       expect(conflict.status).toBe(400);
     },

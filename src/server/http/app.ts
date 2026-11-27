@@ -374,8 +374,7 @@ export function createApp(
           srt: "application/x-subrip; charset=utf-8",
           vtt: "text/vtt; charset=utf-8",
         };
-        const overview = format === "txt" ? await runMedia(overviews.get(job.mediaId)) : undefined;
-        return new Response(exportTranscript(job.transcript, format, options, overview), {
+        return new Response(exportTranscript(job.transcript, format, options), {
           headers: {
             "Content-Type": contentTypes[format],
             "Content-Disposition": attachmentDisposition(`${item.title}.${format}`),
