@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LanguageModelV4CallOptions } from "@ai-sdk/provider";
+import { APICallError } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { eq } from "drizzle-orm";
 import { Effect, Fiber, Schema } from "effect";
@@ -254,6 +255,48 @@ it("reads a transcript that does not fit the model in parts and records the prog
       expect(partsSeen.every((parts) => parts !== null && parts > 1)).toBe(true);
     },
     { contextTokens: 300, transcriptWords: longWords, durationSeconds: 4300 },
+  )();
+});
+
+it("shortens the notes and writes again when the model rejects them as too long", async () => {
+  const notesSent: number[] = [];
+  let combined = 0;
+  const longWords = Array.from({ length: 60 }, (_, index) =>
+    timedWords(
+      index * 70_000,
+      index * 70_000 + 4000,
+      `Topic number ${index} is discussed here at length today.`,
+    ),
+  ).flat();
+  await withOverviews(
+    async (options) => {
+      const prompt = promptText(options);
+      if (prompt.includes("Notes:")) {
+        combined++;
+        return "Topics are discussed [0]";
+      }
+      if (prompt.includes("Instruction:")) return "Topics are discussed [0]";
+      notesSent.push(prompt.length);
+      if (notesSent.length === 1)
+        throw new APICallError({
+          message: "prompt is too long: 900 tokens > 300 maximum",
+          url: "https://api.anthropic.com/v1/messages",
+          requestBodyValues: {},
+          statusCode: 400,
+          isRetryable: false,
+        });
+      return overviewAnswer;
+    },
+    async ({ request, mediaId, settled }) => {
+      await request(`/media/${mediaId}/overview/write`, json({ scope: "summary" }));
+      const written = await settled();
+      expect(written.failure).toBeNull();
+      expect(written.summary?.text).toContain("hiring budget");
+      expect(combined).toBeGreaterThan(0);
+      expect(notesSent).toHaveLength(2);
+      expect(notesSent[1]).toBeLessThan(notesSent[0] ?? 0);
+    },
+    { contextTokens: 1500, transcriptWords: longWords, durationSeconds: 4300 },
   )();
 });
 

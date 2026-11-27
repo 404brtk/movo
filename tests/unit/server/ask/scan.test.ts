@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  answerFromTranscriptParts,
   combineInstructions,
   groupBySize,
   partInstructions,
@@ -139,5 +140,41 @@ describe("scanTranscript", () => {
     await expect(scanTranscript(scan)).rejects.toThrow("Ask about a narrower topic.");
     expect(calls).toEqual([]);
     expect(progress).toEqual([]);
+  });
+});
+
+describe("answerFromTranscriptParts", () => {
+  it("reads the parts once and answers again from shorter notes after a too-long rejection", async () => {
+    const { scan, calls } = request();
+    const partReads = () => calls.filter((call) => call.instructions === partInstructions).length;
+    const answered: { notes: string; partReads: number }[] = [];
+    const answer = await answerFromTranscriptParts(scan, async (notes) => {
+      answered.push({ notes, partReads: partReads() });
+      if (answered.length === 1) throw tooLong;
+      return "Summary";
+    });
+    expect(answer).toBe("Summary");
+    expect(answered).toHaveLength(2);
+    expect(answered[1]?.notes.length).toBeLessThanOrEqual((answered[0]?.notes.length ?? 0) / 2);
+    expect(answered[1]?.partReads).toBe(answered[0]?.partReads);
+    expect(calls.at(-1)?.instructions).toBe(combineInstructions);
+  });
+
+  it("stops when the notes can't get any shorter instead of retrying forever", async () => {
+    const { scan } = request();
+    await expect(
+      answerFromTranscriptParts(scan, async () => {
+        throw tooLong;
+      }),
+    ).rejects.toThrow("The notes from this transcript don't fit the model's context.");
+  });
+
+  it("passes on any other failure of the answer", async () => {
+    const failure = new Error("The server isn't running");
+    await expect(
+      answerFromTranscriptParts(request().scan, async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
   });
 });

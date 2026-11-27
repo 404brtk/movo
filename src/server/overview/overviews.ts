@@ -21,7 +21,7 @@ import {
 } from "../ask/ask.ts";
 import { calibratedCharactersPerToken, trimThreshold } from "../ask/prompt.ts";
 import { languageModel } from "../ask/providers.ts";
-import { scanTranscript } from "../ask/scan.ts";
+import { answerFromTranscriptParts } from "../ask/scan.ts";
 import { transcriptContext } from "../ask/transcript-context.ts";
 import { MediaError } from "../media/error.ts";
 import type { createMediaLibrary } from "../media/library.ts";
@@ -250,22 +250,26 @@ export function createOverviews(
         }
       }
       if (answer === undefined) {
-        const notes = await scanTranscript({
-          title: context.title,
-          lines: context.lines,
-          instruction: notesInstruction,
-          callCharacters: budget,
-          resultCharacters: budget - instructions.length - notesPrompt(context.title, "").length,
-          read,
-          tooLong: isContextOverflow,
-          onProgress: (done, total) =>
-            updateOverview(database, mediaId, {
-              writingPart: Math.min(done + 1, total),
-              writingParts: total,
-            }),
-        });
-        updateOverview(database, mediaId, { writingPart: null, writingParts: null });
-        answer = await read(instructions, notesPrompt(context.title, notes.notes));
+        answer = await answerFromTranscriptParts(
+          {
+            title: context.title,
+            lines: context.lines,
+            instruction: notesInstruction,
+            callCharacters: budget,
+            resultCharacters: budget - instructions.length - notesPrompt(context.title, "").length,
+            read,
+            tooLong: isContextOverflow,
+            onProgress: (done, total) =>
+              updateOverview(database, mediaId, {
+                writingPart: Math.min(done + 1, total),
+                writingParts: total,
+              }),
+          },
+          (notes) => {
+            updateOverview(database, mediaId, { writingPart: null, writingParts: null });
+            return read(instructions, notesPrompt(context.title, notes));
+          },
+        );
       }
       const written = normalizeOverview(
         parseOverview(answer, scope),
